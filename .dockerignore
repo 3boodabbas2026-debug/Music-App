@@ -1,0 +1,14 @@
+.git
+.github
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/*.db
+backend/media_storage
+backend/vault_data_backup
+frontend/node_modules
+frontend/.expo
+frontend/dist
+frontend/web-build
+frontend/.env
+frontend/.env.*
