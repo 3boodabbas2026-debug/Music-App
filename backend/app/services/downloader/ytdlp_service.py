@@ -2,12 +2,19 @@
 the event loop (e.g. via asyncio.to_thread)."""
 from __future__ import annotations
 
+import base64
+import binascii
+import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Iterator, Optional
 
 import imageio_ffmpeg
 import yt_dlp
+from yt_dlp.utils import DownloadError
+
+from app.core.config import settings
 
 ProgressCallback = Callable[[int, str], None]
 
@@ -34,6 +41,42 @@ def _pick_output_file(out_dir: Path, video_id: str) -> Path:
 
 AUDIO_FORMATS = {"mp3-320", "mp3-192", "m4a", "source"}
 VIDEO_QUALITIES = {"2160p", "1080p", "720p", "source"}
+
+
+@contextmanager
+def _cookies_file() -> Iterator[str | None]:
+    if settings.ytdlp_cookies_file:
+        cookie_path = Path(settings.ytdlp_cookies_file)
+        if cookie_path.is_file():
+            yield str(cookie_path)
+            return
+        raise RuntimeError(f"SMA_YTDLP_COOKIES_FILE does not exist: {cookie_path}")
+
+    if not settings.ytdlp_cookies_b64:
+        yield None
+        return
+
+    try:
+        cookie_bytes = base64.b64decode(settings.ytdlp_cookies_b64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise RuntimeError("SMA_YTDLP_COOKIES_B64 is not valid base64") from exc
+
+    with tempfile.NamedTemporaryFile("wb", suffix=".cookies.txt", delete=True) as tmp:
+        tmp.write(cookie_bytes)
+        tmp.flush()
+        yield tmp.name
+
+
+def _friendly_download_error(exc: DownloadError) -> RuntimeError:
+    message = str(exc)
+    needs_cookies = "Sign in to confirm" in message or "not a bot" in message
+    has_cookies = bool(settings.ytdlp_cookies_b64 or settings.ytdlp_cookies_file)
+    if needs_cookies and not has_cookies:
+        return RuntimeError(
+            "YouTube blocked this server as a bot. Export YouTube cookies as a Netscape cookies.txt file, "
+            "base64 it, then set Render env var SMA_YTDLP_COOKIES_B64 and redeploy."
+        )
+    return RuntimeError(message)
 
 
 def download_media(
@@ -84,8 +127,15 @@ def download_media(
             ydl_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
         ydl_opts["merge_output_format"] = "mp4"
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    with _cookies_file() as cookiefile:
+        if cookiefile:
+            ydl_opts["cookiefile"] = cookiefile
+
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+        except DownloadError as exc:
+            raise _friendly_download_error(exc) from exc
 
     if info is None:
         raise RuntimeError("yt-dlp returned no result for this URL")

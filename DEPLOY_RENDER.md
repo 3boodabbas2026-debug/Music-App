@@ -59,10 +59,30 @@ EXPO_PUBLIC_REGISTRATION_INVITE_REQUIRED=true
 
 Then redeploy both services.
 
+## 5. YouTube bot-check cookies
+
+Cloud IPs are often challenged by YouTube. If downloads fail with "Sign in to
+confirm you're not a bot", export YouTube cookies from your own browser as a
+Netscape `cookies.txt` file, base64 it, and set this Render environment
+variable on the Docker web service:
+
+```text
+SMA_YTDLP_COOKIES_B64=paste-base64-cookies-here
+```
+
+On Windows PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("C:\path\to\cookies.txt")) | Set-Clipboard
+```
+
+After setting the variable, redeploy. Cookies are private account credentials:
+do not commit them to GitHub and refresh them if YouTube starts challenging
+downloads again.
+
 ## Free-tier warning
 
 Render free web services do not keep local filesystem changes permanently.
 SQLite data and downloaded media may disappear after restarts or redeploys.
 For real long-term use, upgrade to a paid Render service with a disk, or move
 the database/storage to managed services.
-
