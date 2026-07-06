@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: supermediaapp-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: SMA_SECRET_KEY
+        generateValue: true
+      - key: SMA_DATABASE_URL
+        value: sqlite+aiosqlite:////var/data/super_media_app.db
+      - key: SMA_MEDIA_STORAGE_DIR
+        value: /var/data/media_storage
+      - key: SMA_CORS_ORIGINS
+        value: '["*"]'
+      - key: SMA_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      - key: SMA_MAX_CONCURRENT_DOWNLOADS
+        value: "1"
+      - key: SMA_RECOGNITION_TIMEOUT_SECONDS
+        value: "25"
+      # Optional but recommended for a public demo. If set, registration
+      # requires clients to send this invite code.
+      - key: SMA_REGISTRATION_INVITE_CODE
+        sync: false
+
+  - type: web
+    name: supermediaapp-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build:web
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # After the API deploys, set this to:
+      # https://supermediaapp-api.onrender.com
+      - key: EXPO_PUBLIC_API_BASE_URL
+        sync: false
+      # Set to "true" if you also set SMA_REGISTRATION_INVITE_CODE above.
+      - key: EXPO_PUBLIC_REGISTRATION_INVITE_REQUIRED
+        value: "false"

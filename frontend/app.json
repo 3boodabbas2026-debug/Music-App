@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "SuperMedia",
+    "slug": "super-media-app",
+    "scheme": "supermediaapp",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#060B18",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.supermediaapp.mobile",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Super Media listens briefly through the microphone to identify the song playing around you."
+      }
+    },
+    "android": {
+      "package": "com.supermediaapp.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#060B18",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "SuperMedia",
+      "shortName": "SuperMedia",
+      "themeColor": "#060B18",
+      "backgroundColor": "#060B18"
+    },
+    "plugins": [
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Super Media listens briefly through the microphone to identify the song playing around you."
+        }
+      ],
+      "expo-asset",
+      "expo-font",
+      "expo-video"
+    ]
+  }
+}

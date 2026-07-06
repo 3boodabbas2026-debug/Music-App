@@ -1,0 +1,34 @@
+.env
+.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+__pycache__/
+*.pyc
+.frontend_git_backup/
+
+# Python backend
+backend/.venv/
+backend/*.db
+backend/*.db-journal
+backend/media_storage/
+backend/vault_data_backup/
+backend/server.log
+
+# Expo frontend
+frontend/node_modules/
+frontend/.expo/
+frontend/dist/
+frontend/web-build/
+frontend/expo-env.d.ts
+frontend/expo*.log
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# OS/editor
+.DS_Store
+Thumbs.db
+
+.claude/
+frontend/.claude/
