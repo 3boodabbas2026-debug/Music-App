@@ -19,8 +19,14 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["*"]
     registration_invite_code: str | None = None
+    ytdlp_cookies_text: str | None = None
     ytdlp_cookies_b64: str | None = None
     ytdlp_cookies_file: str | None = None
+    ytdlp_impersonate: str | None = "chrome"
+    ytdlp_proxy_url: str | None = None
+    ytdlp_youtube_player_clients: str | None = None
+    ytdlp_youtube_visitor_data: str | None = None
+    ytdlp_youtube_po_token: str | None = None
 
     max_concurrent_downloads: int = 3
     recognition_timeout_seconds: int = 25

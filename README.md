@@ -48,6 +48,13 @@ If you deploy the frontend and backend manually instead of via Blueprint:
 - Frontend build command: `npm ci && npm run build:web`
 - Frontend publish directory: `dist`
 
+For YouTube downloads on Render, set `SMA_YTDLP_COOKIES_TEXT` to a fresh
+Netscape `cookies.txt` export from a private YouTube session if YouTube shows
+the bot-check error. The Docker deployment also includes Chrome request
+impersonation, yt-dlp's default YouTube helpers, and Node 22 for YouTube
+JavaScript challenges, but YouTube can still require account cookies or a clean
+proxy for cloud IPs.
+
 ## What's been verified vs. what needs your eyes
 
 **Backend — verified end-to-end against the real network**, in this session: registered a user, downloaded

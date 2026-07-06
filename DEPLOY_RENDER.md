@@ -62,9 +62,26 @@ Then redeploy both services.
 ## 5. YouTube bot-check cookies
 
 Cloud IPs are often challenged by YouTube. If downloads fail with "Sign in to
-confirm you're not a bot", export YouTube cookies from your own browser as a
-Netscape `cookies.txt` file, base64 it, and set this Render environment
-variable on the Docker web service:
+confirm you're not a bot", set a cookie secret on the Render Docker web
+service.
+
+Recommended export flow:
+
+1. Open a private/incognito browser window.
+2. Sign into YouTube in that private window.
+3. In the same tab, open `https://www.youtube.com/robots.txt`.
+4. Export only `youtube.com` cookies as a Netscape `cookies.txt` file.
+5. Close the private window and do not reopen that session.
+
+Then paste the full contents of `cookies.txt` into this Render environment
+variable:
+
+```text
+SMA_YTDLP_COOKIES_TEXT=# Netscape HTTP Cookie File
+...
+```
+
+Alternative base64 flow:
 
 ```text
 SMA_YTDLP_COOKIES_B64=paste-base64-cookies-here
@@ -79,6 +96,11 @@ On Windows PowerShell:
 After setting the variable, redeploy. Cookies are private account credentials:
 do not commit them to GitHub and refresh them if YouTube starts challenging
 downloads again.
+
+The Docker image also installs yt-dlp's current default YouTube helpers,
+Chrome request impersonation support, and Node 22 for YouTube JavaScript
+challenges. If cookies are fresh but YouTube still rejects the Render IP, set
+`SMA_YTDLP_PROXY_URL` to a clean residential/ISP proxy and redeploy.
 
 ## Free-tier warning
 

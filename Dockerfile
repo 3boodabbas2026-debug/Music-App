@@ -18,8 +18,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+    && apt-get install -y --no-install-recommends ffmpeg ca-certificates libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
+
+COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
 
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt

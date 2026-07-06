@@ -22,6 +22,14 @@ services:
         value: "1"
       - key: SMA_RECOGNITION_TIMEOUT_SECONDS
         value: "25"
+      - key: SMA_YTDLP_IMPERSONATE
+        value: chrome
+      - key: SMA_YTDLP_COOKIES_TEXT
+        sync: false
+      - key: SMA_YTDLP_COOKIES_B64
+        sync: false
+      - key: SMA_YTDLP_PROXY_URL
+        sync: false
       # Optional but recommended for a public demo. If set, registration
       # requires clients to send this invite code.
       - key: SMA_REGISTRATION_INVITE_CODE
