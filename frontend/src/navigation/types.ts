@@ -16,4 +16,6 @@ export type RootStackParamList = {
   Player: undefined;
   VideoPlayer: { mediaId: string };
   Telegram: undefined;
+  Jobs: undefined;
+  Settings: undefined;
 };

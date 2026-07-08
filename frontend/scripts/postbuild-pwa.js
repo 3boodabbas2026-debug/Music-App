@@ -18,21 +18,21 @@ if (!fs.existsSync(indexPath)) {
 
 let html = fs.readFileSync(indexPath, 'utf8');
 
-if (html.includes('data-supermedia-pwa')) {
+if (html.includes('data-wavecairn-pwa')) {
   console.log('[pwa] already injected — nothing to do.');
   process.exit(0);
 }
 
 const headSnippet = `
-    <!-- data-supermedia-pwa -->
+    <!-- data-wavecairn-pwa -->
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="SuperMedia" />
-    <meta name="application-name" content="SuperMedia" />
-    <meta name="description" content="Your private media vault: download from any link, name any song, stream your library anywhere." />
+    <meta name="apple-mobile-web-app-title" content="Wavecairn" />
+    <meta name="application-name" content="Wavecairn" />
+    <meta name="description" content="Your private media archive: pull audio and video in from any link or Telegram chat, name any song, stream your library anywhere." />
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', function () {

@@ -35,7 +35,7 @@ export function RegisterScreen({ navigation }: Props) {
 
   return (
     <AuthLayout
-      eyebrow="JOIN SUPERMEDIA"
+      eyebrow="JOIN WAVECAIRN"
       title="Build your vault."
       subtitle="Downloads, recognitions, and your library — all in one place."
     >

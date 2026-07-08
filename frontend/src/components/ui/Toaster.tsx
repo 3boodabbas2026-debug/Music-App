@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: 'rgba(15,23,42,0.92)',
+    backgroundColor: 'rgba(12,13,16,0.92)',
     borderRadius: radii.md,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.md,

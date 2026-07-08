@@ -1,4 +1,4 @@
-# Taking SuperMedia public (no App Store, no Play Store)
+# Taking Wavecairn public (no App Store, no Play Store)
 
 Three ways people get the app, all from the same codebase:
 
@@ -55,7 +55,7 @@ Send iPhone users this:
 2. Tap the **Share** button (square with arrow).
 3. Tap **Add to Home Screen** → **Add**.
 
-They get the SuperMedia orb icon, a splash screen, full-screen standalone mode
+They get the Wavecairn mark icon, a splash screen, full-screen standalone mode
 (no Safari bars), and it behaves like an app. That is the closest thing to an
 iOS install that exists without the App Store — Apple does not allow
 sideloading apps any other way (in the EU, alternative marketplaces exist, but
@@ -68,7 +68,7 @@ Android users can also just use Chrome's **Install app** menu on the website
 (same PWA, zero warnings). For a real APK file you can hand to people, the
 Capacitor project is fully set up in `frontend/android/`:
 
-- App name **SuperMedia**, package `com.supermediaapp.mobile`
+- App name **Wavecairn**, package `com.wavecairn.app`
 - Launcher icons + dark splash generated for all densities
 - Mic permission wired for song scanning
 - The current web build is synced into the project

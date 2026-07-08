@@ -8,7 +8,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Orb } from '../components/three/Orb';
-import { AuroraBackground } from '../components/ui/AuroraBackground';
+import { RippleField } from '../components/ui/RippleField';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { GradientText } from '../components/ui/GradientText';
 import { PressableScale } from '../components/ui/PressableScale';
@@ -106,7 +106,7 @@ export function PlayerScreen() {
     : undefined;
 
   const transport = (
-    <GlassPanel style={styles.dock} overlayColor="rgba(15,23,42,0.6)">
+    <GlassPanel style={styles.dock} overlayColor="rgba(12,13,16,0.6)">
       <View style={styles.dockContent}>
         <GradientText numberOfLines={1} style={styles.title}>
           {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
@@ -147,7 +147,7 @@ export function PlayerScreen() {
                 <Ionicons
                   name={playing ? 'pause' : 'play'}
                   size={32}
-                  color="#0B1120"
+                  color="#0C0D10"
                   style={playing ? undefined : styles.playGlyphNudge}
                 />
               </LinearGradient>
@@ -226,7 +226,7 @@ export function PlayerScreen() {
             value={muted ? 0 : volume}
             onValueChange={(v) => setVolume(v)}
             minimumTrackTintColor={colors.cyan}
-            maximumTrackTintColor="rgba(148,163,184,0.25)"
+            maximumTrackTintColor="rgba(233,229,220,0.25)"
             thumbTintColor={colors.cyan}
           />
         </View>
@@ -252,7 +252,7 @@ export function PlayerScreen() {
   if (isDesktop) {
     return (
       <View style={styles.root}>
-        <AuroraBackground />
+        <RippleField />
         <View style={[styles.desktopRow, { paddingTop: insets.top + spacing.xl + 40, paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={styles.desktopStageCol}>
             <View style={styles.desktopStage}>
@@ -275,7 +275,7 @@ export function PlayerScreen() {
 
   return (
     <View style={styles.root}>
-      <AuroraBackground />
+      <RippleField />
 
       <View style={[styles.stage, { height: stageHeight, paddingTop: insets.top }]}>
         <Orb state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={orbSize} />
@@ -300,7 +300,7 @@ export function PlayerScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#060B18' },
+  root: { flex: 1, backgroundColor: '#060607' },
   stage: { alignItems: 'center', justifyContent: 'center' },
   topBar: {
     position: 'absolute',
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.72)',
+    backgroundColor: 'rgba(23,24,27,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.6)',
+    backgroundColor: 'rgba(23,24,27,0.6)',
   },
   liveDot: { width: 6, height: 6, borderRadius: radii.pill, backgroundColor: colors.success },
   liveDotBuffering: { backgroundColor: colors.cyan },
@@ -369,7 +369,7 @@ const styles = StyleSheet.create({
     width: SIDE_SIZE,
     height: SIDE_SIZE,
     borderRadius: SIDE_SIZE / 2,
-    backgroundColor: 'rgba(30,41,59,0.7)',
+    backgroundColor: 'rgba(23,24,27,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -403,9 +403,9 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: spacing.sm + 2,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.6)',
+    backgroundColor: 'rgba(23,24,27,0.6)',
   },
-  chipActive: { backgroundColor: 'rgba(56,189,248,0.16)' },
+  chipActive: { backgroundColor: 'rgba(224,149,79,0.16)' },
   chipLabel: { ...typography.caption, fontSize: 12, color: colors.textSecondary },
   chipLabelActive: { ...typography.caption, fontSize: 12, color: colors.cyan, fontFamily: 'SpaceGrotesk_500Medium' },
   upNextRow: {
@@ -461,15 +461,15 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.55)',
+    backgroundColor: 'rgba(23,24,27,0.55)',
   },
-  panelTabActive: { backgroundColor: 'rgba(56,189,248,0.16)' },
+  panelTabActive: { backgroundColor: 'rgba(224,149,79,0.16)' },
   panelTabLabel: { ...typography.caption, fontSize: 12, color: colors.textMuted },
   panelTabLabelActive: { color: colors.cyan, fontFamily: 'SpaceGrotesk_500Medium' },
 
   // ----- Mobile sheet -----
   sheetRoot: { flex: 1, justifyContent: 'flex-end' },
-  sheetBackdrop: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(2,6,17,0.65)' },
+  sheetBackdrop: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(4,4,5,0.65)' },
   sheet: {
     height: '72%',
     backgroundColor: '#111A2E',
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(148,163,184,0.3)',
+    backgroundColor: 'rgba(233,229,220,0.3)',
     marginBottom: spacing.sm,
   },
   sheetBody: { flex: 1 },

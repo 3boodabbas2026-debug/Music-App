@@ -1,9 +1,11 @@
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
+import { JobsScreen } from '../screens/JobsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PlayerScreen } from '../screens/PlayerScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import { TelegramScreen } from '../screens/TelegramScreen';
 import { VideoPlayerScreen } from '../screens/VideoPlayerScreen';
 import { Sidebar } from '../components/ui/Sidebar';
@@ -20,8 +22,8 @@ const navTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: '#060B18',
-    card: '#060B18',
+    background: '#060607',
+    card: '#060607',
     border: colors.surfaceBorder,
     primary: colors.cyan,
     text: colors.textPrimary,
@@ -53,6 +55,8 @@ export function RootNavigator() {
               options={{ presentation: 'fullScreenModal' }}
             />
             <RootStack.Screen name="Telegram" component={TelegramScreen} />
+            <RootStack.Screen name="Jobs" component={JobsScreen} />
+            <RootStack.Screen name="Settings" component={SettingsScreen} />
           </RootStack.Navigator>
           <Sidebar />
         </>

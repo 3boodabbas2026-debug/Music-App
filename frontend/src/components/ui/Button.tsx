@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   dangerSurface: {
-    backgroundColor: 'rgba(248,113,113,0.12)',
+    backgroundColor: 'rgba(226,104,90,0.12)',
   },
   dangerLabel: {
     color: colors.danger,

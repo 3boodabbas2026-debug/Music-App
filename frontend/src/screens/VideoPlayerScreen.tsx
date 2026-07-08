@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AuroraBackground } from '../components/ui/AuroraBackground';
+import { RippleField } from '../components/ui/RippleField';
 import { GradientText } from '../components/ui/GradientText';
 import { PressableScale } from '../components/ui/PressableScale';
 import { streamUrl } from '../services/api/library';
@@ -79,7 +79,7 @@ export function VideoPlayerScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.root}>
-      <AuroraBackground />
+      <RippleField />
 
       <View pointerEvents="box-none" style={[styles.topBar, { top: insets.top + spacing.sm }]}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={12} style={styles.closeButton}>
@@ -167,7 +167,7 @@ export function VideoPlayerScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#060B18',
+    backgroundColor: '#060607',
   },
   topBar: {
     position: 'absolute',
@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.72)',
+    backgroundColor: 'rgba(23,24,27,0.72)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.6)',
+    backgroundColor: 'rgba(23,24,27,0.6)',
   },
   chipLabel: {
     ...typography.eyebrow,
@@ -224,7 +224,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.7)',
+    backgroundColor: 'rgba(23,24,27,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.14)',
+    borderColor: 'rgba(233,229,220,0.14)',
   },
   stripTitle: { ...typography.caption, fontSize: 11, color: colors.textSecondary },
 });

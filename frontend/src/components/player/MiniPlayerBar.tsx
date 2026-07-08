@@ -65,13 +65,13 @@ export function MiniPlayerBar() {
   return (
     <View pointerEvents="box-none" style={[styles.holder, isDesktop && styles.holderDesktop, { bottom }]}>
       <Pressable onPress={() => navigation.navigate('Player')} style={isDesktop ? styles.pressDesktop : undefined}>
-        <GlassPanel style={styles.panel} overlayColor="rgba(30,41,59,0.6)">
+        <GlassPanel style={styles.panel} overlayColor="rgba(23,24,27,0.6)">
           <View style={styles.content}>
             {currentMedia.thumbnail_url ? (
               <Image source={{ uri: currentMedia.thumbnail_url }} style={styles.cover} />
             ) : (
               <LinearGradient colors={colors.gradientPrimary} style={styles.cover}>
-                <Ionicons name="musical-notes" size={18} color="#0B1120" />
+                <Ionicons name="musical-notes" size={18} color="#0C0D10" />
               </LinearGradient>
             )}
             <View style={styles.textWrap}>
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(56,189,248,0.16)',
+    backgroundColor: 'rgba(224,149,79,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   },
   progressTrack: {
     height: 2,
-    backgroundColor: 'rgba(148,163,184,0.14)',
+    backgroundColor: 'rgba(233,229,220,0.14)',
   },
   progressFill: {
     height: '100%',

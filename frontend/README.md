@@ -1,4 +1,4 @@
-# Super Media App — Frontend
+# Wavecairn — Frontend
 
 React Native (Expo) client: paste-a-link downloader, Shazam-style recognition, and a Spotify-style
 library/player — all built around a single signature 3D "Orb" (audio-reactive via `@react-three/fiber`

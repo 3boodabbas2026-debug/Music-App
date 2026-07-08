@@ -29,7 +29,7 @@ export function updateMetadata(media: Media): void {
   ms.metadata = new MediaMetadata({
     title: media.title ?? media.recognized_title ?? 'Untitled',
     artist: media.artist ?? media.recognized_artist ?? 'Unknown artist',
-    album: media.album ?? 'SuperMedia',
+    album: media.album ?? 'Wavecairn',
     artwork: media.thumbnail_url
       ? [{ src: media.thumbnail_url, sizes: '512x512', type: 'image/jpeg' }]
       : [],

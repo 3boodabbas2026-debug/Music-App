@@ -2,7 +2,7 @@ import { PropsWithChildren } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { AuroraBackground } from './AuroraBackground';
+import { RippleField } from './RippleField';
 import { GlassPanel } from './GlassPanel';
 import { GradientText } from './GradientText';
 import { Reveal } from './Reveal';
@@ -36,7 +36,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
   if (!isDesktop) {
     return (
       <View style={styles.root}>
-        <AuroraBackground />
+        <RippleField />
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.mobileScroll}
@@ -64,7 +64,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
 
   return (
     <View style={styles.root}>
-      <AuroraBackground />
+      <RippleField />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.desktopScroll}
@@ -91,7 +91,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
           </Reveal>
 
           <Reveal delay={120} style={styles.formCol}>
-            <GlassPanel intensity={80} overlayColor="rgba(15,23,42,0.62)">
+            <GlassPanel intensity={80} overlayColor="rgba(12,13,16,0.62)">
               <View style={[styles.form, styles.formDesktop]}>{children}</View>
             </GlassPanel>
           </Reveal>
@@ -102,7 +102,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#060B18' },
+  root: { flex: 1, backgroundColor: '#060607' },
 
   // ----- Mobile -----
   mobileScroll: {
@@ -161,9 +161,9 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(56,189,248,0.12)',
+    backgroundColor: 'rgba(224,149,79,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.22)',
+    borderColor: 'rgba(224,149,79,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
   },

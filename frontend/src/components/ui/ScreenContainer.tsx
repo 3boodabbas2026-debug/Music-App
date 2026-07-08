@@ -2,7 +2,7 @@ import { PropsWithChildren } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { AuroraBackground } from './AuroraBackground';
+import { RippleField } from './RippleField';
 import { useResponsive } from '../../hooks/useResponsive';
 import { spacing } from '../../theme/tokens';
 
@@ -23,7 +23,7 @@ export function ScreenContainer({ children, maxWidth = 1100 }: Props) {
   const { isDesktop } = useResponsive();
   return (
     <View style={styles.root}>
-      <AuroraBackground />
+      <RippleField />
       <View
         style={[
           styles.content,
@@ -43,7 +43,7 @@ export function ScreenContainer({ children, maxWidth = 1100 }: Props) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#060B18',
+    backgroundColor: '#060607',
   },
   content: {
     flex: 1,

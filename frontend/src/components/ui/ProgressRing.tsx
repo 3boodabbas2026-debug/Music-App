@@ -30,7 +30,7 @@ export function ProgressRing({ progress, size = 46, strokeWidth = 4, children }:
           cx={size / 2}
           cy={size / 2}
           r={r}
-          stroke="rgba(148,163,184,0.18)"
+          stroke="rgba(233,229,220,0.18)"
           strokeWidth={strokeWidth}
           fill="none"
         />

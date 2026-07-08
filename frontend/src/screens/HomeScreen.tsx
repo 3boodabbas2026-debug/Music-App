@@ -180,7 +180,7 @@ export function HomeScreen() {
           <Reveal>
             <View style={styles.headerRow}>
               <View style={styles.headerText}>
-                <Text style={styles.eyebrow}>SUPERMEDIA</Text>
+                <Text style={styles.eyebrow}>WAVECAIRN</Text>
                 <GradientText style={styles.megaTitle}>{greeting()}</GradientText>
                 <Text style={styles.tagline}>Feed the vault — paste any link.</Text>
               </View>
@@ -214,9 +214,9 @@ export function HomeScreen() {
                     style={styles.goButton}
                   >
                     {submitting ? (
-                      <ActivityIndicator size="small" color="#0B1120" />
+                      <ActivityIndicator size="small" color="#0C0D10" />
                     ) : (
-                      <Ionicons name="arrow-forward" size={20} color="#0B1120" />
+                      <Ionicons name="arrow-forward" size={20} color="#0C0D10" />
                     )}
                   </LinearGradient>
                 </PressableScale>
@@ -448,7 +448,7 @@ function CoverCard({ media, size, onPress }: { media: Media; size: number; onPre
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#060B18' },
+  root: { flex: 1, backgroundColor: '#060607' },
   scroll: { paddingBottom: layout.tabBarClearance },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1, paddingRight: spacing.md },
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: 'rgba(6,11,24,0.6)',
+    backgroundColor: 'rgba(6,6,7,0.6)',
     borderRadius: radii.pill,
     paddingLeft: spacing.md,
     paddingRight: 6,
@@ -495,9 +495,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(6,11,24,0.5)',
+    backgroundColor: 'rgba(6,6,7,0.5)',
   },
-  chipActive: { backgroundColor: 'rgba(56,189,248,0.16)' },
+  chipActive: { backgroundColor: 'rgba(224,149,79,0.16)' },
   chipLabel: { ...typography.caption, color: colors.textMuted },
   chipLabelActive: { color: colors.cyan, fontFamily: 'SpaceGrotesk_500Medium' },
   qualityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: -spacing.sm },
@@ -505,7 +505,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: spacing.sm + 4,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(6,11,24,0.5)',
+    backgroundColor: 'rgba(6,6,7,0.5)',
   },
   qualityLabel: { ...typography.caption, fontSize: 11, color: colors.textMuted },
   error: { ...typography.caption, color: colors.danger },
@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(6,11,24,0.5)',
+    backgroundColor: 'rgba(6,6,7,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -545,11 +545,11 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(52,211,153,0.12)',
+    backgroundColor: 'rgba(111,191,139,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  jobBadgeFailed: { backgroundColor: 'rgba(248,113,113,0.12)' },
+  jobBadgeFailed: { backgroundColor: 'rgba(226,104,90,0.12)' },
   jobText: { flex: 1, gap: 4 },
   jobTitle: { ...typography.subtitle, color: colors.textPrimary, flex: 1 },
   jobStageRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -569,8 +569,8 @@ const styles = StyleSheet.create({
     gap: spacing.md - 2,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.12)',
-    backgroundColor: 'rgba(30,41,59,0.5)',
+    borderColor: 'rgba(233,229,220,0.12)',
+    backgroundColor: 'rgba(23,24,27,0.5)',
     paddingVertical: spacing.md,
     paddingHorizontal: spacing.md,
   },
@@ -578,9 +578,9 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(56,189,248,0.10)',
+    backgroundColor: 'rgba(224,149,79,0.10)',
     borderWidth: 1,
-    borderColor: 'rgba(56,189,248,0.2)',
+    borderColor: 'rgba(224,149,79,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -598,7 +598,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'flex-end',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.12)',
+    borderColor: 'rgba(233,229,220,0.12)',
   },
   coverScrim: {
     position: 'absolute',

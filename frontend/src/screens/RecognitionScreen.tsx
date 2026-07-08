@@ -14,7 +14,7 @@ import {
 import { Orb } from '../components/three/Orb';
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
 import { useResponsive } from '../hooks/useResponsive';
-import { AuroraBackground } from '../components/ui/AuroraBackground';
+import { RippleField } from '../components/ui/RippleField';
 import { Button } from '../components/ui/Button';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { GradientText } from '../components/ui/GradientText';
@@ -247,7 +247,7 @@ export function RecognitionScreen() {
 
   return (
     <View style={styles.root}>
-      <AuroraBackground />
+      <RippleField />
       <Animated.View
         pointerEvents="none"
         style={[
@@ -296,7 +296,7 @@ export function RecognitionScreen() {
                   cx={RING_SIZE / 2}
                   cy={RING_SIZE / 2}
                   r={(RING_SIZE - RING_STROKE) / 2}
-                  stroke="rgba(56,189,248,0.35)"
+                  stroke="rgba(224,149,79,0.35)"
                   strokeWidth={1.5}
                   strokeDasharray="3 16"
                   strokeLinecap="round"
@@ -341,7 +341,7 @@ export function RecognitionScreen() {
           >
             <View style={styles.listenShadow}>
               <LinearGradient
-                colors={micActive ? colors.gradientPrimary : ['rgba(56,189,248,0.4)', 'rgba(129,140,248,0.4)']}
+                colors={micActive ? colors.gradientPrimary : ['rgba(224,149,79,0.4)', 'rgba(70,166,156,0.4)']}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.listenRing}
@@ -416,7 +416,7 @@ export function RecognitionScreen() {
                         <Image source={{ uri: match.match_thumbnail_url }} style={styles.resultCover} />
                       ) : (
                         <LinearGradient colors={colors.gradientPrimary} style={styles.resultCover}>
-                          <Ionicons name="musical-notes" size={26} color="#0B1120" />
+                          <Ionicons name="musical-notes" size={26} color="#0C0D10" />
                         </LinearGradient>
                       )}
                       <View style={styles.resultText}>
@@ -467,7 +467,7 @@ export function RecognitionScreen() {
                         end={{ x: 1, y: 1 }}
                         style={styles.manualGo}
                       >
-                        <Ionicons name="search" size={18} color="#0B1120" />
+                        <Ionicons name="search" size={18} color="#0C0D10" />
                       </LinearGradient>
                     </PressableScale>
                   </View>
@@ -510,7 +510,7 @@ export function RecognitionScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#060B18',
+    backgroundColor: '#060607',
   },
   triggerHolder: {
     position: 'absolute',
@@ -570,7 +570,7 @@ const styles = StyleSheet.create({
   listenInner: {
     flex: 1,
     borderRadius: (BUTTON_SIZE - 6) / 2,
-    backgroundColor: 'rgba(6,11,24,0.92)',
+    backgroundColor: 'rgba(6,6,7,0.92)',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -633,7 +633,7 @@ const styles = StyleSheet.create({
     ...typography.body,
     flex: 1,
     color: colors.textPrimary,
-    backgroundColor: 'rgba(30,41,59,0.6)',
+    backgroundColor: 'rgba(23,24,27,0.6)',
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md - 6,
@@ -647,7 +647,7 @@ const styles = StyleSheet.create({
   },
   historyBlock: {
     alignSelf: 'stretch',
-    backgroundColor: 'rgba(30,41,59,0.35)',
+    backgroundColor: 'rgba(23,24,27,0.35)',
     borderRadius: radii.md,
     padding: spacing.md,
     gap: spacing.sm,

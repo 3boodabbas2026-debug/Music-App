@@ -1,4 +1,6 @@
-# Super Media App
+# Wavecairn
+
+*(repo/folder name: SuperMediaApp — see [GO_PUBLIC.md](GO_PUBLIC.md) for the brand rationale)*
 
 A universal link downloader (TikTok/YouTube/etc. via yt-dlp), Shazam-style recognition (shazamio), and
 a Spotify-style library/player, wrapped in a React Native client built around a single audio-reactive 3D

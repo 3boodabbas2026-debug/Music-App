@@ -14,7 +14,7 @@ export function EmptyState({ title, subtitle, icon = 'planet-outline' }: Props) 
   return (
     <View style={styles.wrap}>
       <LinearGradient
-        colors={['rgba(56,189,248,0.16)', 'rgba(129,140,248,0.10)']}
+        colors={['rgba(224,149,79,0.16)', 'rgba(70,166,156,0.10)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.ring}
@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   ringInner: {
     flex: 1,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(6,11,24,0.85)',
+    backgroundColor: 'rgba(6,6,7,0.85)',
     alignItems: 'center',
     justifyContent: 'center',
   },

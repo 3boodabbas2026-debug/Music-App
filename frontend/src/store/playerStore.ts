@@ -5,6 +5,7 @@ import { streamUrl } from '../services/api/library';
 import type { Media } from '../services/api/types';
 import * as PlayerService from '../services/audio/PlayerService';
 import * as mediaSession from '../services/audio/mediaSession';
+import * as offlineMedia from '../services/storage/offlineMedia';
 import { tokenStorage } from '../services/storage/tokenStorage';
 
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -120,13 +121,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     unsubscribePlayback?.();
     unsubscribeAmplitude?.();
 
-    const token = await tokenStorage.getAccessToken();
-    // The token also rides as a query param: web <audio> and native range
-    // requests can't always attach the Authorization header.
-    const uri = token
-      ? `${streamUrl(media.id)}?token=${encodeURIComponent(token)}`
-      : streamUrl(media.id);
-    PlayerService.loadAndPlay(uri, token ? { Authorization: `Bearer ${token}` } : undefined, options);
+    // Prefer a track explicitly saved for offline playback — works whether
+    // or not the network is actually up, and skips a redundant fetch either way.
+    const offlineUri = await offlineMedia.getOfflineBlobUrl(media.id);
+    if (offlineUri) {
+      PlayerService.loadAndPlay(offlineUri, undefined, options);
+    } else {
+      const token = await tokenStorage.getAccessToken();
+      // The token also rides as a query param: web <audio> and native range
+      // requests can't always attach the Authorization header.
+      const uri = token
+        ? `${streamUrl(media.id)}?token=${encodeURIComponent(token)}`
+        : streamUrl(media.id);
+      PlayerService.loadAndPlay(uri, token ? { Authorization: `Bearer ${token}` } : undefined, options);
+    }
 
     const { rate, volume, muted, repeat } = get();
     PlayerService.setPlaybackRate(rate);

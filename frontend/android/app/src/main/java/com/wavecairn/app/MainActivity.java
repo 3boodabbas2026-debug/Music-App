@@ -1,4 +1,4 @@
-package com.supermediaapp.mobile;
+package com.wavecairn.app;
 
 import com.getcapacitor.BridgeActivity;
 

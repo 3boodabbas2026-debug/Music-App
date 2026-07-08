@@ -1,4 +1,4 @@
-# Super Media App — Backend
+# Wavecairn — Backend
 
 FastAPI backend: universal link downloader (yt-dlp), Shazam-style recognition (shazamio, ported from
 the original `vault_app` project), and a media library API for the React Native client.

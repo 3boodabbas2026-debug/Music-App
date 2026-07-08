@@ -31,6 +31,7 @@ import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
 import * as libraryApi from '../services/api/library';
 import type { Media, Playlist } from '../services/api/types';
+import * as offlineMedia from '../services/storage/offlineMedia';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
@@ -99,10 +100,17 @@ export function LibraryScreen() {
   const [editMedia, setEditMedia] = useState<Media | null>(null);
   const [playlistDetailId, setPlaylistDetailId] = useState<string | null>(null);
   const [playlistPickMedia, setPlaylistPickMedia] = useState<Media | null>(null);
+  const [offlineIds, setOfflineIds] = useState<Record<string, boolean>>({});
+  const [savingOffline, setSavingOffline] = useState(false);
 
   useEffect(() => {
     refresh();
     refreshPlaylists().catch(() => {});
+    if (offlineMedia.isSupported()) {
+      offlineMedia.listOffline().then((entries) => {
+        setOfflineIds(Object.fromEntries(entries.map((e) => [e.id, true])));
+      });
+    }
   }, [refresh, refreshPlaylists]);
 
   useEffect(() => {
@@ -159,6 +167,33 @@ export function LibraryScreen() {
       }
     } catch {
       toast("Couldn't open that file", 'error');
+    }
+  }
+
+  async function handleToggleOffline(media: Media) {
+    if (savingOffline) return;
+    const alreadySaved = !!offlineIds[media.id];
+    setSavingOffline(true);
+    try {
+      if (alreadySaved) {
+        await offlineMedia.removeOffline(media.id);
+        setOfflineIds((prev) => ({ ...prev, [media.id]: false }));
+        toast('Removed from offline downloads', 'info');
+      } else {
+        const token = await tokenStorage.getAccessToken();
+        const url = token
+          ? `${libraryApi.streamUrl(media.id)}?token=${encodeURIComponent(token)}`
+          : libraryApi.streamUrl(media.id);
+        toast('Saving for offline…', 'info');
+        await offlineMedia.saveOffline(media, url);
+        setOfflineIds((prev) => ({ ...prev, [media.id]: true }));
+        toast('Saved for offline playback', 'success');
+      }
+    } catch {
+      toast("Couldn't update offline download", 'error');
+    } finally {
+      setSavingOffline(false);
+      setSheetMedia(null);
     }
   }
 
@@ -347,6 +382,14 @@ export function LibraryScreen() {
                 onPress={() => { setEditMedia(sheetMedia); setSheetMedia(null); }}
               />
               <SheetAction icon="download-outline" label="Save file" onPress={() => handleSaveFile(sheetMedia)} />
+              {offlineMedia.isSupported() && sheetMedia.media_type === 'audio' && (
+                <SheetAction
+                  icon={offlineIds[sheetMedia.id] ? 'checkmark-circle' : 'cloud-download-outline'}
+                  label={offlineIds[sheetMedia.id] ? 'Saved for offline · tap to remove' : 'Save for offline playback'}
+                  tint={offlineIds[sheetMedia.id] ? colors.success : undefined}
+                  onPress={() => handleToggleOffline(sheetMedia)}
+                />
+              )}
               <SheetAction icon="trash-outline" label="Delete" tint={colors.danger} onPress={() => handleDelete(sheetMedia)} />
             </View>
           </View>
@@ -425,7 +468,7 @@ function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; onOpen: (
           />
           <PressableScale onPress={handleCreate} disabled={creating || !name.trim()} scaleTo={0.9}>
             <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.createButton}>
-              {creating ? <ActivityIndicator size="small" color="#0B1120" /> : <Ionicons name="add" size={20} color="#0B1120" />}
+              {creating ? <ActivityIndicator size="small" color="#0C0D10" /> : <Ionicons name="add" size={20} color="#0C0D10" />}
             </LinearGradient>
           </PressableScale>
         </View>
@@ -518,7 +561,7 @@ function PlaylistPickerModal({ media, onClose }: { media: Media; onClose: () => 
             />
             <PressableScale onPress={createAndPick} disabled={busy || !name.trim()} scaleTo={0.9}>
               <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.createButton}>
-                <Ionicons name="add" size={20} color="#0B1120" />
+                <Ionicons name="add" size={20} color="#0C0D10" />
               </LinearGradient>
             </PressableScale>
           </View>
@@ -733,7 +776,7 @@ function EditMediaModal({
           <PressableScale onPress={save} disabled={saving} scaleTo={0.97}>
             <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.editSave}>
               {saving ? (
-                <ActivityIndicator size="small" color="#0B1120" />
+                <ActivityIndicator size="small" color="#0C0D10" />
               ) : (
                 <Text style={styles.editSaveLabel}>Save</Text>
               )}
@@ -806,7 +849,7 @@ function GridCard({
                 <Ionicons
                   name={media.media_type === 'video' ? 'play' : 'play'}
                   size={22}
-                  color="#0B1120"
+                  color="#0C0D10"
                   style={{ marginLeft: 2 }}
                 />
               </LinearGradient>
@@ -867,7 +910,7 @@ function ListRow({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#060B18' },
+  root: { flex: 1, backgroundColor: '#060607' },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1, paddingRight: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.xs },
@@ -876,7 +919,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: 'rgba(30,41,59,0.6)',
+    backgroundColor: 'rgba(23,24,27,0.6)',
     borderRadius: radii.pill,
     paddingHorizontal: spacing.md,
     height: 48,
@@ -895,9 +938,9 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: spacing.md - 2,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.55)',
+    backgroundColor: 'rgba(23,24,27,0.55)',
   },
-  tabChipActive: { backgroundColor: 'rgba(56,189,248,0.18)' },
+  tabChipActive: { backgroundColor: 'rgba(224,149,79,0.18)' },
   tabLabel: { ...typography.caption, color: colors.textMuted },
   tabLabelActive: { color: colors.cyan, fontFamily: 'SpaceGrotesk_500Medium' },
   toolRow: { flexDirection: 'row', gap: 6 },
@@ -908,7 +951,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: spacing.sm + 2,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(30,41,59,0.55)',
+    backgroundColor: 'rgba(23,24,27,0.55)',
   },
   toolLabel: { ...typography.caption, fontSize: 12, color: colors.textSecondary },
   gridRow: { gap: spacing.md },
@@ -918,10 +961,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'flex-end',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.12)',
+    borderColor: 'rgba(233,229,220,0.12)',
   },
   cardHovered: {
-    borderColor: 'rgba(56,189,248,0.45)',
+    borderColor: 'rgba(224,149,79,0.45)',
   },
   moreChip: {
     position: 'absolute',
@@ -930,7 +973,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(6,11,24,0.7)',
+    backgroundColor: 'rgba(6,6,7,0.7)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
@@ -955,7 +998,7 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(6,11,24,0.55)',
+    backgroundColor: 'rgba(6,6,7,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -968,7 +1011,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     right: spacing.sm,
-    backgroundColor: 'rgba(6,11,24,0.65)',
+    backgroundColor: 'rgba(6,6,7,0.65)',
     borderRadius: radii.pill,
     paddingHorizontal: spacing.sm,
     paddingVertical: 3,
@@ -977,7 +1020,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     left: spacing.sm,
-    backgroundColor: 'rgba(6,11,24,0.65)',
+    backgroundColor: 'rgba(6,6,7,0.65)',
     borderRadius: radii.pill,
     padding: 5,
   },
@@ -989,12 +1032,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: 'rgba(30,41,59,0.5)',
+    backgroundColor: 'rgba(23,24,27,0.5)',
     borderRadius: radii.md,
     padding: spacing.sm,
   },
-  listRowHovered: { backgroundColor: 'rgba(30,41,59,0.85)' },
-  listRowPressed: { backgroundColor: 'rgba(56,189,248,0.10)' },
+  listRowHovered: { backgroundColor: 'rgba(23,24,27,0.85)' },
+  listRowPressed: { backgroundColor: 'rgba(224,149,79,0.10)' },
   listCover: {
     width: 48,
     height: 48,
@@ -1006,7 +1049,7 @@ const styles = StyleSheet.create({
 
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalRootDesktop: { justifyContent: 'center', alignItems: 'center' },
-  modalBackdrop: { ...StyleSheet.absoluteFill as object, backgroundColor: 'rgba(2,6,17,0.65)' },
+  modalBackdrop: { ...StyleSheet.absoluteFill as object, backgroundColor: 'rgba(4,4,5,0.65)' },
   sheet: {
     backgroundColor: '#111A2E',
     borderTopLeftRadius: radii.lg + 8,
@@ -1021,7 +1064,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg + 8,
     paddingTop: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.16)',
+    borderColor: 'rgba(233,229,220,0.16)',
     ...shadows.card,
   },
   sheetHandle: {
@@ -1029,7 +1072,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(148,163,184,0.3)',
+    backgroundColor: 'rgba(233,229,220,0.3)',
     marginBottom: spacing.md,
   },
   sheetHeader: {
@@ -1056,7 +1099,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
   },
-  sheetRowPressed: { backgroundColor: 'rgba(56,189,248,0.10)' },
+  sheetRowPressed: { backgroundColor: 'rgba(224,149,79,0.10)' },
   sheetRowLabel: { ...typography.body, color: colors.textPrimary },
 
   editTitle: { ...typography.title, fontSize: 20, lineHeight: 26, color: colors.textPrimary, marginBottom: spacing.md },
@@ -1065,7 +1108,7 @@ const styles = StyleSheet.create({
   editInput: {
     ...typography.body,
     color: colors.textPrimary,
-    backgroundColor: 'rgba(6,11,24,0.6)',
+    backgroundColor: 'rgba(6,6,7,0.6)',
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md - 4,
@@ -1076,7 +1119,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  editSaveLabel: { ...typography.subtitle, fontFamily: 'SpaceGrotesk_600SemiBold', color: '#0B1120' },
+  editSaveLabel: { ...typography.subtitle, fontFamily: 'SpaceGrotesk_600SemiBold', color: '#0C0D10' },
 
   createRow: {
     flexDirection: 'row',
@@ -1088,7 +1131,7 @@ const styles = StyleSheet.create({
     ...typography.body,
     flex: 1,
     color: colors.textPrimary,
-    backgroundColor: 'rgba(30,41,59,0.6)',
+    backgroundColor: 'rgba(23,24,27,0.6)',
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md - 6,
@@ -1117,7 +1160,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: spacing.sm + 2,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(248,113,113,0.10)',
+    backgroundColor: 'rgba(226,104,90,0.10)',
   },
   detailDeleteLabel: { ...typography.caption, fontSize: 12, color: colors.danger },
   detailList: {

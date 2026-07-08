@@ -6,7 +6,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { API_BASE_URL } from '../../config';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { navigationRef } from '../../navigation/navigationRef';
 import * as recognitionsApi from '../../services/api/recognitions';
 import { watchJob } from '../../services/api/jobSocket';
@@ -44,10 +44,10 @@ export function Sidebar() {
   const upsertMedia = useLibraryStore((s) => s.upsert);
   const currentMedia = usePlayerStore((s) => s.currentMedia);
 
+  const { backendOnline } = useOnlineStatus();
   const panelWidth = Math.min(PANEL_MAX, width * 0.82);
   const slide = useRef(new Animated.Value(0)).current;
   const [rendered, setRendered] = useState(false);
-  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [naming, setNaming] = useState(false);
 
   useEffect(() => {
@@ -70,22 +70,6 @@ export function Sidebar() {
       });
     }
   }, [sidebarOpen, slide]);
-
-  // Ping the backend each time the drawer opens.
-  useEffect(() => {
-    if (!sidebarOpen) return;
-    let alive = true;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
-    fetch(`${API_BASE_URL}/health`, { signal: controller.signal })
-      .then((res) => alive && setBackendOnline(res.ok))
-      .catch(() => alive && setBackendOnline(false))
-      .finally(() => clearTimeout(timer));
-    return () => {
-      alive = false;
-      controller.abort();
-    };
-  }, [sidebarOpen]);
 
   if (!rendered) return null;
 
@@ -158,7 +142,7 @@ export function Sidebar() {
       const href = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = href;
-      anchor.download = 'supermedia-library.json';
+      anchor.download = 'wavecairn-library.json';
       anchor.click();
       URL.revokeObjectURL(href);
       toast('Library exported', 'success');
@@ -172,6 +156,20 @@ export function Sidebar() {
     closeSidebar();
     if (navigationRef.isReady()) {
       navigationRef.navigate('Telegram');
+    }
+  }
+
+  function openJobs() {
+    closeSidebar();
+    if (navigationRef.isReady()) {
+      navigationRef.navigate('Jobs');
+    }
+  }
+
+  function openSettings() {
+    closeSidebar();
+    if (navigationRef.isReady()) {
+      navigationRef.navigate('Settings');
     }
   }
 
@@ -209,7 +207,7 @@ export function Sidebar() {
 
         <View style={styles.panelContent}>
           <View style={styles.brandRow}>
-            <Text style={styles.brand}>SUPERMEDIA</Text>
+            <Text style={styles.brand}>WAVECAIRN</Text>
             <View style={[styles.statusPill, backendOnline === false && styles.statusPillOffline]}>
               <View style={[styles.statusDot, backendOnline === false && styles.statusDotOffline]} />
               <Text style={styles.statusLabel}>
@@ -313,6 +311,22 @@ export function Sidebar() {
               <Text style={styles.navLabel}>Telegram import</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </Pressable>
+            <Pressable
+              onPress={openJobs}
+              style={({ pressed }) => [styles.navRow, pressed && styles.navRowPressed]}
+            >
+              <Ionicons name="pulse-outline" size={19} color={colors.textSecondary} />
+              <Text style={styles.navLabel}>Activity</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </Pressable>
+            <Pressable
+              onPress={openSettings}
+              style={({ pressed }) => [styles.navRow, pressed && styles.navRowPressed]}
+            >
+              <Ionicons name="settings-outline" size={19} color={colors.textSecondary} />
+              <Text style={styles.navLabel}>Settings</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </Pressable>
           </View>
 
           <View style={styles.spacer} />
@@ -328,7 +342,7 @@ export function Sidebar() {
             <Text style={[styles.navLabel, styles.signOutLabel]}>Sign out</Text>
           </Pressable>
 
-          <Text style={styles.footer}>Deep Space · v1.1</Text>
+          <Text style={styles.footer}>Wavecairn · v1.1</Text>
         </View>
       </Animated.View>
     </View>
@@ -338,7 +352,7 @@ export function Sidebar() {
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(2,6,17,0.6)',
+    backgroundColor: 'rgba(4,4,5,0.6)',
   },
   panel: {
     position: 'absolute',
@@ -378,10 +392,10 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(52,211,153,0.10)',
+    backgroundColor: 'rgba(111,191,139,0.10)',
   },
   statusPillOffline: {
-    backgroundColor: 'rgba(248,113,113,0.10)',
+    backgroundColor: 'rgba(226,104,90,0.10)',
   },
   statusDot: {
     width: 5,
@@ -414,7 +428,7 @@ const styles = StyleSheet.create({
   avatarInitial: {
     ...typography.title,
     fontSize: 24,
-    color: '#0B1120',
+    color: '#0C0D10',
   },
   profileText: { flex: 1 },
   profileName: { ...typography.title, fontSize: 20, lineHeight: 26, color: colors.textPrimary },
@@ -429,7 +443,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: spacing.sm + 2,
     borderRadius: radii.md,
-    backgroundColor: 'rgba(30,41,59,0.65)',
+    backgroundColor: 'rgba(23,24,27,0.65)',
   },
   statValue: { ...typography.subtitle, color: colors.cyan },
   statLabel: { ...typography.caption, fontSize: 11, color: colors.textMuted },
@@ -442,12 +456,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
   },
-  navRowPressed: { backgroundColor: 'rgba(56,189,248,0.10)' },
+  navRowPressed: { backgroundColor: 'rgba(224,149,79,0.10)' },
   navRowBusy: { opacity: 0.6 },
   navLabel: { ...typography.subtitle, fontSize: 16, color: colors.textPrimary, flex: 1 },
   nowPlayingRow: {
     marginTop: spacing.sm,
-    backgroundColor: 'rgba(56,189,248,0.08)',
+    backgroundColor: 'rgba(224,149,79,0.08)',
   },
   nowPlayingText: { flex: 1 },
   nowPlayingSub: { ...typography.caption, fontSize: 11, color: colors.cyan },
@@ -462,7 +476,7 @@ const styles = StyleSheet.create({
   },
   spacer: { flex: 1 },
   signOutRow: {
-    backgroundColor: 'rgba(248,113,113,0.08)',
+    backgroundColor: 'rgba(226,104,90,0.08)',
   },
   signOutLabel: { color: colors.danger },
   footer: {

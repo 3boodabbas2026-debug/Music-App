@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HomeScreen } from '../screens/HomeScreen';
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { RecognitionScreen } from '../screens/RecognitionScreen';
+import { BrandMark } from '../components/ui/BrandMark';
 import { PressableScale } from '../components/ui/PressableScale';
 import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
 import { useAuthStore } from '../store/authStore';
@@ -147,7 +148,7 @@ function GlassDock({ state, navigation }: BottomTabBarProps) {
                 end={{ x: 1, y: 1 }}
                 style={styles.scanButton}
               >
-                <Ionicons name="mic" size={26} color="#0B1120" />
+                <Ionicons name="mic" size={26} color="#0C0D10" />
               </LinearGradient>
             </View>
           </PressableScale>
@@ -240,15 +241,12 @@ function NavRail({ state, navigation }: BottomTabBarProps) {
       <View style={styles.railOverlay} />
 
       <View style={styles.railBrandRow}>
-        <LinearGradient
-          colors={colors.gradientOrb}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.railBrandDot}
-        />
+        <View style={styles.railBrandDot}>
+          <BrandMark size={22} />
+        </View>
         <View>
-          <Text style={styles.railBrand}>SUPERMEDIA</Text>
-          <Text style={styles.railBrandSub}>Deep Space vault</Text>
+          <Text style={styles.railBrand}>WAVECAIRN</Text>
+          <Text style={styles.railBrandSub}>Private signal archive</Text>
         </View>
       </View>
 
@@ -269,6 +267,22 @@ function NavRail({ state, navigation }: BottomTabBarProps) {
         label="Telegram import"
         onPress={() => {
           if (navigationRef.isReady()) navigationRef.navigate('Telegram');
+        }}
+      />
+
+      <Text style={styles.railHeading}>SYSTEM</Text>
+      <RailAction
+        icon="pulse-outline"
+        label="Activity"
+        onPress={() => {
+          if (navigationRef.isReady()) navigationRef.navigate('Jobs');
+        }}
+      />
+      <RailAction
+        icon="settings-outline"
+        label="Settings"
+        onPress={() => {
+          if (navigationRef.isReady()) navigationRef.navigate('Settings');
         }}
       />
 
@@ -339,7 +353,7 @@ const styles = StyleSheet.create({
     borderRadius: layout.dockHeight / 2,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.14)',
+    borderColor: 'rgba(233,229,220,0.14)',
     ...shadows.card,
   },
   pillOverlay: {
@@ -348,7 +362,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(15,23,42,0.6)',
+    backgroundColor: 'rgba(12,13,16,0.6)',
   },
   pillRow: {
     flex: 1,
@@ -424,12 +438,12 @@ const styles = StyleSheet.create({
     width: RAIL_WIDTH,
     paddingHorizontal: spacing.md,
     borderRightWidth: 1,
-    borderRightColor: 'rgba(148,163,184,0.12)',
+    borderRightColor: 'rgba(233,229,220,0.12)',
     overflow: 'hidden',
   },
   railOverlay: {
     ...(StyleSheet.absoluteFill as object),
-    backgroundColor: 'rgba(8,13,27,0.72)',
+    backgroundColor: 'rgba(6,6,7,0.72)',
   },
   railBrandRow: {
     flexDirection: 'row',
@@ -442,10 +456,9 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: radii.pill,
-    shadowColor: colors.cyan,
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 0 },
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(224,149,79,0.12)',
   },
   railBrand: {
     ...typography.eyebrow,
@@ -469,10 +482,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.md - 4,
   },
   railItemHovered: {
-    backgroundColor: 'rgba(148,163,184,0.08)',
+    backgroundColor: 'rgba(233,229,220,0.08)',
   },
   railItemActive: {
-    backgroundColor: 'rgba(56,189,248,0.10)',
+    backgroundColor: 'rgba(224,149,79,0.10)',
   },
   railAccent: {
     position: 'absolute',
@@ -511,7 +524,7 @@ const styles = StyleSheet.create({
   railHint: {
     ...typography.caption,
     fontSize: 11,
-    color: 'rgba(148,163,184,0.55)',
+    color: 'rgba(233,229,220,0.55)',
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
@@ -522,12 +535,12 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.12)',
-    backgroundColor: 'rgba(30,41,59,0.45)',
+    borderColor: 'rgba(233,229,220,0.12)',
+    backgroundColor: 'rgba(23,24,27,0.45)',
   },
   railProfileHovered: {
-    backgroundColor: 'rgba(30,41,59,0.8)',
-    borderColor: 'rgba(56,189,248,0.35)',
+    backgroundColor: 'rgba(23,24,27,0.8)',
+    borderColor: 'rgba(224,149,79,0.35)',
   },
   railAvatar: {
     width: 36,
@@ -539,7 +552,7 @@ const styles = StyleSheet.create({
   railAvatarInitial: {
     ...typography.title,
     fontSize: 16,
-    color: '#0B1120',
+    color: '#0C0D10',
   },
   railProfileText: { flex: 1 },
   railProfileName: {

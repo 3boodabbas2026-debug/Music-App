@@ -107,7 +107,7 @@ export function WaveformScrubber({ seedKey, progress, onSeekRatio }: Props) {
               styles.bar,
               {
                 height,
-                backgroundColor: played ? colors.cyan : 'rgba(148,163,184,0.25)',
+                backgroundColor: played ? colors.cyan : 'rgba(233,229,220,0.25)',
               },
               played && dragRatio !== null ? styles.barDragging : null,
             ]}

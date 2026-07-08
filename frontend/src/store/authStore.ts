@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 import * as authApi from '../services/api/auth';
+import * as offlineMedia from '../services/storage/offlineMedia';
 import { tokenStorage } from '../services/storage/tokenStorage';
 import type { User } from '../services/api/types';
 
@@ -48,6 +49,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   async logout() {
     await tokenStorage.clear();
+    await offlineMedia.clearAll();
     set({ user: null, isAuthenticated: false });
   },
 }));

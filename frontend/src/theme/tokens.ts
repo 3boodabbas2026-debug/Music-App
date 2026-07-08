@@ -1,7 +1,7 @@
 import { gradients, layout, palette, typeScale } from './theme';
 
 /**
- * Legacy token surface, remapped onto the "Deep Space" design system in
+ * Legacy token surface, remapped onto the "Wavecairn" design system in
  * `theme.ts`. Existing components keep importing the same names and pick up
  * the new palette for free.
  */
@@ -10,16 +10,16 @@ export const colors = {
   bgElevated: palette.surface,
   surface: palette.surface,
   surfaceBright: palette.surfaceBright,
-  surfaceBorder: 'rgba(148,163,184,0.14)',
+  surfaceBorder: 'rgba(233,229,220,0.08)',
   textPrimary: palette.textPrimary,
   textSecondary: palette.textSecondary,
   textMuted: palette.textMuted,
 
-  // Accent slots: `violet` now carries the soft-indigo secondary accent and
-  // `cyan` the neon-cyan primary accent, so old call sites stay on-palette.
+  // Accent slots: `violet` now carries the teal "wave" secondary accent and
+  // `cyan` the copper "signal" primary accent, so old call sites stay on-palette.
   violet: palette.secondary,
   cyan: palette.primary,
-  pink: '#F472B6',
+  pink: '#E0708C',
   coral: palette.danger,
 
   success: palette.success,
@@ -29,8 +29,8 @@ export const colors = {
   gradientHero: gradients.heroCard,
   gradientIdleScreen: gradients.screenIdle,
   gradientListeningScreen: gradients.screenListening,
-  gradientWarm: ['#F472B6', '#F87171'] as const,
-  gradientOrb: [palette.primary, palette.secondary, '#F472B6'] as const,
+  gradientWarm: [palette.bloom, palette.danger] as const,
+  gradientOrb: [palette.primary, palette.secondary, palette.bloom] as const,
 } as const;
 
 export const spacing = {
@@ -43,9 +43,9 @@ export const spacing = {
 } as const;
 
 export const radii = {
-  sm: layout.radiusCover, // 12 — cover art
-  md: layout.radius, // 16 — buttons, inputs
-  lg: layout.radius, // 16 — cards (every card and button shares one radius)
+  sm: layout.radiusCover, // 8 — cover art, deliberately sharper than cards
+  md: layout.radiusControl, // 12 — buttons, inputs
+  lg: layout.radius, // 14 — cards
   pill: 999,
 } as const;
 
@@ -59,6 +59,6 @@ export const typography = {
   caption: { fontFamily: 'System', fontSize: 13, lineHeight: 18 },
 } as const;
 
-export { gradients, layout, shadows } from './theme';
+export { gradients, layout, shadows, motion } from './theme';
 
 export { SpaceGrotesk_500Medium, SpaceGrotesk_600SemiBold, SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';

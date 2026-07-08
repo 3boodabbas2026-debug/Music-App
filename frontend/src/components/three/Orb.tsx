@@ -17,11 +17,11 @@ function hexToRgb(hex: string): [number, number, number] {
   return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
 }
 
-// Deep Space accents: neon cyan, soft indigo, magenta bloom.
+// Wavecairn accents: copper signal, teal wave, terracotta bloom.
 const PALETTE: Record<OrbState, [[number, number, number], [number, number, number]]> = {
-  idle: [hexToRgb('#38BDF8'), hexToRgb('#818CF8')],
-  listening: [hexToRgb('#38BDF8'), hexToRgb('#C084FC')],
-  playing: [hexToRgb('#818CF8'), hexToRgb('#C084FC')],
+  idle: [hexToRgb('#E0954F'), hexToRgb('#46A69C')],
+  listening: [hexToRgb('#E0954F'), hexToRgb('#B8735C')],
+  playing: [hexToRgb('#46A69C'), hexToRgb('#B8735C')],
 };
 
 const PARTICLE_COUNT = 110;
@@ -154,7 +154,7 @@ function OrbMesh({ state, amplitude = 0 }: OrbProps) {
           side={THREE.BackSide}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          color="#38BDF8"
+          color="#E0954F"
         />
       </mesh>
       <mesh ref={meshRef} geometry={geometry}>
@@ -162,7 +162,7 @@ function OrbMesh({ state, amplitude = 0 }: OrbProps) {
           ref={materialRef}
           roughness={0.18}
           metalness={0.5}
-          emissive="#38BDF8"
+          emissive="#E0954F"
           flatShading
         />
       </mesh>
@@ -174,7 +174,7 @@ function OrbMesh({ state, amplitude = 0 }: OrbProps) {
           opacity={0.18}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          color="#818CF8"
+          color="#46A69C"
         />
       </mesh>
       <points ref={particlesRef} geometry={particleGeometry}>
@@ -186,7 +186,7 @@ function OrbMesh({ state, amplitude = 0 }: OrbProps) {
           opacity={0.5}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
-          color="#38BDF8"
+          color="#E0954F"
         />
       </points>
     </group>
@@ -199,8 +199,8 @@ export function Orb({ state, amplitude = 0, size = 220 }: OrbProps) {
       <Canvas camera={{ position: [0, 0, 3.4], fov: 42 }}>
         <ambientLight intensity={0.35} />
         <pointLight position={[2.2, 2.2, 2]} intensity={1.4} color="#7DD3FC" />
-        <pointLight position={[-2.2, -1.2, -2]} intensity={0.8} color="#818CF8" />
-        <pointLight position={[0, -2.4, 1.5]} intensity={0.4} color="#C084FC" />
+        <pointLight position={[-2.2, -1.2, -2]} intensity={0.8} color="#46A69C" />
+        <pointLight position={[0, -2.4, 1.5]} intensity={0.4} color="#B8735C" />
         <OrbMesh state={state} amplitude={amplitude} />
       </Canvas>
     </View>

@@ -12,8 +12,8 @@ type Props = PropsWithChildren<{
   overlayColor?: string;
 }>;
 
-/** Frosted-glass container: blur + slate tint + soft shadow, radius 16. */
-export function GlassPanel({ children, style, intensity = 70, overlayColor = 'rgba(30,41,59,0.5)' }: Props) {
+/** Raised stone-surface container: a hint of blur + warm tint + soft shadow. */
+export function GlassPanel({ children, style, intensity = 40, overlayColor = 'rgba(23,24,27,0.72)' }: Props) {
   return (
     <View style={[styles.shell, style]}>
       <BlurView
@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.14)',
+    borderColor: 'rgba(233,229,220,0.08)',
     ...shadows.card,
   },
   overlay: {

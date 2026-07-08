@@ -1,24 +1,24 @@
 {
   "expo": {
-    "name": "SuperMedia",
-    "slug": "super-media-app",
-    "scheme": "supermediaapp",
+    "name": "Wavecairn",
+    "slug": "wavecairn",
+    "scheme": "wavecairn",
     "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#060B18",
+    "backgroundColor": "#0C0D10",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.supermediaapp.mobile",
+      "bundleIdentifier": "com.wavecairn.app",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Super Media listens briefly through the microphone to identify the song playing around you."
+        "NSMicrophoneUsageDescription": "Wavecairn listens briefly through the microphone to identify the song playing around you."
       }
     },
     "android": {
-      "package": "com.supermediaapp.mobile",
+      "package": "com.wavecairn.app",
       "adaptiveIcon": {
-        "backgroundColor": "#060B18",
+        "backgroundColor": "#0C0D10",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -30,16 +30,16 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "name": "SuperMedia",
-      "shortName": "SuperMedia",
-      "themeColor": "#060B18",
-      "backgroundColor": "#060B18"
+      "name": "Wavecairn",
+      "shortName": "Wavecairn",
+      "themeColor": "#0C0D10",
+      "backgroundColor": "#0C0D10"
     },
     "plugins": [
       [
         "expo-audio",
         {
-          "microphonePermission": "Super Media listens briefly through the microphone to identify the song playing around you."
+          "microphonePermission": "Wavecairn listens briefly through the microphone to identify the song playing around you."
         }
       ],
       "expo-asset",

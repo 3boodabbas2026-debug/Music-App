@@ -1,14 +1,14 @@
 {
   "id": "/",
-  "name": "SuperMedia — Deep Space Vault",
-  "short_name": "SuperMedia",
-  "description": "Your private media vault: download from any link, name any song, and stream your library anywhere.",
+  "name": "Wavecairn — Your Private Signal Archive",
+  "short_name": "Wavecairn",
+  "description": "Your private media archive: pull audio and video in from any link or Telegram chat, name any song, and stream your library anywhere.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#060B18",
-  "theme_color": "#060B18",
+  "background_color": "#0C0D10",
+  "theme_color": "#0C0D10",
   "categories": ["music", "entertainment"],
   "icons": [
     {

@@ -8,7 +8,7 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="SMA_")
 
-    app_name: str = "Super Media App API"
+    app_name: str = "Wavecairn API"
     secret_key: str = "dev-only-secret-change-me"
     access_token_expire_minutes: int = 60 * 24
     refresh_token_expire_minutes: int = 60 * 24 * 30
