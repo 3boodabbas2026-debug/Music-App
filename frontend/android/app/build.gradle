@@ -9,7 +9,10 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         // CI passes the workflow run number so every published APK can install
         // over the previous one (Android refuses downgrades of versionCode).
-        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
+        // NB: computed in a local first — `versionCode (expr).toInteger()`
+        // Groovy-parses as `versionCode(expr).toInteger()` and blows up.
+        def ciVersionCode = Integer.parseInt(System.getenv("ANDROID_VERSION_CODE") ?: "1")
+        versionCode ciVersionCode
         versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {

@@ -84,8 +84,10 @@ jobs:
           # Surface Gradle failures as annotations — full logs are login-gated
           # on github.com, annotations are readable via the public checks API.
           if ! ./gradlew "$TARGET" --no-daemon 2>&1 | tee gradle-build.log; then
-            grep -E "FAILURE:|What went wrong|Caused by|error:|Exception|Could not" gradle-build.log \
-              | head -40 | while IFS= read -r line; do echo "::error title=Gradle::${line}"; done
+            grep -A 10 "What went wrong" gradle-build.log | head -12 \
+              | while IFS= read -r line; do [ -n "$line" ] && echo "::error title=Gradle::${line}"; done
+            grep -E "^e: |error:|Caused by" gradle-build.log | head -8 \
+              | while IFS= read -r line; do echo "::error title=Gradle detail::${line}"; done
             exit 1
           fi
           cp "app/build/outputs/apk/$OUT" "$GITHUB_WORKSPACE/duskglen.apk"
