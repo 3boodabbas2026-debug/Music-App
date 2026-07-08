@@ -3,12 +3,14 @@
 # link never changes:
 #   https://github.com/3boodabbas2026-debug/Music-App/releases/tag/apk-latest
 #
-# Signing: the ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD secrets are
-# configured (added 2026-07-09; keystore lives locally in frontend/signing/,
-# which is gitignored), so builds are release-signed with a stable key and
-# newer builds install straight over older ones. If those secrets are ever
-# deleted, the build falls back to a debug-signed APK — fully functional, but
-# each build signs with a fresh key, so updating means uninstall + reinstall.
+# Signing: the ANDROID_SIGNING_BUNDLE_B64 secret is a base64 tar.gz holding
+# both the PKCS12 keystore and its password (generated 2026-07-09, lives
+# locally in the gitignored frontend/signing/ — single secret so a partial
+# paste can't desync keystore and password). With it, builds are
+# release-signed with a stable key and newer builds install straight over
+# older ones. Without it, the build falls back to a debug-signed APK — fully
+# functional, but each build signs with a fresh key, so updating means
+# uninstall + reinstall.
 name: Build Android APK
 
 on:
@@ -57,27 +59,42 @@ jobs:
         working-directory: frontend
         run: npx cap sync android
 
-      - name: Decode signing keystore (skipped if secrets unset)
+      - name: Unpack signing bundle (skipped if secret unset)
         env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          BUNDLE_B64: ${{ secrets.ANDROID_SIGNING_BUNDLE_B64 }}
         run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            echo "$KEYSTORE_B64" | base64 -d > frontend/android/duskglen-release.p12
-            echo "Keystore decoded — building a release-signed APK."
-          else
-            echo "No signing secrets — building a debug-signed APK."
+          if [ -z "$BUNDLE_B64" ]; then
+            echo "No signing secret — building a debug-signed APK."
+            exit 0
           fi
+          mkdir -p signing
+          if ! echo "$BUNDLE_B64" | base64 -d > signing/bundle.tgz; then
+            echo "::error title=Signing::ANDROID_SIGNING_BUNDLE_B64 is not valid base64 — re-paste it from frontend/signing/signing-bundle-base64.txt"
+            exit 1
+          fi
+          tar xzf signing/bundle.tgz -C signing
+          mv signing/duskglen-release.p12 frontend/android/duskglen-release.p12
+          mv signing/keystore-password.txt frontend/android/keystore-password.txt
+          # Prove Java itself can open the keystore with this password before
+          # spending minutes in Gradle — fail loudly and publicly if not.
+          if ! keytool -list -storetype pkcs12 \
+              -keystore frontend/android/duskglen-release.p12 \
+              -storepass "$(cat frontend/android/keystore-password.txt)" > /dev/null; then
+            echo "::error title=Signing::keytool could not open the keystore with the bundled password — regenerate the bundle and re-paste the secret"
+            exit 1
+          fi
+          echo "Keystore verified with keytool — building a release-signed APK."
 
       - name: Build APK
         working-directory: frontend/android
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_VERSION_CODE: ${{ github.run_number }}
         run: |
           chmod +x gradlew
           set -o pipefail
           if [ -f duskglen-release.p12 ]; then
             export ANDROID_KEYSTORE_FILE="$PWD/duskglen-release.p12"
+            export ANDROID_KEYSTORE_PASSWORD="$(cat keystore-password.txt)"
             TARGET=assembleRelease; OUT=release/app-release.apk
           else
             TARGET=assembleDebug; OUT=debug/app-debug.apk
