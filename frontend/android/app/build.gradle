@@ -7,7 +7,9 @@ android {
         applicationId "com.duskglen.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
+        // CI passes the workflow run number so every published APK can install
+        // over the previous one (Android refuses downgrades of versionCode).
+        versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()
         versionName "1.1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
@@ -16,10 +18,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing comes from the environment (CI decodes the keystore out
+    // of a GitHub Actions secret; locally, point these at frontend/signing/).
+    // Without the env vars, assembleRelease stays unsigned — use assembleDebug.
+    if (System.getenv("ANDROID_KEYSTORE_FILE") != null) {
+        signingConfigs {
+            release {
+                storeFile file(System.getenv("ANDROID_KEYSTORE_FILE"))
+                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias "duskglen"
+                keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                storeType "pkcs12"
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (System.getenv("ANDROID_KEYSTORE_FILE") != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }

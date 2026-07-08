@@ -43,3 +43,6 @@ yarn-error.*
 /ios
 # /android is the Capacitor Android project — committed on purpose
 # (its own android/.gitignore excludes build output)
+
+# Android release signing — private key, never commit (lives only on this machine + GitHub secrets)
+/signing/

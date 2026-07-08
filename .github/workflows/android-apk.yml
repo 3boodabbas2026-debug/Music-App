@@ -1,0 +1,94 @@
+# Builds the Duskglen Android APK in the cloud (this repo's dev machine has no
+# Android SDK) and publishes it to a rolling GitHub Release, so the download
+# link never changes:
+#   https://github.com/3boodabbas2026-debug/Music-App/releases/tag/apk-latest
+#
+# Signing: if the ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD secrets are
+# set (Settings → Secrets and variables → Actions), the APK is release-signed
+# with a stable key, so newer builds install straight over older ones. Without
+# the secrets it falls back to a debug-signed build — fully functional, but
+# each build signs with a fresh key, so updating means uninstall + reinstall.
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/android-apk.yml"
+
+permissions:
+  contents: write # create/update the apk-latest release
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build web bundle (pointed at the live API)
+        working-directory: frontend
+        env:
+          EXPO_PUBLIC_API_BASE_URL: https://supermediaapp-api.onrender.com
+        run: npm run build:web
+
+      - name: Sync Capacitor Android project
+        working-directory: frontend
+        run: npx cap sync android
+
+      - name: Decode signing keystore (skipped if secrets unset)
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > frontend/android/duskglen-release.p12
+            echo "Keystore decoded — building a release-signed APK."
+          else
+            echo "No signing secrets — building a debug-signed APK."
+          fi
+
+      - name: Build APK
+        working-directory: frontend/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          if [ -f duskglen-release.p12 ]; then
+            export ANDROID_KEYSTORE_FILE="$PWD/duskglen-release.p12"
+            ./gradlew assembleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/duskglen.apk"
+          else
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/duskglen.apk"
+          fi
+
+      - name: Publish to the rolling apk-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete apk-latest --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" || true
+          gh release create apk-latest duskglen.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Duskglen APK (latest)" \
+            --notes "Automatic Android build of commit ${GITHUB_SHA::7} — download duskglen.apk below, open it on your phone, and allow the install."
