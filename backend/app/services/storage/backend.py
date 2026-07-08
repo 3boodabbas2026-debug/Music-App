@@ -12,7 +12,7 @@ from app.core.config import settings
 from app.services.storage import local_storage, s3_storage
 from app.services.storage.s3_storage import StoredFile
 
-__all__ = ["StoredFile", "is_s3", "adopt_file", "delete_file", "presigned_url"]
+__all__ = ["StoredFile", "is_s3", "adopt_file", "delete_file", "presigned_url", "open_object"]
 
 
 def is_s3() -> bool:
@@ -37,3 +37,8 @@ def delete_file(key: str) -> None:
 def presigned_url(key: str, content_type: str) -> str:
     """Only meaningful when is_s3() — callers should branch on that first."""
     return s3_storage.presigned_url(key, content_type)
+
+
+def open_object(key: str) -> tuple[object, int]:
+    """Only meaningful when is_s3() — callers should branch on that first."""
+    return s3_storage.open_object(key)

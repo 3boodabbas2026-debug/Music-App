@@ -185,16 +185,18 @@ export function LibraryScreen() {
         toast('Removed from offline downloads', 'info');
       } else {
         const token = await tokenStorage.getAccessToken();
+        // proxy=1: the backend relays the bytes same-origin — browser fetch()
+        // can't read the S3 presigned redirect cross-origin (no CORS headers).
         const url = token
-          ? `${libraryApi.streamUrl(media.id)}?token=${encodeURIComponent(token)}`
-          : libraryApi.streamUrl(media.id);
+          ? `${libraryApi.streamUrl(media.id)}?proxy=1&token=${encodeURIComponent(token)}`
+          : `${libraryApi.streamUrl(media.id)}?proxy=1`;
         toast('Saving for offline…', 'info');
         await offlineMedia.saveOffline(media, url);
         setOfflineIds((prev) => ({ ...prev, [media.id]: true }));
         toast('Saved for offline playback', 'success');
       }
     } catch {
-      toast("Couldn't update offline download", 'error');
+      toast("Couldn't save offline — check your connection and try again", 'error');
     } finally {
       setSavingOffline(false);
       setSheetMedia(null);

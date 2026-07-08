@@ -23,6 +23,9 @@ export function GlassPanel({ children, style, intensity = 40, overlayColor = 'rg
         style={StyleSheet.absoluteFill}
       />
       <View style={[styles.overlay, { backgroundColor: overlayColor }]} />
+      {/* Moonlight catching the top edge — a hair of light that makes the
+          glass read as a surface instead of a flat tint. */}
+      <View style={styles.edgeLight} />
       {children}
     </View>
   );
@@ -42,5 +45,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  edgeLight: {
+    position: 'absolute',
+    top: 0,
+    left: 12,
+    right: 12,
+    height: 1,
+    backgroundColor: 'rgba(231,235,230,0.09)',
   },
 });

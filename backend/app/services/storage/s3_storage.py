@@ -47,6 +47,18 @@ def delete_file(key: str) -> None:
     _client().delete_object(Bucket=settings.s3_bucket, Key=key)
 
 
+def open_object(key: str) -> tuple[object, int]:
+    """Blocking get_object — returns (StreamingBody, size). Caller iterates in a thread.
+
+    Used by the stream endpoint's ?proxy=1 mode: browser fetch() (the PWA's
+    "save offline" path) can't follow the presigned redirect cross-origin
+    because the bucket doesn't send CORS headers, so the backend relays the
+    bytes same-origin instead.
+    """
+    obj = _client().get_object(Bucket=settings.s3_bucket, Key=key)
+    return obj["Body"], obj["ContentLength"]
+
+
 def presigned_url(key: str, content_type: str, expires_seconds: int = 21600) -> str:
     """A time-limited direct link to the object — good for one long playback session."""
     return _client().generate_presigned_url(

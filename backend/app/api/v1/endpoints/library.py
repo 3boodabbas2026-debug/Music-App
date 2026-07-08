@@ -92,17 +92,43 @@ async def delete_media(
 async def stream_media(
     media_id: str,
     request: Request,
+    proxy: bool = False,
     current_user: User = Depends(get_stream_user),
     db: AsyncSession = Depends(get_db),
 ) -> Response:
     media = await _get_owned_media(media_id, current_user, db)
 
     if storage_backend.is_s3():
+        content_type = CONTENT_TYPES.get(Path(media.file_path).suffix.lower(), "application/octet-stream")
+
+        if proxy:
+            # The PWA's "save offline" path downloads with browser fetch(),
+            # which can't follow the presigned redirect: the bucket sends no
+            # CORS headers, so the cross-origin response is blocked. Relay the
+            # bytes through this origin instead. Playback never uses this —
+            # it's a one-shot full download, so no Range support needed.
+            body, size = await asyncio.to_thread(storage_backend.open_object, media.file_path)
+
+            async def s3_iterator():
+                try:
+                    while True:
+                        chunk = await asyncio.to_thread(body.read, CHUNK_SIZE)
+                        if not chunk:
+                            break
+                        yield chunk
+                finally:
+                    await asyncio.to_thread(body.close)
+
+            return StreamingResponse(
+                s3_iterator(),
+                media_type=content_type,
+                headers={"Content-Length": str(size), "Accept-Ranges": "none"},
+            )
+
         # Hand playback straight to the bucket — R2's zero-egress-fee storage
         # streams the bytes, not this free-tier compute instance. The browser
         # (or native player) follows the redirect and range-requests the
         # presigned URL directly, same as it would any other media URL.
-        content_type = CONTENT_TYPES.get(Path(media.file_path).suffix.lower(), "application/octet-stream")
         url = await asyncio.to_thread(storage_backend.presigned_url, media.file_path, content_type)
         return RedirectResponse(url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
 

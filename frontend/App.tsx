@@ -24,6 +24,13 @@ if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getEle
     ::-webkit-scrollbar-thumb { background: rgba(167,176,168,0.28); border-radius: 99px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(167,176,168,0.45); }
     input, textarea { outline: none; }
+    /* Ease hover/press colour changes everywhere — transform/opacity stay
+       untouched so RN Animated-driven motion isn't slowed down. */
+    [role="button"], [role="link"], [role="tab"] {
+      transition: background-color 160ms ease, border-color 160ms ease, box-shadow 220ms ease;
+    }
+    input, textarea { transition: border-color 160ms ease, box-shadow 220ms ease; }
+    :focus-visible { outline: 2px solid rgba(47,191,170,0.55); outline-offset: 2px; }
   `;
   document.head.appendChild(style);
 }
