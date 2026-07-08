@@ -15,19 +15,35 @@ services:
         value: "3.12.6"
       - key: SMA_SECRET_KEY
         generateValue: true
-      # The free plan has no persistent Disk, so /var/data doesn't exist —
-      # pointing here explicitly (rather than removing the vars) because
-      # Render Blueprint syncs don't retroactively unset dashboard env vars
-      # that a render.yaml edit merely stops mentioning; only present-and-set
-      # keys are guaranteed to apply. This path is under the app's own
-      # writable project directory — resets on every redeploy, same as any
-      # free-tier service. To get real persistence: upgrade to a paid plan,
-      # add a `disks:` block mounting a Render Disk at /var/data, and point
-      # these back at /var/data/....
-      - key: SMA_DATABASE_URL
-        value: sqlite+aiosqlite:////opt/render/project/src/backend/data/super_media_app.db
+      # SMA_MEDIA_STORAGE_DIR is only ever local *scratch* space now (yt-dlp
+      # always downloads here first, even in S3 mode, before the finished
+      # file is adopted into permanent storage) — the free plan has no
+      # persistent Disk, so /var/data doesn't exist; this path under the
+      # app's own writable project directory always does.
       - key: SMA_MEDIA_STORAGE_DIR
         value: /opt/render/project/src/backend/data/media_storage
+      # sync: false so a future blueprint sync never overwrites whatever you
+      # paste here on the dashboard. Left blank/default: SQLite on local
+      # ephemeral disk (resets on every redeploy — same as any free-tier
+      # service). For real persistence, paste a managed Postgres connection
+      # string (e.g. from Neon's free tier) as the value on the dashboard —
+      # postgresql:// is normalized to the asyncpg driver automatically.
+      - key: SMA_DATABASE_URL
+        sync: false
+      # "local" (default, unset) keeps downloaded files on this instance's
+      # disk — wiped on every redeploy. Set to "s3" plus the four S3_* vars
+      # below (e.g. from a free Cloudflare R2 bucket) for files that survive
+      # redeploys and stream directly from the bucket at no egress cost.
+      - key: SMA_STORAGE_BACKEND
+        sync: false
+      - key: SMA_S3_ENDPOINT_URL
+        sync: false
+      - key: SMA_S3_ACCESS_KEY_ID
+        sync: false
+      - key: SMA_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: SMA_S3_BUCKET
+        sync: false
       - key: SMA_CORS_ORIGINS
         value: '["*"]'
       - key: SMA_ACCESS_TOKEN_EXPIRE_MINUTES

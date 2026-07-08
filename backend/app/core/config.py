@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     max_concurrent_downloads: int = 3
     recognition_timeout_seconds: int = 25
 
+    # Media storage backend: "local" keeps files on this instance's disk
+    # (fine for local dev, wiped on every Render free-tier redeploy/restart).
+    # "s3" uploads to an S3-compatible bucket (e.g. Cloudflare R2) instead —
+    # see app/services/storage/backend.py.
+    storage_backend: str = "local"
+    s3_endpoint_url: str | None = None
+    s3_region: str = "auto"
+    s3_access_key_id: str | None = None
+    s3_secret_access_key: str | None = None
+    s3_bucket: str | None = None
+
 
 settings = Settings()
 settings.media_storage_dir.mkdir(parents=True, exist_ok=True)

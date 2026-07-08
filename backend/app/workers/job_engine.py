@@ -23,6 +23,7 @@ from app.models.media import Media, MediaSource, MediaType
 from app.schemas.job import JobOut
 from app.services.downloader import ytdlp_service
 from app.services.recognition import shazam_service
+from app.services.storage import backend as storage_backend
 from app.services.storage import local_storage
 from app.workers.broadcaster import broadcaster
 
@@ -99,8 +100,8 @@ async def run_download_job(
                 result.file_path.unlink(missing_ok=True)
                 media_id = existing.id
             else:
-                permanent_path = await asyncio.to_thread(
-                    local_storage.adopt_file, user_id, result.file_path, result.file_path.suffix
+                stored = await asyncio.to_thread(
+                    storage_backend.adopt_file, user_id, result.file_path, result.file_path.suffix
                 )
                 media = Media(
                     user_id=user_id,
@@ -111,8 +112,8 @@ async def run_download_job(
                     artist=result.artist,
                     thumbnail_url=result.thumbnail_url,
                     duration_seconds=result.duration_seconds,
-                    file_path=str(permanent_path),
-                    file_size_bytes=permanent_path.stat().st_size,
+                    file_path=stored.key,
+                    file_size_bytes=stored.size_bytes,
                     content_hash=content_hash,
                 )
                 session.add(media)
@@ -226,7 +227,7 @@ async def run_telegram_import_job(
                     tmp_path.unlink(missing_ok=True)
                     last_media_id = existing.id
                 else:
-                    permanent_path = await asyncio.to_thread(local_storage.adopt_file, user_id, tmp_path, suffix)
+                    stored = await asyncio.to_thread(storage_backend.adopt_file, user_id, tmp_path, suffix)
                     media = Media(
                         user_id=user_id,
                         media_type=target_type,
@@ -235,8 +236,8 @@ async def run_telegram_import_job(
                         title=title,
                         artist=artist,
                         duration_seconds=duration,
-                        file_path=str(permanent_path),
-                        file_size_bytes=permanent_path.stat().st_size,
+                        file_path=stored.key,
+                        file_size_bytes=stored.size_bytes,
                         content_hash=content_hash,
                     )
                     session.add(media)

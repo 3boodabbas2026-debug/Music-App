@@ -1,9 +1,10 @@
+import asyncio
 import re
 from pathlib import Path
 
 import aiofiles
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,7 +13,7 @@ from app.db.session import get_db
 from app.models.media import Media
 from app.models.user import User
 from app.schemas.media import MediaOut, MediaUpdate
-from app.services.storage import local_storage
+from app.services.storage import backend as storage_backend
 
 router = APIRouter(prefix="/library", tags=["library"])
 
@@ -82,7 +83,7 @@ async def delete_media(
     media_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> None:
     media = await _get_owned_media(media_id, current_user, db)
-    local_storage.delete_file(media.file_path)
+    await asyncio.to_thread(storage_backend.delete_file, media.file_path)
     await db.delete(media)
     await db.commit()
 
@@ -93,8 +94,18 @@ async def stream_media(
     request: Request,
     current_user: User = Depends(get_stream_user),
     db: AsyncSession = Depends(get_db),
-) -> StreamingResponse:
+) -> Response:
     media = await _get_owned_media(media_id, current_user, db)
+
+    if storage_backend.is_s3():
+        # Hand playback straight to the bucket — R2's zero-egress-fee storage
+        # streams the bytes, not this free-tier compute instance. The browser
+        # (or native player) follows the redirect and range-requests the
+        # presigned URL directly, same as it would any other media URL.
+        content_type = CONTENT_TYPES.get(Path(media.file_path).suffix.lower(), "application/octet-stream")
+        url = await asyncio.to_thread(storage_backend.presigned_url, media.file_path, content_type)
+        return RedirectResponse(url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+
     path = Path(media.file_path)
     if not path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Underlying file is missing")
