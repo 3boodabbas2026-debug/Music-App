@@ -15,10 +15,15 @@ services:
         value: "3.12.6"
       - key: SMA_SECRET_KEY
         generateValue: true
-      - key: SMA_DATABASE_URL
-        value: sqlite+aiosqlite:////var/data/super_media_app.db
-      - key: SMA_MEDIA_STORAGE_DIR
-        value: /var/data/media_storage
+      # No SMA_DATABASE_URL / SMA_MEDIA_STORAGE_DIR here on purpose: the free
+      # plan has no persistent Disk, so /var/data doesn't exist and the app
+      # fails to boot trying to create it. Leaving these unset falls back to
+      # app/core/config.py's defaults (backend/super_media_app.db and
+      # backend/media_storage), which always exist and are writable — at the
+      # cost of resetting on every redeploy, same as any free-tier service.
+      # To get real persistence: upgrade this service to a paid plan, add a
+      # `disks:` block mounting a Render Disk at /var/data, and restore these
+      # two env vars.
       - key: SMA_CORS_ORIGINS
         value: '["*"]'
       - key: SMA_ACCESS_TOKEN_EXPIRE_MINUTES
