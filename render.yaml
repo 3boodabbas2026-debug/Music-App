@@ -31,12 +31,18 @@ services:
       - key: SMA_DATABASE_URL
         sync: false
       # "local" (default, unset) keeps downloaded files on this instance's
-      # disk — wiped on every redeploy. Set to "s3" plus the four S3_* vars
-      # below (e.g. from a free Cloudflare R2 bucket) for files that survive
-      # redeploys and stream directly from the bucket at no egress cost.
+      # disk — wiped on every redeploy. Set to "s3" plus the S3_* vars below
+      # (any S3-compatible bucket — Backblaze B2's free tier needs no card
+      # for private buckets; Cloudflare R2 also works but currently gates
+      # signup behind adding a payment method) for files that survive
+      # redeploys and stream directly from the bucket at no/low egress cost.
       - key: SMA_STORAGE_BACKEND
         sync: false
       - key: SMA_S3_ENDPOINT_URL
+        sync: false
+      # Only needed for providers (like Backblaze B2) whose signing requires
+      # the real region rather than R2's "auto" default — e.g. "us-west-004".
+      - key: SMA_S3_REGION
         sync: false
       - key: SMA_S3_ACCESS_KEY_ID
         sync: false
