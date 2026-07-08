@@ -3,10 +3,11 @@
 # link never changes:
 #   https://github.com/3boodabbas2026-debug/Music-App/releases/tag/apk-latest
 #
-# Signing: if the ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD secrets are
-# set (Settings → Secrets and variables → Actions), the APK is release-signed
-# with a stable key, so newer builds install straight over older ones. Without
-# the secrets it falls back to a debug-signed build — fully functional, but
+# Signing: the ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD secrets are
+# configured (added 2026-07-09; keystore lives locally in frontend/signing/,
+# which is gitignored), so builds are release-signed with a stable key and
+# newer builds install straight over older ones. If those secrets are ever
+# deleted, the build falls back to a debug-signed APK — fully functional, but
 # each build signs with a fresh key, so updating means uninstall + reinstall.
 name: Build Android APK
 
