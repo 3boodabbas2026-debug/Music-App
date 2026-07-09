@@ -16,7 +16,9 @@ import * as offlineMedia from '../../services/storage/offlineMedia';
 import { useFavoritesStore } from '../../store/favoritesStore';
 import type { Density } from '../../store/dashboardStore';
 import { useLibraryStore } from '../../store/libraryStore';
+import { usePinStore } from '../../store/pinStore';
 import { usePlayerStore } from '../../store/playerStore';
+import { usePlayHistoryStore } from '../../store/playHistoryStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { colors, gradients, radii, spacing, typography } from '../../theme/tokens';
 import { WIDGET_LABELS, type WidgetId } from '../../store/dashboardStore';
@@ -240,6 +242,61 @@ export function FavoritesWidget({ density, coverSize, onPlay }: { density: Densi
         />
       )}
     </WidgetShell>
+  );
+}
+
+// ---------- Pinned ----------
+export function PinnedWidget({ density, coverSize, onPlay }: { density: Density; coverSize: number; onPlay: (m: Media) => void }) {
+  const pinnedIds = usePinStore((s) => s.ids);
+  const items = useLibraryStore((s) => s.items);
+  const pinned = pinnedIds.map((id) => items.find((m) => m.id === id)).filter((m): m is Media => !!m);
+
+  if (pinned.length === 0) return null;
+
+  return (
+    <WidgetShell id="pinned" density={density}>
+      <FlatList
+        horizontal
+        data={pinned}
+        keyExtractor={(item) => item.id}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.xs }}
+        renderItem={({ item }) => <CoverCard media={item} size={coverSize} onPress={() => onPlay(item)} />}
+      />
+    </WidgetShell>
+  );
+}
+
+// ---------- On repeat ----------
+export function OnRepeatWidget({ density, coverSize, onPlay }: { density: Density; coverSize: number; onPlay: (m: Media) => void }) {
+  const items = useLibraryStore((s) => s.items);
+  const events = usePlayHistoryStore((s) => s.events);
+  const topInWindow = usePlayHistoryStore((s) => s.topInWindow);
+  const top = topInWindow(30, 10);
+  const onRepeat = top.map((event) => items.find((m) => m.id === event.mediaId)).filter((m): m is Media => !!m);
+
+  if (onRepeat.length === 0) return null;
+  void events; // subscribed so this widget re-renders as new plays are recorded
+
+  return (
+    <View style={{ marginBottom: density === 'compact' ? spacing.md : spacing.lg }}>
+      <View style={styles.sectionRow}>
+        <Text style={[styles.widgetTitle, density === 'compact' && styles.widgetTitleCompact]}>
+          {WIDGET_LABELS.onRepeat.title}
+        </Text>
+        <Pressable onPress={() => navigationRef.isReady() && navigationRef.navigate('Replay')} hitSlop={8}>
+          <Text style={styles.sectionAction}>Your Replay</Text>
+        </Pressable>
+      </View>
+      <FlatList
+        horizontal
+        data={onRepeat}
+        keyExtractor={(item) => item.id}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ gap: spacing.md, paddingVertical: spacing.xs }}
+        renderItem={({ item }) => <CoverCard media={item} size={coverSize} onPress={() => onPlay(item)} />}
+      />
+    </View>
   );
 }
 

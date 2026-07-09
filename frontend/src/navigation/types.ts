@@ -17,4 +17,5 @@ export type RootStackParamList = {
   Telegram: undefined;
   Jobs: undefined;
   Settings: undefined;
+  Replay: undefined;
 };

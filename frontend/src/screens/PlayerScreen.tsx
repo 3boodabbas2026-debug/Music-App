@@ -16,6 +16,7 @@ import { LyricsView } from '../components/player/LyricsView';
 import { QueueList } from '../components/player/QueueList';
 import { WaveformScrubber } from '../components/player/WaveformScrubber';
 import { useResponsive } from '../hooks/useResponsive';
+import { useTrackAccent } from '../hooks/useTrackAccent';
 import { usePlayerStore } from '../store/playerStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
@@ -92,6 +93,7 @@ export function PlayerScreen() {
     toggleMute,
     cycleSleepTimer,
   } = usePlayerStore();
+  const accentColor = useTrackAccent(currentMedia?.thumbnail_url);
 
   useEffect(() => {
     if (!sanctuaryMode) {
@@ -286,7 +288,7 @@ export function PlayerScreen() {
       <Pressable style={styles.root} onPress={wakeChrome}>
         <RippleField />
         <View style={styles.sanctuaryStage}>
-          <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={sanctuarySize} />
+          <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={sanctuarySize} accentColor={accentColor ?? undefined} />
         </View>
 
         <Animated.View pointerEvents={chromeVisible ? 'auto' : 'none'} style={[styles.sanctuaryChrome, { opacity: chromeOpacity, paddingBottom: insets.bottom + spacing.xl, paddingTop: insets.top + spacing.md }]}>
@@ -338,7 +340,7 @@ export function PlayerScreen() {
         <View style={[styles.desktopRow, { paddingTop: insets.top + spacing.xl + 40, paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={styles.desktopStageCol}>
             <View style={styles.desktopStage}>
-              <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={orbSize} />
+              <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={orbSize} accentColor={accentColor ?? undefined} />
             </View>
             <View style={styles.desktopDockWrap}>{transport}</View>
           </View>
@@ -360,7 +362,7 @@ export function PlayerScreen() {
       <RippleField />
 
       <View style={[styles.stage, { height: stageHeight, paddingTop: insets.top }]}>
-        <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={orbSize} />
+        <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={orbSize} accentColor={accentColor ?? undefined} />
       </View>
 
       {topBar}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -18,9 +18,37 @@ import * as offlineMedia from '../services/storage/offlineMedia';
 import type { OfflineEntry } from '../services/storage/offlineMedia';
 import { useAuthStore } from '../store/authStore';
 import { useLibraryStore } from '../store/libraryStore';
+import { usePlayerStore } from '../store/playerStore';
 import { toast } from '../store/toastStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
+
+function SettingSwitch({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <View style={styles.switchRow}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <Text style={styles.hint}>{hint}</Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: 'rgba(167,176,168,0.2)', true: 'rgba(47,191,170,0.5)' }}
+        thumbColor={value ? colors.cyan : '#A7B0A8'}
+      />
+    </View>
+  );
+}
 
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return '0 MB';
@@ -59,6 +87,10 @@ export function SettingsScreen() {
   const items = useLibraryStore((s) => s.items);
   const upsertMedia = useLibraryStore((s) => s.upsert);
   const { networkOnline, backendOnline } = useOnlineStatus();
+  const crossfadeEnabled = usePlayerStore((s) => s.crossfadeEnabled);
+  const setCrossfadeEnabled = usePlayerStore((s) => s.setCrossfadeEnabled);
+  const autoplayContinuation = usePlayerStore((s) => s.autoplayContinuation);
+  const setAutoplayContinuation = usePlayerStore((s) => s.setAutoplayContinuation);
 
   const [telegramStatus, setTelegramStatus] = useState<TelegramStatus | null>(null);
   const [offlineEntries, setOfflineEntries] = useState<OfflineEntry[]>([]);
@@ -201,6 +233,24 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
+          <SectionTitle>PLAYBACK</SectionTitle>
+          <GlassPanel style={styles.panel}>
+            <View style={styles.panelBody}>
+              <SettingSwitch
+                label="Smooth transitions"
+                hint="Blend the end of one track into the start of the next instead of a hard cut."
+                value={crossfadeEnabled}
+                onChange={setCrossfadeEnabled}
+              />
+              <SettingSwitch
+                label="Keep the music going"
+                hint="When your queue runs out, keep playing from your library instead of stopping."
+                value={autoplayContinuation}
+                onChange={setAutoplayContinuation}
+              />
+            </View>
+          </GlassPanel>
+
           <SectionTitle>LIBRARY &amp; STORAGE</SectionTitle>
           <GlassPanel style={styles.panel}>
             <View style={styles.panelBody}>
@@ -320,6 +370,7 @@ const styles = StyleSheet.create({
   statusValueBad: { color: colors.danger },
   inlineButton: { marginTop: spacing.xs },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   fieldLabel: { ...typography.body, color: colors.textMuted },
   fieldValue: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', flexShrink: 1 },
   hint: { ...typography.caption, color: colors.textMuted, lineHeight: 18 },

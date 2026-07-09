@@ -13,6 +13,8 @@ import {
   ContinueListeningWidget,
   FavoritesWidget,
   OfflineWidget,
+  OnRepeatWidget,
+  PinnedWidget,
   QueueWidget,
   QuickActionsWidget,
   RecentDownloadsWidget,
@@ -283,6 +285,10 @@ export function HomeScreen() {
                   switch (w.id) {
                     case 'continueListening':
                       return <ContinueListeningWidget key={w.id} density={density} accentColor={accentColor} />;
+                    case 'pinned':
+                      return <PinnedWidget key={w.id} density={density} coverSize={coverSize} onPlay={handlePlayRecent} />;
+                    case 'onRepeat':
+                      return <OnRepeatWidget key={w.id} density={density} coverSize={coverSize} onPlay={handlePlayRecent} />;
                     case 'queue':
                       return (
                         <QueueWidget

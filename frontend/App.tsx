@@ -40,7 +40,9 @@ import { useAuthStore } from './src/store/authStore';
 import { useDashboardStore } from './src/store/dashboardStore';
 import { useFavoritesStore } from './src/store/favoritesStore';
 import { useLibraryStore } from './src/store/libraryStore';
+import { usePinStore } from './src/store/pinStore';
 import { usePlayerStore } from './src/store/playerStore';
+import { usePlayHistoryStore } from './src/store/playHistoryStore';
 import { useScanHistoryStore } from './src/store/scanHistoryStore';
 import { colors } from './src/theme/tokens';
 
@@ -185,6 +187,8 @@ export default function App() {
     // refresh resolves.
     useLibraryStore.getState().hydrate();
     useDashboardStore.getState().hydrate();
+    usePinStore.getState().hydrate();
+    usePlayHistoryStore.getState().hydrate();
     hydrateFavorites();
     hydrateScans();
     configureAudioSession().finally(() => setAudioReady(true));

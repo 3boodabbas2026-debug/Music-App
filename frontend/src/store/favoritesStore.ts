@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { haptics } from '../utils/haptics';
+
 const STORAGE_KEY = 'sma.favorites';
 
 type FavoritesState = {
@@ -35,8 +37,10 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
 
   toggle(mediaId) {
     const ids = { ...get().ids };
-    if (ids[mediaId]) delete ids[mediaId];
-    else ids[mediaId] = true;
+    const adding = !ids[mediaId];
+    if (adding) ids[mediaId] = true;
+    else delete ids[mediaId];
+    haptics.tap();
     set({ ids });
     void persist(ids);
   },

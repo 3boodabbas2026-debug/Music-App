@@ -10,6 +10,10 @@ type MoonlightProps = {
   /** 0-1 live input level: mic RMS while listening, playback RMS while playing. */
   amplitude?: number;
   size?: number;
+  /** When set (a color pulled from the current track's cover art), overrides
+   * the state-based palette so the moon's glow matches what's playing —
+   * still gold-paired, still Duskglen, just tuned to this one track. */
+  accentColor?: string;
 };
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -37,7 +41,8 @@ const STAR_COUNT = 42;
  * spiky reactive-orb look with something calmer and considerably closer to
  * "a private night sky" than "an AI is listening" cliché.
  */
-function MoonMesh({ state, amplitude = 0 }: MoonlightProps) {
+function MoonMesh({ state, amplitude = 0, accentColor }: MoonlightProps) {
+  const accentRgb = useMemo(() => (accentColor ? hexToRgb(accentColor) : null), [accentColor]);
   const meshRef = useRef<THREE.Mesh>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial>(null);
   const haloRef = useRef<THREE.Mesh>(null);
@@ -103,7 +108,7 @@ function MoonMesh({ state, amplitude = 0 }: MoonlightProps) {
     posAttr.needsUpdate = true;
     geometry.computeVertexNormals();
 
-    const [c1, c2] = PALETTE[state];
+    const [c1, c2] = accentRgb ? [accentRgb, GOLD] : PALETTE[state];
     const mix = (Math.sin(t * 0.35) + 1) / 2;
     const r = SILVER[0] * 0.7 + (c1[0] + (c2[0] - c1[0]) * mix) * 0.3;
     const g = SILVER[1] * 0.7 + (c1[1] + (c2[1] - c1[1]) * mix) * 0.3;
@@ -191,7 +196,7 @@ function MoonMesh({ state, amplitude = 0 }: MoonlightProps) {
   );
 }
 
-export function Moonlight({ state, amplitude = 0, size = 220 }: MoonlightProps) {
+export function Moonlight({ state, amplitude = 0, size = 220, accentColor }: MoonlightProps) {
   return (
     <View style={{ width: size, height: size }}>
       <Canvas camera={{ position: [0, 0, 3.4], fov: 42 }}>
@@ -199,7 +204,7 @@ export function Moonlight({ state, amplitude = 0, size = 220 }: MoonlightProps) 
         <pointLight position={[2.2, 2.2, 2]} intensity={1.1} color="#E7EBE6" />
         <pointLight position={[-2.2, -1.2, -2]} intensity={0.7} color="#9B8FD9" />
         <pointLight position={[0, -2.4, 1.5]} intensity={0.5} color="#E8C468" />
-        <MoonMesh state={state} amplitude={amplitude} />
+        <MoonMesh state={state} amplitude={amplitude} accentColor={accentColor} />
       </Canvas>
     </View>
   );

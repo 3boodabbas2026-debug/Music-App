@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { GlassPanel } from '../ui/GlassPanel';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useTrackAccent } from '../../hooks/useTrackAccent';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors, layout, radii, spacing, typography } from '../../theme/tokens';
 import type { RootStackParamList } from '../../navigation/types';
@@ -94,6 +95,7 @@ export function MiniPlayerBar() {
   const { isDesktop } = useResponsive();
   const { currentMedia, playing, currentTime, duration, amplitude, toggle, playNext, playPrev, queue } = usePlayerStore();
   const [queueOpen, setQueueOpen] = useState(false);
+  const accentColor = useTrackAccent(currentMedia?.thumbnail_url);
 
   if (!currentMedia) return null;
 
@@ -107,7 +109,7 @@ export function MiniPlayerBar() {
     <View pointerEvents="box-none" style={[styles.holder, isDesktop && styles.holderDesktop, { bottom }]}>
       {queueOpen && <QueuePreview onJump={() => setQueueOpen(false)} />}
       <Pressable onPress={() => navigation.navigate('Player')} style={isDesktop ? styles.pressDesktop : undefined}>
-        <View style={[playing && styles.glowWrap]}>
+        <View style={[playing && styles.glowWrap, playing && accentColor && { shadowColor: accentColor }]}>
           <GlassPanel style={styles.panel} overlayColor="rgba(18,28,24,0.6)">
             <View style={styles.content}>
               {currentMedia.thumbnail_url ? (
@@ -131,8 +133,8 @@ export function MiniPlayerBar() {
                   <Ionicons name="play-skip-back" size={16} color={colors.textSecondary} />
                 </Pressable>
               )}
-              <Pressable onPress={toggle} hitSlop={12} style={styles.controlButton}>
-                <Ionicons name={playing ? 'pause' : 'play'} size={18} color={colors.cyan} />
+              <Pressable onPress={toggle} hitSlop={12} style={[styles.controlButton, accentColor && { backgroundColor: `${accentColor}29` }]}>
+                <Ionicons name={playing ? 'pause' : 'play'} size={18} color={accentColor ?? colors.cyan} />
               </Pressable>
               {queue.length > 1 && (
                 <Pressable onPress={() => playNext()} hitSlop={10} style={styles.skipButton}>
@@ -146,7 +148,7 @@ export function MiniPlayerBar() {
               )}
             </View>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+              <View style={[styles.progressFill, { width: `${progress * 100}%` }, accentColor && { backgroundColor: accentColor }]} />
             </View>
           </GlassPanel>
         </View>

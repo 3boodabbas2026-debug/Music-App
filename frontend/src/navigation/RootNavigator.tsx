@@ -5,6 +5,7 @@ import { JobsScreen } from '../screens/JobsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PlayerScreen } from '../screens/PlayerScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
+import { ReplayScreen } from '../screens/ReplayScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { TelegramScreen } from '../screens/TelegramScreen';
 import { AccountPopover } from '../components/ui/AccountPopover';
@@ -54,6 +55,7 @@ export function RootNavigator() {
             <RootStack.Screen name="Telegram" component={TelegramScreen} />
             <RootStack.Screen name="Jobs" component={JobsScreen} />
             <RootStack.Screen name="Settings" component={SettingsScreen} />
+            <RootStack.Screen name="Replay" component={ReplayScreen} />
           </RootStack.Navigator>
           <Sidebar />
           <AccountPopover />

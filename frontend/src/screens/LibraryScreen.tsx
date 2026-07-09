@@ -35,6 +35,7 @@ import type { Media, Playlist } from '../services/api/types';
 import * as offlineMedia from '../services/storage/offlineMedia';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { useLibraryStore } from '../store/libraryStore';
+import { MAX_PINS, usePinStore } from '../store/pinStore';
 import { usePlayerStore } from '../store/playerStore';
 import { usePlaylistStore } from '../store/playlistStore';
 import { useVideoPlayerStore } from '../store/videoPlayerStore';
@@ -90,6 +91,8 @@ export function LibraryScreen() {
   const addToQueue = usePlayerStore((s) => s.addToQueue);
   const favoriteIds = useFavoritesStore((s) => s.ids);
   const toggleFavorite = useFavoritesStore((s) => s.toggle);
+  const pinnedIds = usePinStore((s) => s.ids);
+  const togglePin = usePinStore((s) => s.toggle);
 
   const playlists = usePlaylistStore((s) => s.playlists);
   const refreshPlaylists = usePlaylistStore((s) => s.refresh);
@@ -435,6 +438,18 @@ export function LibraryScreen() {
                 label={favoriteIds[sheetMedia.id] ? 'Remove from favorites' : 'Add to favorites'}
                 tint={colors.pink}
                 onPress={() => toggleFavorite(sheetMedia.id)}
+              />
+              <SheetAction
+                icon={pinnedIds.includes(sheetMedia.id) ? 'bookmark' : 'bookmark-outline'}
+                label={
+                  pinnedIds.includes(sheetMedia.id)
+                    ? 'Unpin'
+                    : pinnedIds.length >= MAX_PINS
+                      ? `Pin (replaces oldest of ${MAX_PINS})`
+                      : 'Pin for quick access'
+                }
+                tint={colors.gold}
+                onPress={() => togglePin(sheetMedia.id)}
               />
               <SheetAction
                 icon="list"

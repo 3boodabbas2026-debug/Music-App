@@ -11,7 +11,20 @@ export type PlaybackSnapshot = {
 type PlaybackListener = (status: PlaybackSnapshot) => void;
 type AmplitudeListener = (amplitude: number) => void;
 
-let player: AudioPlayer | null = null;
+/**
+ * `activePlayer` is whichever AudioPlayer instance is currently "the" track
+ * the app is following — during a normal load, that's the only instance
+ * that exists. During a crossfade, TWO instances briefly play at once (the
+ * outgoing track fading out, the incoming one fading in), but only the one
+ * that equals `activePlayer` is allowed to forward events to the store; the
+ * other's ticks are silently dropped. This is what keeps the UI's progress
+ * bar/clock from flickering between two tracks' timelines mid-fade — it
+ * doesn't switch until the fade finishes and `activePlayer` flips.
+ */
+let activePlayer: AudioPlayer | null = null;
+let fadeTimer: ReturnType<typeof setInterval> | null = null;
+let fadeIncoming: AudioPlayer | null = null;
+
 const playbackListeners = new Set<PlaybackListener>();
 const amplitudeListeners = new Set<AmplitudeListener>();
 
@@ -29,6 +42,38 @@ function toSnapshot(status: AudioStatus): PlaybackSnapshot {
   };
 }
 
+/** Cancels an in-flight crossfade immediately (used before any manual
+ * navigation interrupts one — a stray fade timer left running after the
+ * user taps "next" would otherwise leak a silent extra player). */
+function cancelInFlightFade(): void {
+  if (fadeTimer) {
+    clearInterval(fadeTimer);
+    fadeTimer = null;
+  }
+  fadeIncoming?.remove();
+  fadeIncoming = null;
+}
+
+function bindPlayerEvents(instance: AudioPlayer): void {
+  instance.addListener('playbackStatusUpdate', (status) => {
+    if (instance !== activePlayer) return; // a fading-out/abandoned instance — ignore
+    playbackListeners.forEach((listener) => listener(toSnapshot(status)));
+  });
+
+  // Real signal-derived amplitude (RMS of raw PCM frames), not a simulation —
+  // only enabled when the platform actually supports sampling.
+  if (instance.isAudioSamplingSupported) {
+    instance.setAudioSamplingEnabled(true);
+    instance.addListener('audioSampleUpdate', (sample) => {
+      if (instance !== activePlayer) return;
+      const frames = sample.channels[0]?.frames ?? [];
+      if (!frames.length) return;
+      const rms = Math.sqrt(frames.reduce((sum, f) => sum + f * f, 0) / frames.length);
+      amplitudeListeners.forEach((listener) => listener(Math.min(1, rms * 4)));
+    });
+  }
+}
+
 export type LoadOptions = {
   /** Start playback immediately (default). Pass false to restore a session paused. */
   autoplay?: boolean;
@@ -37,69 +82,97 @@ export type LoadOptions = {
 };
 
 export function loadAndPlay(uri: string, headers?: Record<string, string>, options: LoadOptions = {}): void {
+  cancelInFlightFade();
   const { autoplay = true, startAt = 0 } = options;
-  player?.remove();
-  player = createAudioPlayer({ uri, headers }, { updateInterval: 250 });
+  activePlayer?.remove();
+  activePlayer = createAudioPlayer({ uri, headers }, { updateInterval: 250 });
+  bindPlayerEvents(activePlayer);
 
-  player.addListener('playbackStatusUpdate', (status) => {
-    const snapshot = toSnapshot(status);
-    playbackListeners.forEach((listener) => listener(snapshot));
+  if (startAt > 0) activePlayer.seekTo(startAt);
+  if (autoplay) activePlayer.play();
+}
+
+/**
+ * AutoMix-style crossfade: starts the next track silently underneath the
+ * current one, ramps volumes across `durationMs`, then hands control over.
+ * Resolves once the new track is fully in charge — the caller (playerStore)
+ * re-subscribes its listeners against it at that point, exactly as it would
+ * after a normal load.
+ */
+export function crossfadeTo(
+  uri: string,
+  headers: Record<string, string> | undefined,
+  durationMs: number,
+  targetVolume: number,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const outgoing = activePlayer;
+    const incoming = createAudioPlayer({ uri, headers }, { updateInterval: 250 });
+    bindPlayerEvents(incoming);
+    incoming.volume = 0;
+    incoming.play();
+    fadeIncoming = incoming;
+
+    const startVolume = outgoing?.volume ?? 0;
+    const steps = Math.max(4, Math.floor(durationMs / 50));
+    let step = 0;
+
+    fadeTimer = setInterval(() => {
+      step += 1;
+      const t = Math.min(1, step / steps);
+      if (outgoing) outgoing.volume = Math.max(0, startVolume * (1 - t));
+      incoming.volume = Math.min(targetVolume, targetVolume * t);
+
+      if (t >= 1) {
+        if (fadeTimer) clearInterval(fadeTimer);
+        fadeTimer = null;
+        fadeIncoming = null;
+        activePlayer = incoming;
+        outgoing?.remove();
+        resolve();
+      }
+    }, 50);
   });
-
-  // Real signal-derived amplitude (RMS of raw PCM frames), not a simulation —
-  // only enabled when the platform actually supports sampling.
-  if (player.isAudioSamplingSupported) {
-    player.setAudioSamplingEnabled(true);
-    player.addListener('audioSampleUpdate', (sample) => {
-      const frames = sample.channels[0]?.frames ?? [];
-      if (!frames.length) return;
-      const rms = Math.sqrt(frames.reduce((sum, f) => sum + f * f, 0) / frames.length);
-      const amplitude = Math.min(1, rms * 4);
-      amplitudeListeners.forEach((listener) => listener(amplitude));
-    });
-  }
-
-  if (startAt > 0) player.seekTo(startAt);
-  if (autoplay) player.play();
 }
 
 export function togglePlayback(): void {
-  if (!player) return;
-  if (player.playing) player.pause();
-  else player.play();
+  if (!activePlayer) return;
+  if (activePlayer.playing) activePlayer.pause();
+  else activePlayer.play();
 }
 
 export function pausePlayback(): void {
-  player?.pause();
+  activePlayer?.pause();
 }
 
 export function setPlaybackRate(rate: number): void {
-  player?.setPlaybackRate(rate, 'high');
+  activePlayer?.setPlaybackRate(rate, 'high');
 }
 
 export function setVolume(volume: number): void {
-  if (player) player.volume = Math.max(0, Math.min(1, volume));
+  if (activePlayer) activePlayer.volume = Math.max(0, Math.min(1, volume));
 }
 
 export function setMuted(muted: boolean): void {
-  if (player) player.muted = muted;
+  if (activePlayer) activePlayer.muted = muted;
 }
 
 export function setLooping(loop: boolean): void {
-  if (player) player.loop = loop;
+  if (activePlayer) activePlayer.loop = loop;
 }
 
 export function seekTo(seconds: number): void {
-  player?.seekTo(seconds);
+  activePlayer?.seekTo(seconds);
 }
 
 export function stopAndRelease(): void {
-  player?.remove();
-  player = null;
+  cancelInFlightFade();
+  activePlayer?.remove();
+  activePlayer = null;
 }
 
 export function isSamplingSupported(): boolean {
-  return player?.isAudioSamplingSupported ?? false;
+  return activePlayer?.isAudioSamplingSupported ?? false;
 }
 
 export function subscribePlayback(listener: PlaybackListener): () => void {

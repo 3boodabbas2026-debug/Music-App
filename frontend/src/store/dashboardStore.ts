@@ -5,6 +5,8 @@ const STORAGE_KEY = 'sma.dashboard.v1';
 
 export type WidgetId =
   | 'continueListening'
+  | 'pinned'
+  | 'onRepeat'
   | 'queue'
   | 'recent'
   | 'favorites'
@@ -18,6 +20,8 @@ export type AccentStyle = 'forest' | 'cosmic';
 
 export const WIDGET_LABELS: Record<WidgetId, { title: string; description: string }> = {
   continueListening: { title: 'Continue listening', description: 'Pick up your last session where you left off' },
+  pinned: { title: 'Pinned', description: 'Up to six tracks or collections pinned for instant access' },
+  onRepeat: { title: 'On repeat', description: 'What you have actually been playing lately' },
   queue: { title: 'Download queue', description: 'Active and recent download jobs' },
   recent: { title: 'Recent downloads', description: 'Freshly added tracks and videos' },
   favorites: { title: 'Favorite collections', description: 'Tracks you have starred' },
@@ -29,6 +33,8 @@ export const WIDGET_LABELS: Record<WidgetId, { title: string; description: strin
 
 const DEFAULT_ORDER: WidgetId[] = [
   'continueListening',
+  'pinned',
+  'onRepeat',
   'queue',
   'recent',
   'stats',
