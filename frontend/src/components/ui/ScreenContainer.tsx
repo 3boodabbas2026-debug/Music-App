@@ -5,6 +5,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { RippleField } from './RippleField';
 import { useResponsive } from '../../hooks/useResponsive';
+import { useTrackAccent } from '../../hooks/useTrackAccent';
+import { usePlayerStore } from '../../store/playerStore';
 import { spacing } from '../../theme/tokens';
 
 type Props = PropsWithChildren<{
@@ -27,9 +29,13 @@ export function ScreenContainer({ children, maxWidth = 1100 }: Props) {
   // visited keeps running RippleField's animation loops forever in the
   // background. Only the screen actually on top pays that cost.
   const isFocused = useIsFocused();
+  // Low-frequency (changes once per track, not per tick) — safe to read here
+  // without reintroducing the whole-store re-render problem fixed elsewhere.
+  const thumbnailUrl = usePlayerStore((s) => s.currentMedia?.thumbnail_url);
+  const accentColor = useTrackAccent(thumbnailUrl);
   return (
     <View style={styles.root}>
-      {isFocused && <RippleField />}
+      {isFocused && <RippleField accentColor={accentColor} />}
       <View
         style={[
           styles.content,

@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { gradients, palette } from '../../theme/theme';
+import { usePlayerStore } from '../../store/playerStore';
 
 /**
  * The app's ambient backdrop — a living night-forest sky. A field of
@@ -119,6 +120,7 @@ function AuroraRibbon({
   rotate,
   duration,
   drift,
+  ampBoost,
 }: {
   colors: readonly [string, string];
   width: number;
@@ -129,6 +131,8 @@ function AuroraRibbon({
   rotate: string;
   duration: number;
   drift: number;
+  /** Multiplies the ribbon's opacity — 1 at rest, up to ~1.3 while music plays loudly. */
+  ampBoost: Animated.AnimatedInterpolation<number>;
 }) {
   const t = useLoop(duration);
   return (
@@ -141,7 +145,7 @@ function AuroraRibbon({
         top: y,
         width,
         height,
-        opacity: t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.55, 1, 0.55] }),
+        opacity: Animated.multiply(t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.55, 1, 0.55] }), ampBoost),
         transform: [
           { translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, drift] }) },
           { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, -drift * 0.4] }) },
@@ -155,7 +159,7 @@ function AuroraRibbon({
 }
 
 /** Faint moonlight pooling in the upper corner, breathing very slowly. */
-function MoonGlow() {
+function MoonGlow({ ampBoost }: { ampBoost: Animated.AnimatedInterpolation<number> }) {
   const t = useLoop(9000);
   return (
     <Animated.View
@@ -166,7 +170,7 @@ function MoonGlow() {
         right: -200,
         width: 560,
         height: 560,
-        opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0.9] }),
+        opacity: Animated.multiply(t.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0.9] }), ampBoost),
       }}
     >
       <Svg width={560} height={560}>
@@ -178,6 +182,53 @@ function MoonGlow() {
           </RadialGradient>
         </Defs>
         <Circle cx={280} cy={280} r={280} fill="url(#rf-moonglow)" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/** A soft colored wash centered on the sky, cross-fading in when the current
+ * track's extracted accent color is known (web only — see useTrackAccent)
+ * and fading back out otherwise. Purely additive: the rest of the sky's
+ * teal/violet palette is untouched, this just layers a hint of the track's
+ * own color on top. */
+function AccentWash({ accentColor }: { accentColor?: string | null }) {
+  const { width, height } = useWindowDimensions();
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: accentColor ? 1 : 0,
+      duration: 900,
+      easing: Easing.inOut(Easing.quad),
+      useNativeDriver: true,
+    }).start();
+  }, [accentColor, opacity]);
+
+  const size = Math.max(width, height) * 1.3;
+  const color = accentColor ?? palette.primary;
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: width / 2 - size / 2,
+        top: height / 2 - size / 2,
+        width: size,
+        height: size,
+        opacity,
+      }}
+    >
+      <Svg width={size} height={size}>
+        <Defs>
+          <RadialGradient id="rf-accent-wash" cx="50%" cy="50%" r="50%">
+            <Stop offset="0%" stopColor={color} stopOpacity={0.16} />
+            <Stop offset="55%" stopColor={color} stopOpacity={0.06} />
+            <Stop offset="100%" stopColor={color} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Circle cx={size / 2} cy={size / 2} r={size / 2} fill="url(#rf-accent-wash)" />
       </Svg>
     </Animated.View>
   );
@@ -295,15 +346,46 @@ function Ring({ spec }: { spec: RingSpec }) {
   );
 }
 
-/** Takes no props, so React.memo means a parent re-render (e.g. the screen
- * above it re-rendering on a playback tick) never cascades into re-running
- * this component's own 8 animation loops / 48 star views. */
-export const RippleField = memo(function RippleField() {
+type RippleFieldProps = {
+  /** Lowers the base sky wash's opacity so content mounted behind this
+   * component (the Player's blurred cover-art backdrop) shows through, while
+   * stars/aurora/treeline still render on top at full strength for continuity.
+   * Only ever passed from PlayerScreen. */
+  dimmed?: boolean;
+  /** The current track's extracted accent color (web only — see
+   * useTrackAccent). When present, washes the sky with a hint of that color;
+   * when absent (native, or nothing playing) the sky stays its default
+   * teal/violet, unchanged from before this prop existed. */
+  accentColor?: string | null;
+};
+
+/** Takes no required props, so parent re-renders (e.g. a screen re-rendering
+ * on a playback tick) never cascade into re-running this component's own 8
+ * animation loops / 48 star views — React.memo's default shallow prop
+ * compare handles the two optional props above, which only ever change once
+ * per track, not per tick. */
+export const RippleField = memo(function RippleField({ dimmed, accentColor }: RippleFieldProps) {
   const { height } = useWindowDimensions();
+  // The amplitude signal ticks many times a second while a track plays (the
+  // same source driving MiniPlayerBar's EQ bars and Moonlight). Reading it
+  // via the store's imperative `subscribe` and feeding an Animated.Value —
+  // rather than the `usePlayerStore` React hook — means the sky brightens in
+  // time with the music without ever triggering a React re-render here.
+  const ampValue = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const unsubscribe = usePlayerStore.subscribe((state) => {
+      const target = state.playing ? Math.max(0, Math.min(1, state.amplitude * 2.2)) : 0;
+      Animated.timing(ampValue, { toValue: target, duration: 140, useNativeDriver: true }).start();
+    });
+    return unsubscribe;
+  }, [ampValue]);
+  const ampBoost = ampValue.interpolate({ inputRange: [0, 1], outputRange: [1, 1.3] });
+
   return (
-    <View pointerEvents="none" style={styles.root}>
-      <LinearGradient colors={gradients.screenIdle} style={StyleSheet.absoluteFill} />
-      <MoonGlow />
+    <View pointerEvents="none" style={[styles.root, dimmed && styles.rootDimmed]}>
+      <LinearGradient colors={gradients.screenIdle} style={[StyleSheet.absoluteFill, dimmed && styles.dimmedSky]} />
+      <AccentWash accentColor={accentColor} />
+      <MoonGlow ampBoost={ampBoost} />
       <AuroraRibbon
         colors={gradients.rippleSignal}
         width={520}
@@ -313,6 +395,7 @@ export const RippleField = memo(function RippleField() {
         rotate="24deg"
         duration={16000}
         drift={70}
+        ampBoost={ampBoost}
       />
       <AuroraRibbon
         colors={gradients.rippleWave}
@@ -323,6 +406,7 @@ export const RippleField = memo(function RippleField() {
         rotate="-19deg"
         duration={21000}
         drift={-55}
+        ampBoost={ampBoost}
       />
       {RINGS.map((spec) => (
         <Ring key={spec.id} spec={spec} />
@@ -343,6 +427,12 @@ const styles = StyleSheet.create({
     bottom: 0,
     overflow: 'hidden',
     backgroundColor: '#050805',
+  },
+  rootDimmed: {
+    backgroundColor: 'transparent',
+  },
+  dimmedSky: {
+    opacity: 0.45,
   },
   treeline: {
     position: 'absolute',

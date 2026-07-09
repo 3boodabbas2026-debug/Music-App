@@ -10,10 +10,19 @@ type Props = PropsWithChildren<{
   intensity?: number;
   /** Tint layered over the blur so content stays legible. */
   overlayColor?: string;
+  /** Color of the top edge-light — defaults to a neutral moonlight hair-line;
+   * PlayerScreen passes the current track's accent color where available. */
+  edgeColor?: string;
 }>;
 
 /** Raised stone-surface container: a hint of blur + warm tint + soft shadow. */
-export function GlassPanel({ children, style, intensity = 40, overlayColor = 'rgba(18,28,24,0.72)' }: Props) {
+export function GlassPanel({
+  children,
+  style,
+  intensity = 40,
+  overlayColor = 'rgba(18,28,24,0.72)',
+  edgeColor = 'rgba(231,235,230,0.09)',
+}: Props) {
   return (
     <View style={[styles.shell, style]}>
       <BlurView
@@ -25,7 +34,7 @@ export function GlassPanel({ children, style, intensity = 40, overlayColor = 'rg
       <View style={[styles.overlay, { backgroundColor: overlayColor }]} />
       {/* Moonlight catching the top edge — a hair of light that makes the
           glass read as a surface instead of a flat tint. */}
-      <View style={styles.edgeLight} />
+      <View style={[styles.edgeLight, { backgroundColor: edgeColor }]} />
       {children}
     </View>
   );
@@ -52,6 +61,5 @@ const styles = StyleSheet.create({
     left: 12,
     right: 12,
     height: 1,
-    backgroundColor: 'rgba(231,235,230,0.09)',
   },
 });

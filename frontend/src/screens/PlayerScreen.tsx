@@ -12,6 +12,7 @@ import { RippleField } from '../components/ui/RippleField';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { GradientText } from '../components/ui/GradientText';
 import { PressableScale } from '../components/ui/PressableScale';
+import { CoverBackdrop } from '../components/player/CoverBackdrop';
 import { LyricsView } from '../components/player/LyricsView';
 import { QueueList } from '../components/player/QueueList';
 import { WaveformScrubber } from '../components/player/WaveformScrubber';
@@ -143,7 +144,7 @@ export function PlayerScreen() {
     : undefined;
 
   const transport = (
-    <GlassPanel style={styles.dock} overlayColor="rgba(10,15,13,0.6)">
+    <GlassPanel style={styles.dock} overlayColor="rgba(10,15,13,0.6)" edgeColor={accentColor ? `${accentColor}3d` : undefined}>
       <View style={styles.dockContent}>
         <GradientText numberOfLines={1} style={styles.title}>
           {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
@@ -156,6 +157,7 @@ export function PlayerScreen() {
           seedKey={currentMedia.id}
           progress={duration ? currentTime / duration : 0}
           onSeekRatio={(ratio) => seek(ratio * duration)}
+          activeColor={accentColor ?? undefined}
         />
         <View style={styles.timeRow}>
           <Text style={styles.time}>{formatTime(currentTime)}</Text>
@@ -164,7 +166,7 @@ export function PlayerScreen() {
 
         <View style={styles.transportRow}>
           <Pressable onPress={toggleShuffle} hitSlop={10} style={styles.modeButton}>
-            <Ionicons name="shuffle" size={20} color={shuffle ? colors.cyan : colors.textMuted} />
+            <Ionicons name="shuffle" size={20} color={shuffle ? accentColor ?? colors.cyan : colors.textMuted} />
           </Pressable>
 
           <PressableScale onPress={() => playPrev()} scaleTo={0.88}>
@@ -198,8 +200,8 @@ export function PlayerScreen() {
           </PressableScale>
 
           <Pressable onPress={toggleRepeat} hitSlop={10} style={styles.modeButton}>
-            <Ionicons name="repeat" size={20} color={repeat !== 'off' ? colors.cyan : colors.textMuted} />
-            {repeat === 'one' && <Text style={styles.repeatOne}>1</Text>}
+            <Ionicons name="repeat" size={20} color={repeat !== 'off' ? accentColor ?? colors.cyan : colors.textMuted} />
+            {repeat === 'one' && <Text style={[styles.repeatOne, accentColor && { color: accentColor }]}>1</Text>}
           </Pressable>
         </View>
 
@@ -207,8 +209,8 @@ export function PlayerScreen() {
           <Pressable onPress={() => seek(Math.max(0, currentTime - 10))} style={styles.chip}>
             <MaterialIcons name="replay-10" size={17} color={colors.textSecondary} />
           </Pressable>
-          <Pressable onPress={cycleRate} style={[styles.chip, rate !== 1 && styles.chipActive]}>
-            <Text style={[styles.chipLabel, rate !== 1 && styles.chipLabelActive]}>{rate}×</Text>
+          <Pressable onPress={cycleRate} style={[styles.chip, rate !== 1 && styles.chipActive, rate !== 1 && accentColor && { backgroundColor: `${accentColor}29` }]}>
+            <Text style={[styles.chipLabel, rate !== 1 && styles.chipLabelActive, rate !== 1 && accentColor && { color: accentColor }]}>{rate}×</Text>
           </Pressable>
           {!isDesktop && (
             <>
@@ -232,9 +234,11 @@ export function PlayerScreen() {
               </Pressable>
             </>
           )}
-          <Pressable onPress={cycleSleepTimer} style={[styles.chip, sleepMinutesLeft !== null && styles.chipActive]}>
-            <Ionicons name="moon" size={14} color={sleepMinutesLeft !== null ? colors.cyan : colors.textSecondary} />
-            {sleepMinutesLeft !== null && <Text style={styles.chipLabelActive}> {sleepMinutesLeft}m</Text>}
+          <Pressable onPress={cycleSleepTimer} style={[styles.chip, sleepMinutesLeft !== null && styles.chipActive, sleepMinutesLeft !== null && accentColor && { backgroundColor: `${accentColor}29` }]}>
+            <Ionicons name="moon" size={14} color={sleepMinutesLeft !== null ? accentColor ?? colors.cyan : colors.textSecondary} />
+            {sleepMinutesLeft !== null && (
+              <Text style={[styles.chipLabelActive, accentColor && { color: accentColor }]}> {sleepMinutesLeft}m</Text>
+            )}
           </Pressable>
           <Pressable onPress={() => seek(Math.min(duration, currentTime + 10))} style={styles.chip}>
             <MaterialIcons name="forward-10" size={17} color={colors.textSecondary} />
@@ -262,9 +266,9 @@ export function PlayerScreen() {
             style={styles.volumeSlider}
             value={muted ? 0 : volume}
             onValueChange={(v) => setVolume(v)}
-            minimumTrackTintColor={colors.cyan}
+            minimumTrackTintColor={accentColor ?? colors.cyan}
             maximumTrackTintColor="rgba(167,176,168,0.25)"
-            thumbTintColor={colors.cyan}
+            thumbTintColor={accentColor ?? colors.cyan}
           />
         </View>
       </View>
@@ -292,7 +296,8 @@ export function PlayerScreen() {
     const sanctuarySize = Math.min(width, height) * 0.72;
     return (
       <Pressable style={styles.root} onPress={wakeChrome}>
-        {isFocused && <RippleField />}
+        {isFocused && <CoverBackdrop uri={currentMedia.thumbnail_url} />}
+        {isFocused && <RippleField dimmed accentColor={accentColor} />}
         <View style={styles.sanctuaryStage}>
           {isFocused && (
             <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={sanctuarySize} accentColor={accentColor ?? undefined} />
@@ -313,7 +318,13 @@ export function PlayerScreen() {
             </Text>
 
             <View style={styles.sanctuaryProgress}>
-              <View style={[styles.sanctuaryProgressFill, { width: `${duration ? (currentTime / duration) * 100 : 0}%` }]} />
+              <View
+                style={[
+                  styles.sanctuaryProgressFill,
+                  { width: `${duration ? (currentTime / duration) * 100 : 0}%` },
+                  accentColor && { backgroundColor: accentColor },
+                ]}
+              />
             </View>
 
             <View style={styles.sanctuaryControls}>
@@ -344,7 +355,8 @@ export function PlayerScreen() {
   if (isDesktop) {
     return (
       <View style={styles.root}>
-        {isFocused && <RippleField />}
+        {isFocused && <CoverBackdrop uri={currentMedia.thumbnail_url} />}
+        {isFocused && <RippleField dimmed accentColor={accentColor} />}
         <View style={[styles.desktopRow, { paddingTop: insets.top + spacing.xl + 40, paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={styles.desktopStageCol}>
             <View style={styles.desktopStage}>
@@ -369,7 +381,8 @@ export function PlayerScreen() {
 
   return (
     <View style={styles.root}>
-      {isFocused && <RippleField />}
+      {isFocused && <CoverBackdrop uri={currentMedia.thumbnail_url} />}
+      {isFocused && <RippleField dimmed accentColor={accentColor} />}
 
       <View style={[styles.stage, { height: stageHeight, paddingTop: insets.top }]}>
         {isFocused && (

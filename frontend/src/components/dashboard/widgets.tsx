@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { EmptyState } from '../ui/EmptyState';
 import { FadeImage } from '../ui/FadeImage';
 import { GlassPanel } from '../ui/GlassPanel';
+import { CoverBackdrop } from '../player/CoverBackdrop';
 import { ProgressBar } from '../ui/ProgressBar';
 import { ProgressRing } from '../ui/ProgressRing';
 import { PressableScale } from '../ui/PressableScale';
@@ -58,27 +59,32 @@ export function ContinueListeningWidget({ density, accentColor = colors.cyan }: 
         </GlassPanel>
       ) : (
         <PressableScale onPress={() => navigationRef.isReady() && navigationRef.navigate('Player')} scaleTo={0.99}>
-          <GlassPanel style={styles.panelCompact}>
-            <View style={styles.continueRow}>
-              <View style={styles.continueCover}>
-                {currentMedia.thumbnail_url ? (
-                  <FadeImage uri={currentMedia.thumbnail_url} style={StyleSheet.absoluteFill as object} />
-                ) : (
-                  <LinearGradient colors={gradients.coverFallback} style={StyleSheet.absoluteFill} />
-                )}
+          <View style={styles.continueHero}>
+            {currentMedia.thumbnail_url && (
+              <CoverBackdrop uri={currentMedia.thumbnail_url} opacity={0.9} blurRadius={25} scrimOpacity={0.4} />
+            )}
+            <GlassPanel style={styles.panelCompact} overlayColor="rgba(18,28,24,0.32)">
+              <View style={styles.continueRow}>
+                <View style={styles.continueCover}>
+                  {currentMedia.thumbnail_url ? (
+                    <FadeImage uri={currentMedia.thumbnail_url} style={StyleSheet.absoluteFill as object} />
+                  ) : (
+                    <LinearGradient colors={gradients.coverFallback} style={StyleSheet.absoluteFill} />
+                  )}
+                </View>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text numberOfLines={1} style={styles.continueTitle}>
+                    {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.mutedLine}>
+                    {currentMedia.artist ?? currentMedia.recognized_artist ?? 'Unknown artist'} · {restored ? 'Paused' : 'Playing'}
+                  </Text>
+                  <ProgressBar progress={duration > 0 ? currentTime / duration : 0} />
+                </View>
+                <Ionicons name={restored ? 'play' : 'pause'} size={20} color={accentColor} />
               </View>
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text numberOfLines={1} style={styles.continueTitle}>
-                  {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
-                </Text>
-                <Text numberOfLines={1} style={styles.mutedLine}>
-                  {currentMedia.artist ?? currentMedia.recognized_artist ?? 'Unknown artist'} · {restored ? 'Paused' : 'Playing'}
-                </Text>
-                <ProgressBar progress={duration > 0 ? currentTime / duration : 0} />
-              </View>
-              <Ionicons name={restored ? 'play' : 'pause'} size={20} color={accentColor} />
-            </View>
-          </GlassPanel>
+            </GlassPanel>
+          </View>
         </PressableScale>
       )}
     </WidgetShell>
@@ -427,6 +433,7 @@ const styles = StyleSheet.create({
   sectionAction: { ...typography.caption, color: colors.cyan },
   mutedLine: { ...typography.caption, color: colors.textMuted },
   panelCompact: { borderRadius: radii.lg, padding: spacing.md },
+  continueHero: { borderRadius: radii.lg, overflow: 'hidden' },
   panelRow: { borderRadius: radii.lg },
   continueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   continueCover: { width: 48, height: 48, borderRadius: radii.sm, overflow: 'hidden', backgroundColor: colors.surface },
