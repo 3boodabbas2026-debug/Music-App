@@ -45,7 +45,7 @@ type StarSpec = {
   color: string;
 };
 
-const STAR_COUNT = 28;
+const STAR_COUNT = 42;
 
 function makeStars(): StarSpec[] {
   const rand = mulberry32(20260708);
@@ -307,20 +307,79 @@ function ShootingStar() {
   );
 }
 
-/** Two overlapping pine treelines along the bottom — depth, barely-there. */
+/** Three overlapping pine treelines along the bottom — the forest is the
+ * point of the theme, so this layer needs to actually read as trees, not
+ * just a thin dark strip. Taller and denser than the original, with a third
+ * far-back ridge for depth and a brighter mist band resting on the canopy. */
 function Treeline() {
-  // Jagged peaks across a 100 x 26 viewBox, mirroring the brand mark's pines.
-  const back = 'M0,26 L0,17 L7,10 L13,17 L19,9 L26,17 L33,11 L40,18 L47,8 L55,17 L62,12 L69,18 L76,9 L84,17 L91,12 L100,18 L100,26 Z';
-  const front = 'M0,26 L0,21 L9,13 L17,21 L24,15 L32,22 L41,12 L50,21 L58,16 L66,22 L75,13 L83,21 L90,17 L100,22 L100,26 Z';
+  // Jagged peaks across a 100 x 40 viewBox, mirroring the brand mark's pines.
+  const far = 'M0,40 L0,24 L6,19 L12,24 L18,17 L24,24 L30,20 L36,25 L42,16 L49,24 L55,19 L61,25 L67,16 L74,24 L80,19 L86,25 L92,18 L100,25 L100,40 Z';
+  const back = 'M0,40 L0,26 L7,15 L13,26 L19,13 L26,26 L33,17 L40,27 L47,12 L55,26 L62,18 L69,27 L76,13 L84,26 L91,18 L100,27 L100,40 Z';
+  const front = 'M0,40 L0,32 L9,20 L17,32 L24,24 L32,33 L41,18 L50,32 L58,25 L66,33 L75,20 L83,32 L90,26 L100,33 L100,40 Z';
   return (
     <View pointerEvents="none" style={styles.treeline}>
-      <Svg width="100%" height="100%" viewBox="0 0 100 26" preserveAspectRatio="none">
-        <Path d={back} fill="#0A1410" opacity={0.9} />
+      <Svg width="100%" height="100%" viewBox="0 0 100 40" preserveAspectRatio="none">
+        <Path d={far} fill="#0C1813" opacity={0.65} />
+        <Path d={back} fill="#0A1712" opacity={0.92} />
         <Path d={front} fill="#050805" />
         {/* A breath of teal mist resting on the treetops. */}
-        <Rect x="0" y="6" width="100" height="12" fill={palette.primary} opacity={0.02} />
+        <Rect x="0" y="10" width="100" height="16" fill={palette.primary} opacity={0.045} />
       </Svg>
     </View>
+  );
+}
+
+type FireflySpec = { id: number; x: number; y: number; size: number; duration: number; delay: number };
+
+function makeFireflies(): FireflySpec[] {
+  const rand = mulberry32(9102026);
+  const flies: FireflySpec[] = [];
+  for (let i = 0; i < 9; i += 1) {
+    flies.push({
+      id: i,
+      x: 6 + rand() * 88,
+      // Hover just above the treeline, where fireflies actually would.
+      y: 68 + rand() * 24,
+      size: rand() > 0.7 ? 3 : 2,
+      duration: 3200 + rand() * 2600,
+      delay: rand() * 4000,
+    });
+  }
+  return flies;
+}
+
+/** Warm little sparks drifting just above the treeline — the detail that
+ * turns "dark background with trees" into "a forest at night, alive". */
+function Fireflies() {
+  const flies = useMemo(makeFireflies, []);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {flies.map((fly) => (
+        <Firefly key={fly.id} spec={fly} />
+      ))}
+    </View>
+  );
+}
+
+function Firefly({ spec }: { spec: FireflySpec }) {
+  const t = useLoop(spec.duration, spec.delay);
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: `${spec.x}%`,
+        top: `${spec.y}%`,
+        width: spec.size,
+        height: spec.size,
+        borderRadius: spec.size,
+        backgroundColor: palette.gold,
+        opacity: t.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.15, 0.95, 0.15] }),
+        transform: [
+          { translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, -14] }) },
+          { translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, 8] }) },
+        ],
+      }}
+    />
   );
 }
 
@@ -436,6 +495,7 @@ export const RippleField = memo(function RippleField({ dimmed, accentColor }: Ri
       <ShootingStar />
       <HorizonGlow />
       <Treeline />
+      <Fireflies />
     </View>
   );
 });
@@ -461,7 +521,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: 110,
+    height: 170,
   },
   horizon: {
     position: 'absolute',

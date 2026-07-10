@@ -12,6 +12,12 @@ export type Media = {
   thumbnail_url: string | null;
   recognized_title: string | null;
   recognized_artist: string | null;
+  /** Auto-filled the same moment recognized_title lands — from the Shazam
+   * match's own metadata (genre, release year) or a title-keyword heuristic
+   * (is_remix). Null until a track has been through recognition at least once. */
+  genre: string | null;
+  release_year: number | null;
+  is_remix: boolean | null;
   duration_seconds: number | null;
   created_at: string;
 };

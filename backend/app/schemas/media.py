@@ -16,6 +16,9 @@ class MediaOut(BaseModel):
     thumbnail_url: str | None
     recognized_title: str | None
     recognized_artist: str | None
+    genre: str | None
+    release_year: int | None
+    is_remix: bool | None
     duration_seconds: float | None
     created_at: datetime
 
@@ -26,3 +29,5 @@ class MediaUpdate(BaseModel):
     title: str | None = None
     artist: str | None = None
     album: str | None = None
+    genre: str | None = None
+    release_year: int | None = None

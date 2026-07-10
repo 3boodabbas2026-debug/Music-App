@@ -7,10 +7,12 @@ import * as PlayerService from '../services/audio/PlayerService';
 import * as mediaSession from '../services/audio/mediaSession';
 import * as offlineMedia from '../services/storage/offlineMedia';
 import { tokenStorage } from '../services/storage/tokenStorage';
+import { displayArtist, displayTitle, thumbnailUri } from '../utils/mediaDisplay';
 import { haptics } from '../utils/haptics';
 import { useFavoritesStore } from './favoritesStore';
 import { useLibraryStore } from './libraryStore';
 import { usePlayHistoryStore } from './playHistoryStore';
+import { useVideoPlayerStore } from './videoPlayerStore';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
@@ -181,6 +183,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
   function bindMediaSession(media: Media) {
     mediaSession.updateMetadata(media);
+    PlayerService.setLockScreenActive({
+      title: displayTitle(media),
+      artist: displayArtist(media) ?? 'Unknown artist',
+      albumTitle: media.album ?? 'Duskglen',
+      artworkUrl: thumbnailUri(media) ?? undefined,
+    });
     mediaSession.bindHandlers({
       onPlay: () => get().toggle(),
       onPause: () => get().toggle(),
@@ -276,6 +284,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
   }
 
   async function load(media: Media, options: PlayerService.LoadOptions = {}) {
+    // Audio and video are never meant to play at once — see GlobalVideoStage,
+    // which is the one place actually holding the video player instance.
+    useVideoPlayerStore.getState().requestPause();
     unsubscribePlayback?.();
     unsubscribeAmplitude?.();
     const { uri, headers } = await resolvePlaybackSource(media);
@@ -451,7 +462,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
 
     toggle() {
       haptics.toggle();
-      const { restored, currentTime } = get();
+      const { restored, currentTime, playing } = get();
+      if (!playing) useVideoPlayerStore.getState().requestPause();
       if (restored) {
         // Resuming a restored session: the element is loaded and paused at the
         // saved position — just play.
@@ -471,6 +483,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       unsubscribeAmplitude = null;
       clearSleepTimer();
       PlayerService.stopAndRelease();
+      PlayerService.clearLockScreenControls();
       mediaSession.clear();
       AsyncStorage.removeItem(SESSION_KEY).catch(() => {});
       set({

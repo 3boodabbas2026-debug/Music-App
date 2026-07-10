@@ -51,6 +51,18 @@ def looks_like_garbage_title(title: str | None) -> bool:
     return has_digit or case_flips >= 2
 
 
+# Shazam doesn't hand back a boolean "is this a remix" field — this is a
+# plain keyword scan over the matched title, cheap and good enough to flag
+# the common cases (title usually carries "(Remix)", "(Live)", etc.).
+_REMIX_KEYWORDS_RE = re.compile(
+    r"\b(remix|rmx|mashup|bootleg|edit|flip|rework|vip mix|extended mix|club mix)\b", re.IGNORECASE
+)
+
+
+def looks_like_remix_title(title: str | None) -> bool:
+    return bool(title and _REMIX_KEYWORDS_RE.search(title))
+
+
 async def fail_orphaned_jobs() -> None:
     """Jobs run as in-process BackgroundTasks, so a server restart silently
     kills any in-flight work while the Job row stays IN_PROGRESS forever
@@ -428,6 +440,11 @@ async def run_recognition_job(
                     media.recognized_artist = match.artist
                     if not media.thumbnail_url:
                         media.thumbnail_url = match.thumbnail_url
+                    if not media.album and match.album:
+                        media.album = match.album
+                    media.genre = match.genre
+                    media.release_year = match.release_year
+                    media.is_remix = looks_like_remix_title(match.title)
                     await session.commit()
 
             await _touch_job(

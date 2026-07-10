@@ -20,6 +20,7 @@ import { GradientText } from '../ui/GradientText';
 import { PressableScale } from '../ui/PressableScale';
 import { streamUrl } from '../../services/api/library';
 import { tokenStorage } from '../../services/storage/tokenStorage';
+import * as PlayerService from '../../services/audio/PlayerService';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useVideoPlayerStore } from '../../store/videoPlayerStore';
 import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
@@ -40,6 +41,7 @@ export function GlobalVideoStage() {
   const items = useLibraryStore((s) => s.items);
   const mediaId = useVideoPlayerStore((s) => s.mediaId);
   const mode = useVideoPlayerStore((s) => s.mode);
+  const pauseRequestedAt = useVideoPlayerStore((s) => s.pauseRequestedAt);
   const setMediaId = useVideoPlayerStore((s) => s.setMediaId);
   const minimize = useVideoPlayerStore((s) => s.minimize);
   const expand = useVideoPlayerStore((s) => s.expand);
@@ -102,6 +104,19 @@ export function GlobalVideoStage() {
     const subscription = player.addListener('playingChange', ({ isPlaying: playing }) => setIsPlaying(playing));
     return () => subscription.remove();
   }, [player]);
+
+  // Audio and video are never meant to sound at once: whenever the video
+  // starts (or resumes) playing, pause whatever track is in the audio player.
+  useEffect(() => {
+    if (isPlaying) PlayerService.pausePlayback();
+  }, [isPlaying]);
+
+  // The reverse direction — playerStore calls requestPause() the moment audio
+  // is about to play, and this is the one place that actually holds the video
+  // player instance to act on it.
+  useEffect(() => {
+    if (pauseRequestedAt) player.pause();
+  }, [pauseRequestedAt, player]);
 
   // Mini window drag — clamped to screen bounds, released position sticks.
   const pan = useRef(new Animated.ValueXY({ x: 12, y: 80 })).current;

@@ -39,6 +39,13 @@ class Media(Base):
 
     recognized_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     recognized_artist: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Auto-filled from the same Shazam match that resolves recognized_title —
+    # genre/release_year come straight from Shazam's metadata; is_remix is a
+    # cheap title-keyword heuristic (see job_engine._looks_like_remix), not a
+    # field Shazam provides directly.
+    genre: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    release_year: Mapped[int | None] = mapped_column(nullable=True)
+    is_remix: Mapped[bool | None] = mapped_column(nullable=True)
 
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     file_path: Mapped[str] = mapped_column(Text)

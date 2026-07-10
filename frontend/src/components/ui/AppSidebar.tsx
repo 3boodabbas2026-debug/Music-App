@@ -14,12 +14,15 @@ import { BrandMark } from './BrandMark';
 import type { MainTabParamList } from '../../navigation/types';
 
 type NavDestination =
-  | { kind: 'tab'; tab: keyof MainTabParamList; icon: keyof typeof Ionicons.glyphMap; label: string }
+  | { kind: 'tab'; tab: keyof MainTabParamList; icon: keyof typeof Ionicons.glyphMap; label: string; params?: MainTabParamList[keyof MainTabParamList] }
   | { kind: 'stack'; route: 'Jobs' | 'Telegram' | 'Settings' | 'Player' | 'Admin'; icon: keyof typeof Ionicons.glyphMap; label: string };
 
 const BASE_NAV_ITEMS: NavDestination[] = [
   { kind: 'tab', tab: 'Home', icon: 'compass-outline', label: 'Dashboard' },
-  { kind: 'tab', tab: 'Library', icon: 'albums-outline', label: 'Library' },
+  { kind: 'tab', tab: 'Library', icon: 'albums-outline', label: 'Library', params: { tab: 'all' } },
+  // A dedicated shortcut — playlists otherwise live one tap deeper as a tab
+  // chip inside Library, easy to miss entirely on first use.
+  { kind: 'tab', tab: 'Library', icon: 'list-outline', label: 'Playlists', params: { tab: 'playlists' } },
   { kind: 'tab', tab: 'Recognize', icon: 'mic-outline', label: 'Scan a song' },
   { kind: 'stack', route: 'Jobs', icon: 'download-outline', label: 'Downloads' },
   { kind: 'stack', route: 'Telegram', icon: 'paper-plane-outline', label: 'Telegram' },
@@ -32,7 +35,7 @@ const BASE_NAV_ITEMS: NavDestination[] = [
 const ADMIN_NAV_ITEM: NavDestination = { kind: 'stack', route: 'Admin', icon: 'shield-checkmark-outline', label: 'Admin' };
 
 function destKey(dest: NavDestination): string {
-  return dest.kind === 'tab' ? dest.tab : dest.route;
+  return dest.kind === 'tab' ? `${dest.tab}:${dest.label}` : dest.route;
 }
 
 /**
@@ -71,7 +74,7 @@ export function AppSidebar({
   function go(dest: NavDestination) {
     if (!navigationRef.isReady()) return;
     if (dest.kind === 'tab') {
-      navigationRef.navigate('Main', { screen: dest.tab });
+      navigationRef.navigate('Main', { screen: dest.tab, params: dest.params } as never);
     } else {
       navigationRef.navigate(dest.route);
     }
@@ -98,7 +101,10 @@ export function AppSidebar({
       <View style={styles.navList}>
         {navItems.map((dest) => {
           const key = destKey(dest);
-          const focused = dest.kind === 'tab' && dest.tab === activeTab;
+          // The Playlists shortcut shares the Library tab route but isn't
+          // itself a distinct nav state we can detect from here — only the
+          // plain Library entry reflects the tab bar's active state.
+          const focused = dest.kind === 'tab' && dest.tab === activeTab && dest.label !== 'Playlists';
           const hovered = hoveredKey === key;
           return (
             <Pressable

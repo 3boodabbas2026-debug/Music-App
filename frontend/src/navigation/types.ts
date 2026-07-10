@@ -5,10 +5,12 @@ export type AuthStackParamList = {
   Register: undefined;
 };
 
+export type LibraryTab = 'all' | 'audio' | 'video' | 'favorites' | 'playlists';
+
 export type MainTabParamList = {
   Home: undefined;
   Recognize: undefined;
-  Library: undefined;
+  Library: { tab?: LibraryTab } | undefined;
 };
 
 export type RootStackParamList = {

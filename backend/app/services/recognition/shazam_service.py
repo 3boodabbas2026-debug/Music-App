@@ -30,6 +30,7 @@ class RecognitionMatch:
     thumbnail_url: Optional[str]
     shazam_key: Optional[str]
     genre: Optional[str]
+    release_year: Optional[int]
 
 
 def _clean_text(value: Any) -> Optional[str]:
@@ -68,11 +69,17 @@ def _extract_match(raw: dict[str, Any]) -> Optional[RecognitionMatch]:
     genres = track.get("genres") or {}
     sections = track.get("sections") or []
     album = None
+    release_year = None
     for section in sections:
         if section.get("type") == "SONG":
             for meta in section.get("metadata", []):
-                if meta.get("title") == "Album":
+                title_field = meta.get("title")
+                if title_field == "Album":
                     album = _clean_text(meta.get("text"))
+                elif title_field == "Released":
+                    year_match = re.search(r"\d{4}", str(meta.get("text") or ""))
+                    if year_match:
+                        release_year = int(year_match.group())
 
     return RecognitionMatch(
         title=title,
@@ -81,6 +88,7 @@ def _extract_match(raw: dict[str, Any]) -> Optional[RecognitionMatch]:
         thumbnail_url=images.get("coverarthq") or images.get("coverart") or images.get("background"),
         shazam_key=str(track.get("key")) if track.get("key") else None,
         genre=genres.get("primary"),
+        release_year=release_year,
     )
 
 

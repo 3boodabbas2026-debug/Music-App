@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -44,7 +44,7 @@ import { usePlaylistStore } from '../store/playlistStore';
 import { useVideoPlayerStore } from '../store/videoPlayerStore';
 import { toast } from '../store/toastStore';
 import { colors, gradients, layout, radii, shadows, spacing, typography } from '../theme/tokens';
-import type { RootStackParamList } from '../navigation/types';
+import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 
 type Tab = 'all' | 'audio' | 'video' | 'favorites' | 'playlists';
 type SortMode = 'newest' | 'title' | 'artist' | 'longest';
@@ -55,7 +55,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'audio', label: 'Audio' },
   { key: 'video', label: 'Video' },
   { key: 'favorites', label: '♥' },
-  { key: 'playlists', label: 'Lists' },
+  { key: 'playlists', label: 'Playlists' },
 ];
 
 const SORT_LABEL: Record<SortMode, string> = {
@@ -79,10 +79,21 @@ function displayArtist(media: Media): string {
   return artistOf(media) ?? 'Unknown artist';
 }
 
+/** Genre / year / remix line from auto-recognition metadata — empty string
+ * (falsy) until a track has actually been through recognition at least once. */
+function metadataLine(media: Media): string {
+  const parts: string[] = [];
+  if (media.genre) parts.push(media.genre);
+  if (media.release_year) parts.push(String(media.release_year));
+  if (media.is_remix) parts.push('Remix');
+  return parts.join(' · ');
+}
+
 const LIBRARY_MAX_WIDTH = 1160;
 
 export function LibraryScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<MainTabParamList, 'Library'>>();
   const { width } = useWindowDimensions();
   const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -99,13 +110,20 @@ export function LibraryScreen() {
   const refreshPlaylists = usePlaylistStore((s) => s.refresh);
 
   const [query, setQuery] = useState('');
-  const [tab, setTab] = useState<Tab>('all');
+  const [tab, setTab] = useState<Tab>(route.params?.tab ?? 'all');
+
+  // Sidebar's "Playlists" shortcut re-navigates here with a fresh `tab` param
+  // even when this screen is already mounted — react to that, not just the
+  // initial state above.
+  useEffect(() => {
+    if (route.params?.tab) setTab(route.params.tab);
+  }, [route.params?.tab]);
   const [sort, setSort] = useState<SortMode>('newest');
   const [view, setView] = useState<ViewMode>('grid');
   const [sheetMedia, setSheetMedia] = useState<Media | null>(null);
   const [editMedia, setEditMedia] = useState<Media | null>(null);
   const [playlistDetailId, setPlaylistDetailId] = useState<string | null>(null);
-  const [playlistPickMedia, setPlaylistPickMedia] = useState<Media | null>(null);
+  const [playlistPickTarget, setPlaylistPickTarget] = useState<{ ids: string[]; label: string } | null>(null);
   const [offlineIds, setOfflineIds] = useState<Record<string, boolean>>({});
   const [savingOffline, setSavingOffline] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
@@ -469,6 +487,18 @@ export function LibraryScreen() {
               <Text style={styles.bulkButtonLabel}>Cancel</Text>
             </Pressable>
             <Pressable
+              onPress={() => {
+                const ids = Object.keys(selectedIds);
+                if (ids.length === 0) return;
+                setPlaylistPickTarget({ ids, label: `${ids.length} track${ids.length === 1 ? '' : 's'}` });
+              }}
+              disabled={Object.keys(selectedIds).length === 0}
+              style={[styles.bulkButton, Object.keys(selectedIds).length === 0 && { opacity: 0.4 }]}
+            >
+              <Ionicons name="list" size={15} color={colors.textSecondary} />
+              <Text style={styles.bulkButtonLabel}>Move to playlist</Text>
+            </Pressable>
+            <Pressable
               onPress={handleDeleteSelected}
               disabled={Object.keys(selectedIds).length === 0}
               style={[styles.bulkButton, styles.bulkButtonDanger, Object.keys(selectedIds).length === 0 && { opacity: 0.4 }]}
@@ -503,6 +533,11 @@ export function LibraryScreen() {
                   <Text numberOfLines={1} style={styles.sheetSub}>
                     {displayArtist(sheetMedia)} · {sheetMedia.media_type} · {formatDuration(sheetMedia.duration_seconds)}
                   </Text>
+                  {metadataLine(sheetMedia) && (
+                    <Text numberOfLines={1} style={[styles.sheetSub, { color: colors.cyan }]}>
+                      {metadataLine(sheetMedia)}
+                    </Text>
+                  )}
                 </View>
               </View>
 
@@ -538,7 +573,7 @@ export function LibraryScreen() {
               <SheetAction
                 icon="list"
                 label="Add to playlist"
-                onPress={() => { setPlaylistPickMedia(sheetMedia); setSheetMedia(null); }}
+                onPress={() => { setPlaylistPickTarget({ ids: [sheetMedia.id], label: displayTitle(sheetMedia) }); setSheetMedia(null); }}
               />
               <SheetAction
                 icon="person-outline"
@@ -591,8 +626,16 @@ export function LibraryScreen() {
         />
       )}
 
-      {playlistPickMedia && (
-        <PlaylistPickerModal media={playlistPickMedia} onClose={() => setPlaylistPickMedia(null)} />
+      {playlistPickTarget && (
+        <PlaylistPickerModal
+          mediaIds={playlistPickTarget.ids}
+          label={playlistPickTarget.label}
+          onClose={() => setPlaylistPickTarget(null)}
+          onDone={() => {
+            setPlaylistPickTarget(null);
+            if (selectMode) exitSelectMode();
+          }}
+        />
       )}
 
       {playlistDetailId && (
@@ -688,7 +731,17 @@ function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; onOpen: (
   );
 }
 
-function PlaylistPickerModal({ media, onClose }: { media: Media; onClose: () => void }) {
+function PlaylistPickerModal({
+  mediaIds,
+  label,
+  onClose,
+  onDone,
+}: {
+  mediaIds: string[];
+  label: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const { isDesktop } = useResponsive();
   const playlists = usePlaylistStore((s) => s.playlists);
@@ -697,12 +750,24 @@ function PlaylistPickerModal({ media, onClose }: { media: Media; onClose: () => 
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // Sequential, not Promise.all — addItem's store update replaces the whole
+  // playlist with whatever the server just returned, so concurrent requests
+  // for the same playlist can race and clobber each other's item.
+  async function addAllTo(playlistId: string) {
+    for (const mediaId of mediaIds) {
+      await addItem(playlistId, mediaId);
+    }
+  }
+
   async function pick(playlist: Playlist) {
     setBusy(true);
     try {
-      await addItem(playlist.id, media.id);
-      toast(`Added to “${playlist.name}”`, 'success');
-      onClose();
+      await addAllTo(playlist.id);
+      toast(
+        mediaIds.length > 1 ? `Added ${mediaIds.length} tracks to “${playlist.name}”` : `Added to “${playlist.name}”`,
+        'success',
+      );
+      onDone();
     } catch {
       toast("Couldn't add to that playlist", 'error');
       setBusy(false);
@@ -715,9 +780,12 @@ function PlaylistPickerModal({ media, onClose }: { media: Media; onClose: () => 
     setBusy(true);
     try {
       const playlist = await createPlaylist(trimmed);
-      await addItem(playlist.id, media.id);
-      toast(`Added to “${playlist.name}”`, 'success');
-      onClose();
+      await addAllTo(playlist.id);
+      toast(
+        mediaIds.length > 1 ? `Added ${mediaIds.length} tracks to “${playlist.name}”` : `Added to “${playlist.name}”`,
+        'success',
+      );
+      onDone();
     } catch {
       toast("Couldn't create that playlist", 'error');
       setBusy(false);
@@ -731,7 +799,7 @@ function PlaylistPickerModal({ media, onClose }: { media: Media; onClose: () => 
         <View style={[styles.sheet, isDesktop && styles.sheetDesktop, { paddingBottom: insets.bottom + spacing.lg }]}>
           {!isDesktop && <View style={styles.sheetHandle} />}
           <Text style={styles.editTitle}>Add to playlist</Text>
-          <Text numberOfLines={1} style={styles.sheetSub}>{displayTitle(media)}</Text>
+          <Text numberOfLines={1} style={styles.sheetSub}>{label}</Text>
 
           <View style={[styles.createRow, { marginTop: spacing.md }]}>
             <TextInput
