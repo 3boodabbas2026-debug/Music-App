@@ -14,6 +14,7 @@ import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { usePlayHistoryStore } from '../store/playHistoryStore';
 import { colors, gradients, radii, spacing, typography } from '../theme/tokens';
+import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../utils/mediaDisplay';
 import type { RootStackParamList } from '../navigation/types';
 
 const WINDOW_DAYS = 30;
@@ -92,15 +93,24 @@ export function ReplayScreen() {
                         <View style={styles.trackContent}>
                           <Text style={styles.rank}>{i + 1}</Text>
                           <View style={styles.cover}>
-                            {media?.thumbnail_url ? (
-                              <FadeImage uri={media.thumbnail_url} style={StyleSheet.absoluteFill as object} />
+                            {media && thumbnailUri(media) ? (
+                              <FadeImage uri={thumbnailUri(media)!} style={StyleSheet.absoluteFill as object} />
                             ) : (
-                              <LinearGradient colors={gradients.coverFallback} style={StyleSheet.absoluteFill} />
+                              <LinearGradient
+                                colors={media ? coverGradient(media.id) : gradients.coverFallback}
+                                style={StyleSheet.absoluteFill}
+                              />
                             )}
                           </View>
                           <View style={{ flex: 1 }}>
-                            <Text numberOfLines={1} style={styles.trackTitle}>{entry.event.title}</Text>
-                            <Text numberOfLines={1} style={styles.trackArtist}>{entry.event.artist}</Text>
+                            {/* Live library metadata beats the snapshot recorded at play time —
+                                old events keep pre-recognition garbage titles baked in forever. */}
+                            <Text numberOfLines={1} style={styles.trackTitle}>
+                              {media ? displayTitle(media) : entry.event.title}
+                            </Text>
+                            <Text numberOfLines={1} style={styles.trackArtist}>
+                              {media ? displayArtist(media) ?? entry.event.artist : entry.event.artist}
+                            </Text>
                           </View>
                           <View style={styles.countChip}>
                             <Text style={styles.countText}>{entry.count}×</Text>

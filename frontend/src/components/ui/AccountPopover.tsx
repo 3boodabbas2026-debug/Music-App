@@ -1,5 +1,4 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 
 import { RAIL_WIDTH } from '../../hooks/useResponsive';
@@ -31,7 +30,6 @@ export function AccountPopover() {
     <>
       <Pressable style={styles.backdrop} onPress={close} />
       <View style={styles.card}>
-        <BlurView tint="dark" intensity={70} style={StyleSheet.absoluteFill} />
         <View style={styles.overlay} />
         <View style={styles.header}>
           <Text numberOfLines={1} style={styles.name}>
@@ -81,7 +79,7 @@ const styles = StyleSheet.create({
   },
   overlay: {
     ...(StyleSheet.absoluteFill as object),
-    backgroundColor: 'rgba(10,15,13,0.88)',
+    backgroundColor: 'rgba(10,15,13,0.97)',
   },
   header: {
     paddingHorizontal: spacing.md,

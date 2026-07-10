@@ -38,11 +38,14 @@ type StarSpec = {
   y: number;
   size: number;
   baseOpacity: number;
-  channel: number;
+  /** Static stars never animate — most of the sky just *is*, which is both
+   * calmer to look at and much cheaper (every animated star is a per-frame
+   * JS style write on web, where there is no native animation driver). */
+  twinkles: boolean;
   color: string;
 };
 
-const STAR_COUNT = 48;
+const STAR_COUNT = 28;
 
 function makeStars(): StarSpec[] {
   const rand = mulberry32(20260708);
@@ -55,8 +58,9 @@ function makeStars(): StarSpec[] {
       // Keep stars out of the treeline band at the bottom.
       y: rand() * 82,
       size: roll > 0.92 ? 2.5 : roll > 0.7 ? 2 : 1.5,
-      baseOpacity: 0.14 + rand() * 0.4,
-      channel: Math.floor(rand() * 3),
+      // Brighter than the old sky — fewer stars, but each one earns its place.
+      baseOpacity: 0.25 + rand() * 0.45,
+      twinkles: i % 3 === 0,
       // Mostly moon-silver, with a rare teal or gold spark.
       color: roll > 0.94 ? palette.gold : roll > 0.86 ? palette.primary : palette.textPrimary,
     });
@@ -82,29 +86,40 @@ function useLoop(duration: number, delay = 0) {
 
 function StarField() {
   const stars = useMemo(makeStars, []);
-  // Three shared twinkle channels at different tempos — each star rides one.
-  const channels = [useLoop(2600), useLoop(3900, 700), useLoop(5400, 1600)];
+  // One shared twinkle channel — a third of the stars breathe on it, the
+  // rest are plain static views that cost nothing after first paint.
+  const twinkle = useLoop(4200);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {stars.map((star) => (
-        <Animated.View
-          key={star.id}
-          style={{
-            position: 'absolute',
-            left: `${star.x}%`,
-            top: `${star.y}%`,
-            width: star.size,
-            height: star.size,
-            borderRadius: star.size / 2,
-            backgroundColor: star.color,
-            opacity: channels[star.channel].interpolate({
-              inputRange: [0, 1],
-              outputRange: [star.baseOpacity * 0.35, star.baseOpacity],
-            }),
-          }}
-        />
-      ))}
+      {stars.map((star) => {
+        const base = {
+          position: 'absolute' as const,
+          left: `${star.x}%` as const,
+          top: `${star.y}%` as const,
+          width: star.size,
+          height: star.size,
+          borderRadius: star.size / 2,
+          backgroundColor: star.color,
+        };
+        if (!star.twinkles) {
+          return <View key={star.id} style={[base, { opacity: star.baseOpacity }]} />;
+        }
+        return (
+          <Animated.View
+            key={star.id}
+            style={[
+              base,
+              {
+                opacity: twinkle.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [star.baseOpacity * 0.35, star.baseOpacity],
+                }),
+              },
+            ]}
+          />
+        );
+      })}
     </View>
   );
 }
@@ -316,33 +331,39 @@ type RingSpec = {
   opacity: number;
   x: number;
   y: number;
-  duration: number;
 };
 
 const RINGS: RingSpec[] = [
-  { id: 'signal', size: 620, color: '#2FBFAA', opacity: 0.05, x: -180, y: -160, duration: 32000 },
-  { id: 'wave', size: 720, color: '#9B8FD9', opacity: 0.045, x: 220, y: 420, duration: 40000 },
+  { id: 'signal', size: 620, color: '#2FBFAA', opacity: 0.05, x: -180, y: -160 },
+  { id: 'wave', size: 720, color: '#9B8FD9', opacity: 0.045, x: 220, y: 420 },
 ];
 
+/** Static on purpose — the rings' old 32/40-second pulse was invisible in
+ * practice but still cost two always-running animation loops. */
 function Ring({ spec }: { spec: RingSpec }) {
-  const pulse = useLoop(spec.duration);
   const r = spec.size / 2;
   return (
-    <Animated.View
+    <View
       pointerEvents="none"
-      style={{
-        position: 'absolute',
-        left: spec.x,
-        top: spec.y,
-        transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }) }],
-        opacity: pulse.interpolate({ inputRange: [0, 0.5, 1], outputRange: [spec.opacity, spec.opacity * 1.4, spec.opacity] }),
-      }}
+      style={{ position: 'absolute', left: spec.x, top: spec.y, opacity: spec.opacity * 1.2 }}
     >
       <Svg width={spec.size} height={spec.size}>
         <Circle cx={r} cy={r} r={r - 40} stroke={spec.color} strokeWidth={1.5} fill="none" />
         <Circle cx={r} cy={r} r={r - 100} stroke={spec.color} strokeWidth={1} fill="none" />
       </Svg>
-    </Animated.View>
+    </View>
+  );
+}
+
+/** A warm dusk glow resting on the horizon just above the treeline — static,
+ * free after first paint, and the single biggest "prettier sky" change. */
+function HorizonGlow() {
+  return (
+    <LinearGradient
+      pointerEvents="none"
+      colors={['rgba(47,191,170,0)', 'rgba(47,191,170,0.05)', 'rgba(232,196,104,0.07)']}
+      style={styles.horizon}
+    />
   );
 }
 
@@ -413,6 +434,7 @@ export const RippleField = memo(function RippleField({ dimmed, accentColor }: Ri
       ))}
       <StarField />
       <ShootingStar />
+      <HorizonGlow />
       <Treeline />
     </View>
   );
@@ -440,5 +462,12 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 110,
+  },
+  horizon: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 260,
   },
 });

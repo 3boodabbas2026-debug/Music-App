@@ -31,8 +31,11 @@ import { PressableScale } from '../components/ui/PressableScale';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
 import * as libraryApi from '../services/api/library';
+import * as recognitionsApi from '../services/api/recognitions';
+import { watchJob } from '../services/api/jobSocket';
 import type { Media, Playlist } from '../services/api/types';
 import * as offlineMedia from '../services/storage/offlineMedia';
+import { coverGradient, coverGlyphColor, displayArtist as artistOf, displayTitle, looksLikeGarbageTitle, thumbnailUri } from '../utils/mediaDisplay';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { MAX_PINS, usePinStore } from '../store/pinStore';
@@ -70,12 +73,10 @@ function formatDuration(seconds: number | null): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function displayTitle(media: Media): string {
-  return media.title ?? media.recognized_title ?? 'Untitled';
-}
-
+/** Artist for display in this screen — falls back to a muted label where a
+ * line of text is structurally expected (sheet subtitle, sort). */
 function displayArtist(media: Media): string {
-  return media.artist ?? media.recognized_artist ?? 'Unknown artist';
+  return artistOf(media) ?? 'Unknown artist';
 }
 
 const LIBRARY_MAX_WIDTH = 1160;
@@ -109,6 +110,9 @@ export function LibraryScreen() {
   const [savingOffline, setSavingOffline] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, true>>({});
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [naming, setNaming] = useState(false);
 
   useEffect(() => {
     refresh();
@@ -208,11 +212,49 @@ export function LibraryScreen() {
 
   async function handleDelete(media: Media) {
     setSheetMedia(null);
+    setConfirmDelete(false);
     try {
       await remove(media.id);
       toast('Removed from your collection', 'success');
     } catch {
       toast("Couldn't delete that track", 'error');
+    }
+  }
+
+  /** Batch-name every un-recognized audio track — same flow Settings offers,
+   * surfaced here where the gibberish names are actually staring at you. */
+  async function handleFixNames() {
+    if (naming) return;
+    setNaming(true);
+    try {
+      const jobs = await recognitionsApi.recognizeWholeLibrary();
+      if (jobs.length === 0) {
+        toast('Every track already has a name', 'success');
+        setNaming(false);
+        return;
+      }
+      toast(`Naming ${jobs.length} track${jobs.length === 1 ? '' : 's'}…`, 'info');
+      let done = 0;
+      let named = 0;
+      jobs.forEach((job) => {
+        const unsubscribe = watchJob(job.id, (update) => {
+          if (update.status === 'complete' || update.status === 'failed' || update.status === 'cancelled') {
+            done += 1;
+            if (update.stage_label === 'matched') {
+              named += 1;
+              if (update.result_media) upsert(update.result_media);
+            }
+            unsubscribe();
+            if (done === jobs.length) {
+              setNaming(false);
+              toast(`Named ${named} of ${jobs.length} tracks`, named > 0 ? 'success' : 'info');
+            }
+          }
+        });
+      });
+    } catch {
+      toast("Couldn't start naming", 'error');
+      setNaming(false);
     }
   }
 
@@ -228,11 +270,23 @@ export function LibraryScreen() {
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds({});
+    setConfirmBulkDelete(false);
   }
+
+  // A newly opened (or closed) sheet always starts with the delete un-armed.
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [sheetMedia]);
 
   async function handleDeleteSelected() {
     const ids = Object.keys(selectedIds);
     if (ids.length === 0) return;
+    if (!confirmBulkDelete) {
+      // First tap arms the button; the second actually deletes.
+      setConfirmBulkDelete(true);
+      return;
+    }
+    setConfirmBulkDelete(false);
     try {
       await Promise.all(ids.map((id) => remove(id)));
       toast(`Removed ${ids.length} track${ids.length === 1 ? '' : 's'}`, 'success');
@@ -242,6 +296,14 @@ export function LibraryScreen() {
       exitSelectMode();
     }
   }
+
+  const unnamedCount = useMemo(
+    () =>
+      items.filter(
+        (m) => m.media_type === 'audio' && !m.recognized_title && looksLikeGarbageTitle(m.title),
+      ).length,
+    [items],
+  );
 
   // Grid geometry: 2 columns on phones, as many ~220px cards as fit on desktop.
   const containerWidth = isDesktop
@@ -298,6 +360,18 @@ export function LibraryScreen() {
           </View>
           {tab !== 'playlists' && (
             <View style={styles.toolRow}>
+              {unnamedCount > 0 && (
+                <Pressable onPress={handleFixNames} disabled={naming} style={[styles.toolChip, styles.fixNamesChip]}>
+                  {naming ? (
+                    <ActivityIndicator size="small" color={colors.cyan} />
+                  ) : (
+                    <Ionicons name="sparkles" size={13} color={colors.cyan} />
+                  )}
+                  <Text style={[styles.toolLabel, { color: colors.cyan }]}>
+                    {naming ? 'Naming…' : `Fix ${unnamedCount} name${unnamedCount === 1 ? '' : 's'}`}
+                  </Text>
+                </Pressable>
+              )}
               <Pressable
                 onPress={() => setSort(SORT_ORDER[(SORT_ORDER.indexOf(sort) + 1) % SORT_ORDER.length])}
                 style={styles.toolChip}
@@ -339,6 +413,12 @@ export function LibraryScreen() {
           refreshing={isLoading}
           onRefresh={() => refresh(query || undefined)}
           showsVerticalScrollIndicator={false}
+          // A 100+ item library rendered all at once is real jank in the
+          // WebView — window it so offscreen cards don't exist in the DOM.
+          windowSize={7}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          removeClippedSubviews
           columnWrapperStyle={view === 'grid' ? styles.gridRow : undefined}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
@@ -380,7 +460,9 @@ export function LibraryScreen() {
       {selectMode && (
         <View style={[styles.bulkBar, { paddingBottom: insets.bottom + spacing.sm }]}>
           <Text style={styles.bulkLabel}>
-            {Object.keys(selectedIds).length} selected
+            {Object.keys(selectedIds).length === 0
+              ? 'Tap items to select'
+              : `${Object.keys(selectedIds).length} selected`}
           </Text>
           <View style={styles.bulkActions}>
             <Pressable onPress={exitSelectMode} style={styles.bulkButton}>
@@ -391,8 +473,10 @@ export function LibraryScreen() {
               disabled={Object.keys(selectedIds).length === 0}
               style={[styles.bulkButton, styles.bulkButtonDanger, Object.keys(selectedIds).length === 0 && { opacity: 0.4 }]}
             >
-              <Ionicons name="trash-outline" size={15} color={colors.danger} />
-              <Text style={[styles.bulkButtonLabel, { color: colors.danger }]}>Delete</Text>
+              <Ionicons name={confirmBulkDelete ? 'alert-circle' : 'trash-outline'} size={15} color={colors.danger} />
+              <Text style={[styles.bulkButtonLabel, { color: colors.danger }]}>
+                {confirmBulkDelete ? 'Sure? Tap again' : 'Delete'}
+              </Text>
             </Pressable>
           </View>
         </View>
@@ -407,11 +491,11 @@ export function LibraryScreen() {
             <View style={[styles.sheet, isDesktop && styles.sheetDesktop, { paddingBottom: insets.bottom + spacing.lg }]}>
               {!isDesktop && <View style={styles.sheetHandle} />}
               <View style={styles.sheetHeader}>
-                {sheetMedia.thumbnail_url ? (
-                  <Image source={{ uri: sheetMedia.thumbnail_url }} style={styles.sheetCover} />
+                {thumbnailUri(sheetMedia) ? (
+                  <Image source={{ uri: thumbnailUri(sheetMedia)! }} style={styles.sheetCover} />
                 ) : (
-                  <LinearGradient colors={gradients.coverFallback} style={styles.sheetCover}>
-                    <Ionicons name="musical-notes" size={22} color="rgba(248,250,252,0.4)" />
+                  <LinearGradient colors={coverGradient(sheetMedia.id)} style={styles.sheetCover}>
+                    <Ionicons name="musical-notes" size={22} color={coverGlyphColor(sheetMedia.id)} />
                   </LinearGradient>
                 )}
                 <View style={styles.sheetHeaderText}>
@@ -462,9 +546,18 @@ export function LibraryScreen() {
                 onPress={() => { setQuery(displayArtist(sheetMedia)); setTab('all'); setSheetMedia(null); }}
               />
               <SheetAction
-                icon="create-outline"
-                label="Edit details"
+                icon="pencil"
+                label="Rename / edit details"
                 onPress={() => { setEditMedia(sheetMedia); setSheetMedia(null); }}
+              />
+              <SheetAction
+                icon="checkmark-circle-outline"
+                label="Select multiple…"
+                onPress={() => {
+                  setSelectMode(true);
+                  setSelectedIds({ [sheetMedia.id]: true });
+                  setSheetMedia(null);
+                }}
               />
               <SheetAction icon="download-outline" label="Save file" onPress={() => handleSaveFile(sheetMedia)} />
               {offlineMedia.isSupported() && sheetMedia.media_type === 'audio' && (
@@ -475,7 +568,12 @@ export function LibraryScreen() {
                   onPress={() => handleToggleOffline(sheetMedia)}
                 />
               )}
-              <SheetAction icon="trash-outline" label="Delete" tint={colors.danger} onPress={() => handleDelete(sheetMedia)} />
+              <SheetAction
+                icon={confirmDelete ? 'alert-circle' : 'trash-outline'}
+                label={confirmDelete ? 'Sure? Tap again to delete' : 'Delete'}
+                tint={colors.danger}
+                onPress={() => (confirmDelete ? handleDelete(sheetMedia) : setConfirmDelete(true))}
+              />
             </View>
           </View>
         )}
@@ -562,7 +660,8 @@ function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; onOpen: (
         <EmptyState title="No playlists yet" subtitle="Name one above, then long-press any track to add it." />
       }
       renderItem={({ item }) => {
-        const coverUrl = item.items.find((m) => m.thumbnail_url)?.thumbnail_url ?? null;
+        const coverMedia = item.items.find((m) => m.thumbnail_url);
+        const coverUrl = coverMedia ? thumbnailUri(coverMedia) : null;
         return (
           <Pressable
             onPress={() => onOpen(item.id)}
@@ -752,11 +851,11 @@ function PlaylistDetailModal({
             }
             renderItem={({ item }) => (
               <View style={styles.detailRow}>
-                {item.thumbnail_url ? (
-                  <Image source={{ uri: item.thumbnail_url }} style={styles.detailCover} />
+                {thumbnailUri(item) ? (
+                  <Image source={{ uri: thumbnailUri(item)! }} style={styles.detailCover} />
                 ) : (
-                  <LinearGradient colors={gradients.coverFallback} style={styles.detailCover}>
-                    <Ionicons name="musical-notes" size={14} color="rgba(248,250,252,0.4)" />
+                  <LinearGradient colors={coverGradient(item.id)} style={styles.detailCover}>
+                    <Ionicons name="musical-notes" size={14} color={coverGlyphColor(item.id)} />
                   </LinearGradient>
                 )}
                 <View style={styles.listText}>
@@ -891,6 +990,8 @@ const GridCard = memo(function GridCard({
   onLongPress: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const coverUri = thumbnailUri(media);
+  const artist = artistOf(media);
   return (
     <Pressable
       onPress={onPress}
@@ -900,16 +1001,25 @@ const GridCard = memo(function GridCard({
       onHoverOut={Platform.OS === 'web' ? () => setHovered(false) : undefined}
     >
       <View style={[styles.card, hovered && styles.cardHovered, selected && styles.cardSelected, { width: size, height: size }]}>
-        {media.thumbnail_url ? (
-          <FadeImage uri={media.thumbnail_url} style={StyleSheet.absoluteFill as object} />
+        {coverUri ? (
+          <FadeImage uri={coverUri} style={StyleSheet.absoluteFill as object} />
         ) : (
-          <LinearGradient colors={gradients.coverFallback} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={coverGradient(media.id)}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
         )}
         <LinearGradient colors={gradients.coverScrim} style={styles.scrim} />
 
-        {!media.thumbnail_url && (
+        {!coverUri && (
           <View style={styles.glyphWrap}>
-            <Ionicons name={media.media_type === 'video' ? 'videocam' : 'musical-notes'} size={38} color="rgba(231,235,230,0.3)" />
+            <Ionicons
+              name={media.media_type === 'video' ? 'videocam' : 'musical-notes'}
+              size={38}
+              color={`${coverGlyphColor(media.id)}59`}
+            />
           </View>
         )}
 
@@ -929,33 +1039,30 @@ const GridCard = memo(function GridCard({
           </View>
         )}
 
-        {/* Pointer affordances: a play FAB and an actions chip fade in on hover. */}
+        {/* Always-visible actions chip — hover and long-press exist too, but
+            in a touch WebView neither is discoverable; this is the one tap
+            target every device gets. */}
+        {!selectMode && (
+          <Pressable onPress={onLongPress} style={[styles.moreChip, hovered && styles.moreChipHovered]} hitSlop={8}>
+            <Ionicons name="ellipsis-horizontal" size={15} color={colors.textPrimary} />
+          </Pressable>
+        )}
         {hovered && !selectMode && (
-          <>
-            <Pressable onPress={onLongPress} style={styles.moreChip} hitSlop={6}>
-              <Ionicons name="ellipsis-horizontal" size={15} color={colors.textPrimary} />
-            </Pressable>
-            <View pointerEvents="none" style={styles.playFabWrap}>
-              <LinearGradient
-                colors={colors.gradientPrimary}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.playFab}
-              >
-                <Ionicons
-                  name={media.media_type === 'video' ? 'play' : 'play'}
-                  size={22}
-                  color="#0A0F0D"
-                  style={{ marginLeft: 2 }}
-                />
-              </LinearGradient>
-            </View>
-          </>
+          <View pointerEvents="none" style={styles.playFabWrap}>
+            <LinearGradient
+              colors={colors.gradientPrimary}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.playFab}
+            >
+              <Ionicons name="play" size={22} color="#0A0F0D" style={{ marginLeft: 2 }} />
+            </LinearGradient>
+          </View>
         )}
 
         <View style={styles.meta}>
           <Text numberOfLines={1} style={styles.cardTitle}>{displayTitle(media)}</Text>
-          <Text numberOfLines={1} style={styles.cardArtist}>{displayArtist(media)}</Text>
+          {artist && <Text numberOfLines={1} style={styles.cardArtist}>{artist}</Text>}
         </View>
       </View>
     </Pressable>
@@ -978,6 +1085,8 @@ const ListRow = memo(function ListRow({
   onLongPress: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const coverUri = thumbnailUri(media);
+  const artist = artistOf(media);
   return (
     <Pressable
       onPress={onPress}
@@ -992,16 +1101,20 @@ const ListRow = memo(function ListRow({
           {selected && <Ionicons name="checkmark" size={12} color="#0A0F0D" />}
         </View>
       )}
-      {media.thumbnail_url ? (
-        <FadeImage uri={media.thumbnail_url} style={styles.listCover as object} />
+      {coverUri ? (
+        <FadeImage uri={coverUri} style={styles.listCover as object} />
       ) : (
-        <LinearGradient colors={gradients.coverFallback} style={styles.listCover}>
-          <Ionicons name={media.media_type === 'video' ? 'videocam' : 'musical-notes'} size={16} color="rgba(231,235,230,0.4)" />
+        <LinearGradient colors={coverGradient(media.id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.listCover}>
+          <Ionicons
+            name={media.media_type === 'video' ? 'videocam' : 'musical-notes'}
+            size={16}
+            color={`${coverGlyphColor(media.id)}73`}
+          />
         </LinearGradient>
       )}
       <View style={styles.listText}>
         <Text numberOfLines={1} style={styles.cardTitle}>{displayTitle(media)}</Text>
-        <Text numberOfLines={1} style={styles.cardArtist}>{displayArtist(media)}</Text>
+        {artist && <Text numberOfLines={1} style={styles.cardArtist}>{artist}</Text>}
       </View>
       <Ionicons
         name={media.media_type === 'video' ? 'videocam-outline' : 'musical-notes-outline'}
@@ -1009,8 +1122,8 @@ const ListRow = memo(function ListRow({
         color={colors.textMuted}
       />
       {favorite && <Ionicons name="heart" size={14} color={colors.pink} />}
-      {hovered && !selectMode && (
-        <Pressable onPress={onLongPress} hitSlop={8} style={styles.rowMoreButton}>
+      {!selectMode && (
+        <Pressable onPress={onLongPress} hitSlop={10} style={styles.rowMoreButton}>
           <Ionicons name="ellipsis-horizontal" size={16} color={colors.textSecondary} />
         </Pressable>
       )}
@@ -1093,6 +1206,7 @@ const styles = StyleSheet.create({
   },
   toolLabel: { ...typography.caption, fontSize: 12, color: colors.textSecondary },
   toolChipActive: { backgroundColor: 'rgba(47,191,170,0.18)' },
+  fixNamesChip: { backgroundColor: 'rgba(47,191,170,0.14)', borderWidth: 1, borderColor: 'rgba(47,191,170,0.3)' },
   gridRow: { gap: spacing.md },
   listContent: { gap: spacing.md, paddingBottom: layout.tabBarClearance },
   card: {
@@ -1139,14 +1253,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.sm,
     left: spacing.sm,
-    width: 28,
-    height: 28,
+    width: 30,
+    height: 30,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(5,8,5,0.7)',
+    backgroundColor: 'rgba(5,8,5,0.55)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
   },
+  moreChipHovered: { backgroundColor: 'rgba(5,8,5,0.85)' },
   playFabWrap: {
     position: 'absolute',
     right: spacing.sm + 2,

@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -97,13 +96,14 @@ function GlassDock({ state, navigation }: BottomTabBarProps) {
     >
       <View pointerEvents="box-none" style={styles.dockFrame}>
         <View style={styles.pill}>
-          <BlurView
-            tint="dark"
-            intensity={70}
-            experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-            style={StyleSheet.absoluteFill}
-          />
+          {/* No real blur here — see GlassPanel for why (WebView backdrop-filter
+              cost). A slightly deeper tint + gradient lift reads the same. */}
           <View style={styles.pillOverlay} />
+          <LinearGradient
+            colors={['rgba(231,235,230,0.06)', 'rgba(231,235,230,0)']}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
           <View style={styles.pillRow}>
             {state.routes.map((route, index) => {
               const icon = SIDE_ICONS[route.name as keyof MainTabParamList];
@@ -160,7 +160,6 @@ function NavRail({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View style={[styles.rail, { paddingTop: insets.top + spacing.lg, paddingBottom: insets.bottom + spacing.md }]}>
-      <BlurView tint="dark" intensity={50} style={StyleSheet.absoluteFill} />
       <View style={styles.railOverlay} />
       <AppSidebar variant="rail" activeTab={activeTab} />
     </View>
@@ -211,7 +210,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(10,15,13,0.6)',
+    // Deeper than the old blur-era 0.6 — with no blur behind it, the tint
+    // alone has to keep dock labels legible over busy content.
+    backgroundColor: 'rgba(10,15,13,0.85)',
   },
   pillRow: {
     flex: 1,
@@ -292,6 +293,6 @@ const styles = StyleSheet.create({
   },
   railOverlay: {
     ...(StyleSheet.absoluteFill as object),
-    backgroundColor: 'rgba(5,8,5,0.72)',
+    backgroundColor: 'rgba(5,8,5,0.88)',
   },
 });

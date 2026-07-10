@@ -21,6 +21,7 @@ import { usePinStore } from '../../store/pinStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePlayHistoryStore } from '../../store/playHistoryStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import { coverGradient, coverGlyphColor, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 import { colors, gradients, radii, spacing, typography } from '../../theme/tokens';
 import { WIDGET_LABELS, type WidgetId } from '../../store/dashboardStore';
 
@@ -60,24 +61,24 @@ export function ContinueListeningWidget({ density, accentColor = colors.cyan }: 
       ) : (
         <PressableScale onPress={() => navigationRef.isReady() && navigationRef.navigate('Player')} scaleTo={0.99}>
           <View style={styles.continueHero}>
-            {currentMedia.thumbnail_url && (
-              <CoverBackdrop uri={currentMedia.thumbnail_url} opacity={0.9} blurRadius={25} scrimOpacity={0.4} />
+            {thumbnailUri(currentMedia) && (
+              <CoverBackdrop uri={thumbnailUri(currentMedia)} opacity={0.9} blurRadius={25} scrimOpacity={0.4} />
             )}
             <GlassPanel style={styles.panelCompact} overlayColor="rgba(18,28,24,0.32)">
               <View style={styles.continueRow}>
                 <View style={styles.continueCover}>
-                  {currentMedia.thumbnail_url ? (
-                    <FadeImage uri={currentMedia.thumbnail_url} style={StyleSheet.absoluteFill as object} />
+                  {thumbnailUri(currentMedia) ? (
+                    <FadeImage uri={thumbnailUri(currentMedia)!} style={StyleSheet.absoluteFill as object} />
                   ) : (
-                    <LinearGradient colors={gradients.coverFallback} style={StyleSheet.absoluteFill} />
+                    <LinearGradient colors={coverGradient(currentMedia.id)} style={StyleSheet.absoluteFill} />
                   )}
                 </View>
                 <View style={{ flex: 1, gap: 4 }}>
                   <Text numberOfLines={1} style={styles.continueTitle}>
-                    {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
+                    {displayTitle(currentMedia)}
                   </Text>
                   <Text numberOfLines={1} style={styles.mutedLine}>
-                    {currentMedia.artist ?? currentMedia.recognized_artist ?? 'Unknown artist'} · {restored ? 'Paused' : 'Playing'}
+                    {displayArtist(currentMedia) ? `${displayArtist(currentMedia)} · ` : ''}{restored ? 'Paused' : 'Playing'}
                   </Text>
                   <ProgressBar progress={duration > 0 ? currentTime / duration : 0} />
                 </View>
@@ -198,27 +199,40 @@ export function RecentDownloadsWidget({
 }
 
 export const CoverCard = memo(function CoverCard({ media, size, onPress }: { media: Media; size: number; onPress: () => void }) {
+  const coverUri = thumbnailUri(media);
+  const artist = displayArtist(media);
   return (
     <PressableScale onPress={onPress} scaleTo={0.95}>
       <View style={[styles.coverCard, { width: size, height: size }]}>
-        {media.thumbnail_url ? (
-          <FadeImage uri={media.thumbnail_url} style={StyleSheet.absoluteFill as object} />
+        {coverUri ? (
+          <FadeImage uri={coverUri} style={StyleSheet.absoluteFill as object} />
         ) : (
-          <LinearGradient colors={gradients.coverFallback} style={StyleSheet.absoluteFill} />
+          <LinearGradient
+            colors={coverGradient(media.id)}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
         )}
         <LinearGradient colors={gradients.coverScrim} style={styles.coverScrim} />
-        {!media.thumbnail_url && (
+        {!coverUri && (
           <View style={styles.coverGlyphWrap}>
-            <Ionicons name={media.media_type === 'video' ? 'videocam' : 'musical-notes'} size={34} color="rgba(231,235,230,0.35)" />
+            <Ionicons
+              name={media.media_type === 'video' ? 'videocam' : 'musical-notes'}
+              size={34}
+              color={`${coverGlyphColor(media.id)}59`}
+            />
           </View>
         )}
         <View style={styles.coverMeta}>
           <Text numberOfLines={1} style={styles.coverTitle}>
-            {media.title ?? media.recognized_title ?? 'Untitled'}
+            {displayTitle(media)}
           </Text>
-          <Text numberOfLines={1} style={styles.mutedLine}>
-            {media.artist ?? media.recognized_artist ?? 'Unknown artist'}
-          </Text>
+          {artist && (
+            <Text numberOfLines={1} style={styles.mutedLine}>
+              {artist}
+            </Text>
+          )}
         </View>
       </View>
     </PressableScale>

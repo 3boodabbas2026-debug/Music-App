@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { usePlayerStore } from '../../store/playerStore';
 import type { Media } from '../../services/api/types';
+import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 import { colors, gradients, radii, spacing, typography } from '../../theme/tokens';
 
 function formatDuration(seconds: number | null): string {
@@ -14,11 +15,11 @@ function formatDuration(seconds: number | null): string {
 }
 
 function title(media: Media): string {
-  return media.title ?? media.recognized_title ?? 'Untitled';
+  return displayTitle(media);
 }
 
 function artist(media: Media): string {
-  return media.artist ?? media.recognized_artist ?? 'Unknown artist';
+  return displayArtist(media) ?? 'Unknown artist';
 }
 
 /**
@@ -60,10 +61,10 @@ export function QueueList() {
             <Text style={[styles.index, isCurrent && styles.indexCurrent]}>
               {isCurrent ? (playing ? '▶' : '❚❚') : index + 1}
             </Text>
-            {item.thumbnail_url ? (
-              <Image source={{ uri: item.thumbnail_url }} style={styles.cover} />
+            {thumbnailUri(item) ? (
+              <Image source={{ uri: thumbnailUri(item)! }} style={styles.cover} />
             ) : (
-              <LinearGradient colors={gradients.coverFallback} style={styles.cover}>
+              <LinearGradient colors={coverGradient(item.id)} style={styles.cover}>
                 <Ionicons name="musical-notes" size={13} color="rgba(248,250,252,0.4)" />
               </LinearGradient>
             )}

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { Media } from '../services/api/types';
+import { displayArtist, displayTitle } from '../utils/mediaDisplay';
 
 const STORAGE_KEY = 'sma.playHistory.v1';
 /** Caps the event log so a long listening history doesn't grow AsyncStorage
@@ -58,8 +59,8 @@ export const usePlayHistoryStore = create<PlayHistoryState>((set, get) => ({
   recordPlay(media) {
     const event: PlayEvent = {
       mediaId: media.id,
-      title: media.title ?? media.recognized_title ?? 'Untitled',
-      artist: media.artist ?? media.recognized_artist ?? 'Unknown artist',
+      title: displayTitle(media),
+      artist: displayArtist(media) ?? 'Unknown artist',
       mediaType: media.media_type,
       at: Date.now(),
       durationSeconds: media.duration_seconds ?? 0,

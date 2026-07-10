@@ -4,7 +4,7 @@ from pathlib import Path
 
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.models.media import Media
 from app.models.user import User
 from app.schemas.media import MediaOut, MediaUpdate
+from app.services import thumbnails
 from app.services.admin_events import log_event
 from app.services.storage import backend as storage_backend
 
@@ -85,9 +86,25 @@ async def delete_media(
 ) -> None:
     media = await _get_owned_media(media_id, current_user, db)
     await asyncio.to_thread(storage_backend.delete_file, media.file_path)
+    thumbnails.thumbnail_path_for(media.file_path).unlink(missing_ok=True)
     await log_event(db, "media_deleted", user_id=current_user.id, detail=media.title or media.id)
     await db.delete(media)
     await db.commit()
+
+
+@router.get("/{media_id}/thumbnail", include_in_schema=False)
+async def media_thumbnail(media_id: str, db: AsyncSession = Depends(get_db)) -> FileResponse:
+    """Serves the ffmpeg-generated poster frame for a video. Deliberately
+    unauthenticated: <img> tags can't send Authorization headers, media ids
+    are unguessable UUIDs, and external thumbnail_urls (YouTube's CDN etc.)
+    are public in exactly the same way."""
+    media = await db.get(Media, media_id)
+    if media is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
+    thumb = thumbnails.thumbnail_path_for(media.file_path)
+    if not thumb.exists():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No thumbnail")
+    return FileResponse(thumb, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/{media_id}/stream")

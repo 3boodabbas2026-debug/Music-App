@@ -8,6 +8,7 @@ import { useResponsive } from '../../hooks/useResponsive';
 import { useTrackAccent } from '../../hooks/useTrackAccent';
 import { usePlayerStore } from '../../store/playerStore';
 import { spacing } from '../../theme/tokens';
+import { thumbnailUri } from '../../utils/mediaDisplay';
 
 type Props = PropsWithChildren<{
   /** Cap for the centered content column on desktop. */
@@ -31,8 +32,8 @@ export function ScreenContainer({ children, maxWidth = 1100 }: Props) {
   const isFocused = useIsFocused();
   // Low-frequency (changes once per track, not per tick) — safe to read here
   // without reintroducing the whole-store re-render problem fixed elsewhere.
-  const thumbnailUrl = usePlayerStore((s) => s.currentMedia?.thumbnail_url);
-  const accentColor = useTrackAccent(thumbnailUrl);
+  const rawThumbnail = usePlayerStore((s) => s.currentMedia?.thumbnail_url);
+  const accentColor = useTrackAccent(rawThumbnail ? thumbnailUri({ thumbnail_url: rawThumbnail }) : null);
   return (
     <View style={styles.root}>
       {isFocused && <RippleField accentColor={accentColor} />}

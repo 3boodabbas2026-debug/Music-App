@@ -22,6 +22,7 @@ import { streamUrl } from '../../services/api/library';
 import { tokenStorage } from '../../services/storage/tokenStorage';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useVideoPlayerStore } from '../../store/videoPlayerStore';
+import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 import { colors, gradients, radii, shadows, spacing, typography } from '../../theme/tokens';
 
 const STRIP_CARD_WIDTH = 132;
@@ -44,9 +45,9 @@ export function GlobalVideoStage() {
   const expand = useVideoPlayerStore((s) => s.expand);
   const close = useVideoPlayerStore((s) => s.close);
 
-  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [theater, setTheater] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [videoReady, setVideoReady] = useState(false);
 
   const videoQueue = useMemo(
     () => [...items].filter((m) => m.media_type === 'video').sort((a, b) => b.created_at.localeCompare(a.created_at)),
@@ -62,23 +63,33 @@ export function GlobalVideoStage() {
     p.loop = false;
   });
 
+  // One straight shot from "video chosen" to "player loading": the access
+  // token comes from tokenStorage's in-memory cache (a microtask, not an
+  // AsyncStorage round trip after the first read), so there's no visible
+  // token-fetch → state → replace stutter on every open.
   useEffect(() => {
+    if (!media) return;
     let alive = true;
+    const mediaId = media.id;
+    setVideoReady(false);
     (async () => {
-      if (!media) return;
       const token = await tokenStorage.getAccessToken();
-      const url = token ? `${streamUrl(media.id)}?token=${encodeURIComponent(token)}` : streamUrl(media.id);
-      if (alive) setSourceUrl(url);
-    })();
+      if (!alive) return;
+      const url = token ? `${streamUrl(mediaId)}?token=${encodeURIComponent(token)}` : streamUrl(mediaId);
+      await player.replaceAsync(url);
+      if (alive) player.play();
+    })().catch(() => {});
     return () => {
       alive = false;
     };
-  }, [media?.id]);
+  }, [media?.id, player]);
 
   useEffect(() => {
-    if (!sourceUrl) return;
-    player.replaceAsync(sourceUrl).then(() => player.play()).catch(() => {});
-  }, [sourceUrl, player]);
+    const subscription = player.addListener('statusChange', ({ status }) => {
+      if (status === 'readyToPlay') setVideoReady(true);
+    });
+    return () => subscription.remove();
+  }, [player]);
 
   useEffect(() => {
     const subscription = player.addListener('playToEnd', () => {
@@ -106,8 +117,11 @@ export function GlobalVideoStage() {
       onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
       onPanResponderRelease: () => {
         pan.flattenOffset();
+        // Snap to the nearest left/right edge (like every OS-level PiP) so
+        // the window always rests somewhere intentional, never mid-screen.
         // @ts-expect-error — reading current values to clamp within the viewport.
-        const x = Math.max(8, Math.min(screenWidth - MINI_WIDTH - 8, pan.x._value));
+        const rawX = pan.x._value;
+        const x = rawX + MINI_WIDTH / 2 < screenWidth / 2 ? 12 : screenWidth - MINI_WIDTH - 12;
         // @ts-expect-error
         const y = Math.max(insets.top + 8, Math.min(screenHeight - MINI_HEIGHT - 8, pan.y._value));
         Animated.spring(pan, { toValue: { x, y }, useNativeDriver: false, friction: 8 }).start();
@@ -128,7 +142,7 @@ export function GlobalVideoStage() {
         </Pressable>
         <LinearGradient colors={gradients.coverScrim} style={styles.miniScrim} pointerEvents="none" />
         <Text numberOfLines={1} style={styles.miniTitle} pointerEvents="none">
-          {media.title ?? media.recognized_title ?? 'Untitled'}
+          {displayTitle(media)}
         </Text>
         <View style={styles.miniControls}>
           <Pressable onPress={() => (isPlaying ? player.pause() : player.play())} hitSlop={8} style={styles.miniButton}>
@@ -168,6 +182,22 @@ export function GlobalVideoStage() {
 
       <View style={styles.stage}>
         <VideoView player={player} style={styles.video} nativeControls allowsPictureInPicture contentFit="contain" />
+        {/* While the stream warms up, show the video's own poster frame with
+            a spinner instead of the browser's raw gray play-button box. */}
+        {!videoReady && (
+          <View style={styles.posterWrap} pointerEvents="none">
+            {thumbnailUri(media) ? (
+              <Image source={{ uri: thumbnailUri(media)! }} style={styles.poster} resizeMode="cover" blurRadius={4} />
+            ) : (
+              <LinearGradient colors={coverGradient(media.id)} style={styles.poster} />
+            )}
+            <View style={styles.posterScrim} />
+            <View style={styles.posterSpinner}>
+              <Ionicons name="play-circle" size={54} color="rgba(231,235,230,0.85)" />
+              <Text style={styles.posterLabel}>Loading…</Text>
+            </View>
+          </View>
+        )}
       </View>
 
       {!theater && (
@@ -181,10 +211,10 @@ export function GlobalVideoStage() {
 
             <View style={styles.meta}>
               <GradientText numberOfLines={1} style={styles.title}>
-                {media.title ?? media.recognized_title ?? 'Untitled'}
+                {displayTitle(media)}
               </GradientText>
               <Text numberOfLines={1} style={styles.artist}>
-                {media.artist ?? media.recognized_artist ?? 'Unknown source'}
+                {displayArtist(media) ?? 'Unknown source'}
               </Text>
             </View>
 
@@ -207,15 +237,15 @@ export function GlobalVideoStage() {
                 renderItem={({ item }) => (
                   <PressableScale onPress={() => setMediaId(item.id)} scaleTo={0.95}>
                     <View style={styles.stripCard}>
-                      {item.thumbnail_url ? (
-                        <Image source={{ uri: item.thumbnail_url }} style={styles.stripThumb} />
+                      {thumbnailUri(item) ? (
+                        <Image source={{ uri: thumbnailUri(item)! }} style={styles.stripThumb} />
                       ) : (
-                        <LinearGradient colors={gradients.coverFallback} style={styles.stripThumb}>
+                        <LinearGradient colors={coverGradient(item.id)} style={styles.stripThumb}>
                           <Ionicons name="videocam" size={16} color="rgba(231,235,230,0.4)" />
                         </LinearGradient>
                       )}
                       <Text numberOfLines={1} style={styles.stripTitle}>
-                        {item.title ?? item.recognized_title ?? 'Untitled'}
+                        {displayTitle(item)}
                       </Text>
                     </View>
                   </PressableScale>
@@ -265,6 +295,11 @@ const styles = StyleSheet.create({
   chipLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textSecondary },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   video: { width: '100%', height: '100%' },
+  posterWrap: { ...(StyleSheet.absoluteFill as object), alignItems: 'center', justifyContent: 'center' },
+  poster: { ...(StyleSheet.absoluteFill as object) },
+  posterScrim: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(5,8,5,0.55)' },
+  posterSpinner: { alignItems: 'center', gap: spacing.sm },
+  posterLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textSecondary },
   metaBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, width: '100%', maxWidth: 960, alignSelf: 'center' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   skipButton: {

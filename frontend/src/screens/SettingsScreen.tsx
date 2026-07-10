@@ -21,6 +21,7 @@ import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { toast } from '../store/toastStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
+import { displayArtist, displayTitle } from '../utils/mediaDisplay';
 import type { RootStackParamList } from '../navigation/types';
 
 function SettingSwitch({
@@ -135,8 +136,8 @@ export function SettingsScreen() {
   async function exportLibrary() {
     const payload = JSON.stringify(
       items.map((m) => ({
-        title: m.title ?? m.recognized_title,
-        artist: m.artist ?? m.recognized_artist,
+        title: displayTitle(m),
+        artist: displayArtist(m),
         album: m.album,
         type: m.media_type,
         source: m.source,

@@ -19,6 +19,7 @@ import { WaveformScrubber } from '../components/player/WaveformScrubber';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTrackAccent } from '../hooks/useTrackAccent';
 import { usePlayerStore } from '../store/playerStore';
+import { displayArtist, displayTitle, thumbnailUri } from '../utils/mediaDisplay';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -100,7 +101,8 @@ export function PlayerScreen() {
   const setVolume = usePlayerStore((s) => s.setVolume);
   const toggleMute = usePlayerStore((s) => s.toggleMute);
   const cycleSleepTimer = usePlayerStore((s) => s.cycleSleepTimer);
-  const accentColor = useTrackAccent(currentMedia?.thumbnail_url);
+  const coverUri = currentMedia ? thumbnailUri(currentMedia) : null;
+  const accentColor = useTrackAccent(coverUri);
 
   useEffect(() => {
     if (!sanctuaryMode) {
@@ -144,13 +146,13 @@ export function PlayerScreen() {
     : undefined;
 
   const transport = (
-    <GlassPanel style={styles.dock} overlayColor="rgba(10,15,13,0.6)" edgeColor={accentColor ? `${accentColor}3d` : undefined}>
+    <GlassPanel style={styles.dock} overlayColor="rgba(10,15,13,0.82)" edgeColor={accentColor ? `${accentColor}3d` : undefined}>
       <View style={styles.dockContent}>
         <GradientText numberOfLines={1} style={styles.title}>
-          {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
+          {displayTitle(currentMedia)}
         </GradientText>
         <Text numberOfLines={1} style={styles.artist}>
-          {currentMedia.artist ?? currentMedia.recognized_artist ?? 'Unknown artist'}
+          {displayArtist(currentMedia) ?? 'Unknown artist'}
         </Text>
 
         <WaveformScrubber
@@ -249,7 +251,7 @@ export function PlayerScreen() {
           <Pressable onPress={() => playNext()} style={styles.upNextRow}>
             <Ionicons name="chevron-forward-circle-outline" size={14} color={colors.textMuted} />
             <Text numberOfLines={1} style={styles.upNextText}>
-              Up next · {nextTrack.title ?? nextTrack.recognized_title ?? 'Untitled'}
+              Up next · {displayTitle(nextTrack)}
             </Text>
           </Pressable>
         )}
@@ -296,7 +298,7 @@ export function PlayerScreen() {
     const sanctuarySize = Math.min(width, height) * 0.72;
     return (
       <Pressable style={styles.root} onPress={wakeChrome}>
-        {isFocused && <CoverBackdrop uri={currentMedia.thumbnail_url} />}
+        {isFocused && <CoverBackdrop uri={coverUri} />}
         {isFocused && <RippleField dimmed accentColor={accentColor} />}
         <View style={styles.sanctuaryStage}>
           {isFocused && (
@@ -311,10 +313,10 @@ export function PlayerScreen() {
 
           <View style={styles.sanctuaryMeta}>
             <GradientText numberOfLines={1} style={styles.title}>
-              {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
+              {displayTitle(currentMedia)}
             </GradientText>
             <Text numberOfLines={1} style={styles.artist}>
-              {currentMedia.artist ?? currentMedia.recognized_artist ?? 'Unknown artist'}
+              {displayArtist(currentMedia) ?? 'Unknown artist'}
             </Text>
 
             <View style={styles.sanctuaryProgress}>
@@ -355,7 +357,7 @@ export function PlayerScreen() {
   if (isDesktop) {
     return (
       <View style={styles.root}>
-        {isFocused && <CoverBackdrop uri={currentMedia.thumbnail_url} />}
+        {isFocused && <CoverBackdrop uri={coverUri} />}
         {isFocused && <RippleField dimmed accentColor={accentColor} />}
         <View style={[styles.desktopRow, { paddingTop: insets.top + spacing.xl + 40, paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={styles.desktopStageCol}>
@@ -381,7 +383,7 @@ export function PlayerScreen() {
 
   return (
     <View style={styles.root}>
-      {isFocused && <CoverBackdrop uri={currentMedia.thumbnail_url} />}
+      {isFocused && <CoverBackdrop uri={coverUri} />}
       {isFocused && <RippleField dimmed accentColor={accentColor} />}
 
       <View style={[styles.stage, { height: stageHeight, paddingTop: insets.top }]}>

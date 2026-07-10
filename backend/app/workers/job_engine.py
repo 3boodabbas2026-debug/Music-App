@@ -10,6 +10,7 @@ talk in terms of Job rows, not "however the work happens to execute."
 from __future__ import annotations
 
 import asyncio
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -18,9 +19,10 @@ from yt_dlp.utils import DownloadCancelled
 
 from app.core.config import settings
 from app.db.session import SessionLocal
-from app.models.job import Job, JobStatus
+from app.models.job import Job, JobStatus, JobType
 from app.models.media import Media, MediaSource, MediaType
 from app.schemas.job import JobOut
+from app.services import thumbnails
 from app.services.downloader import ytdlp_service
 from app.services.recognition import shazam_service
 from app.services.admin_events import log_event
@@ -29,6 +31,107 @@ from app.services.storage import local_storage
 from app.workers.broadcaster import broadcaster
 
 _cancelled_job_ids: set[str] = set()
+
+# One long unbroken token mixing cases and/or digits — the shape of base64
+# blobs, hex hashes, and numeric IDs that Telegram/yt-dlp sometimes hand back
+# as "titles" when the file has no real metadata.
+_GARBAGE_TITLE_RE = re.compile(r"^[A-Za-z0-9_-]{16,}$")
+
+
+def looks_like_garbage_title(title: str | None) -> bool:
+    if not title:
+        return True
+    t = title.strip()
+    if " " in t or not _GARBAGE_TITLE_RE.match(t):
+        return False
+    has_digit = any(c.isdigit() for c in t)
+    # lower→upper flips mid-word ("osOCYEgY…") are the base64 signature; a
+    # single capitalized real word ("Supercalifragilistic…") has none.
+    case_flips = sum(1 for a, b in zip(t, t[1:]) if a.islower() and b.isupper())
+    return has_digit or case_flips >= 2
+
+
+async def fail_orphaned_jobs() -> None:
+    """Jobs run as in-process BackgroundTasks, so a server restart silently
+    kills any in-flight work while the Job row stays IN_PROGRESS forever
+    ("Running · 16h"). Called once at startup: anything still marked
+    pending/in-progress at boot can no longer be running — fail it so the
+    client sees a retryable state instead of a zombie."""
+    async with SessionLocal() as session:
+        result = await session.scalars(
+            select(Job).where(Job.status.in_([JobStatus.PENDING, JobStatus.IN_PROGRESS]))
+        )
+        orphaned = result.all()
+        for job in orphaned:
+            job.status = JobStatus.FAILED
+            job.stage_label = "failed"
+            job.error_message = "Interrupted by a server restart — retry to run it again."
+        if orphaned:
+            await session.commit()
+
+
+async def ensure_video_thumbnail(media_id: str) -> None:
+    """Generate a real poster frame for a video that has no usable thumbnail
+    and point its thumbnail_url at our serving endpoint. No-op in S3 mode
+    (media bytes aren't on local disk) or when ffmpeg can't read the file."""
+    if storage_backend.is_s3():
+        return
+    async with SessionLocal() as session:
+        media = await session.get(Media, media_id)
+        if media is None or media.thumbnail_url:
+            return
+        generated = await asyncio.to_thread(thumbnails.generate_video_thumbnail, media.file_path)
+        if generated is None:
+            return
+        media.thumbnail_url = f"/api/v1/library/{media.id}/thumbnail"
+        await session.commit()
+
+
+async def backfill_video_thumbnails() -> None:
+    """One-shot startup pass for videos imported before thumbnail generation
+    existed. Small libraries only ever have a handful of these."""
+    if storage_backend.is_s3():
+        return
+    async with SessionLocal() as session:
+        result = await session.scalars(
+            select(Media.id).where(Media.media_type == MediaType.VIDEO, Media.thumbnail_url.is_(None))
+        )
+        media_ids = list(result.all())
+    for media_id in media_ids:
+        await ensure_video_thumbnail(media_id)
+
+
+AUTO_NAME_CAP = 10  # per import batch — shazam lookups are rate-limited
+
+
+async def auto_name_media(user_id: str, media_ids: list[str]) -> None:
+    """Run recognition over freshly imported audio whose titles are garbage
+    (base64 blobs, numeric IDs) so new tracks name themselves instead of the
+    user finding a wall of gibberish. Sequential on purpose. Creates real Job
+    rows so the runs show up in the Activity feed like any other job."""
+    if storage_backend.is_s3():
+        return
+    named = 0
+    for media_id in media_ids:
+        if named >= AUTO_NAME_CAP:
+            break
+        async with SessionLocal() as session:
+            media = await session.get(Media, media_id)
+            if (
+                media is None
+                or media.media_type != MediaType.AUDIO
+                or media.recognized_title is not None
+                or not looks_like_garbage_title(media.title)
+            ):
+                continue
+            job = Job(user_id=user_id, job_type=JobType.RECOGNIZE, source_url=media.title)
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            job_id = job.id
+            file_path = Path(media.file_path)
+        await run_recognition_job(job_id, user_id, file_path, media_id, cleanup=False)
+        named += 1
 
 
 def request_cancellation(job_id: str) -> None:
@@ -145,6 +248,12 @@ async def run_download_job(
             stage_label="complete",
             result_media_id=media_id,
         )
+        if media_type == "video":
+            await ensure_video_thumbnail(media_id)
+        else:
+            # Fire-and-forget: naming shouldn't hold the job's COMPLETE status
+            # hostage to a slow shazam lookup.
+            asyncio.create_task(auto_name_media(user_id, [media_id]))
     except DownloadCancelled:
         await _touch_job(job_id, status=JobStatus.CANCELLED, stage_label="cancelled")
     except Exception as exc:  # noqa: BLE001 - surfaced to the client as job.error_message
@@ -184,6 +293,7 @@ async def run_telegram_import_job(
     imported = 0
     scanned = 0
     last_media_id: str | None = None
+    created_media_ids: list[str] = []
 
     try:
         await client.connect()
@@ -261,6 +371,7 @@ async def run_telegram_import_job(
                     await session.commit()
                     await session.refresh(media)
                     last_media_id = media.id
+                    created_media_ids.append(media.id)
 
             imported += 1
             await _touch_job(
@@ -276,6 +387,13 @@ async def run_telegram_import_job(
             stage_label=f"imported {imported} file{'s' if imported != 1 else ''}",
             result_media_id=last_media_id,
         )
+        if media_kind == "video":
+            for media_id in created_media_ids:
+                await ensure_video_thumbnail(media_id)
+        else:
+            # Telegram music is the main source of gibberish names (filename
+            # stems). Fire-and-forget so a slow batch doesn't block anything.
+            asyncio.create_task(auto_name_media(user_id, created_media_ids))
     except Exception as exc:  # noqa: BLE001 - surfaced to the client as job.error_message
         await _touch_job(job_id, status=JobStatus.FAILED, stage_label="failed", error_message=str(exc))
     finally:

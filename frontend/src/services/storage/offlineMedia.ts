@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { Media } from '../api/types';
+import { displayArtist, displayTitle } from '../../utils/mediaDisplay';
 
 /**
  * Explicit "download for offline" storage — separate from the app-shell
@@ -73,8 +74,8 @@ export async function saveOffline(media: Media, streamUrl: string): Promise<void
 
   const entry: OfflineEntry = {
     id: media.id,
-    title: media.title ?? media.recognized_title ?? 'Untitled',
-    artist: media.artist ?? media.recognized_artist ?? 'Unknown artist',
+    title: displayTitle(media),
+    artist: displayArtist(media) ?? 'Unknown artist',
     mediaType: media.media_type,
     sizeBytes: blob.size,
     savedAt: new Date().toISOString(),

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { GlassPanel } from '../ui/GlassPanel';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useTrackAccent } from '../../hooks/useTrackAccent';
 import { usePlayerStore } from '../../store/playerStore';
+import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 import { colors, layout, radii, spacing, typography } from '../../theme/tokens';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -76,10 +77,10 @@ function QueuePreview({ onJump }: { onJump: () => void }) {
               style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}
             >
               <Text numberOfLines={1} style={styles.queueRowTitle}>
-                {media.title ?? media.recognized_title ?? 'Untitled'}
+                {displayTitle(media)}
               </Text>
               <Text numberOfLines={1} style={styles.queueRowArtist}>
-                {media.artist ?? media.recognized_artist ?? 'Unknown artist'}
+                {displayArtist(media) ?? 'Unknown artist'}
               </Text>
             </Pressable>
           ))}
@@ -93,6 +94,9 @@ export function MiniPlayerBar() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { isDesktop } = useResponsive();
+  // Mounted by all three tab screens, and tabs stay alive in the background —
+  // without this gate, three copies render (and tick) at once.
+  const isFocused = useIsFocused();
   // Per-field selectors — this bar is mounted on Home, Library, and Recognize
   // simultaneously (tabs stay alive in the background), so a whole-store
   // destructure here means 3 full re-renders per playback tick instead of 1.
@@ -106,9 +110,9 @@ export function MiniPlayerBar() {
   const playPrev = usePlayerStore((s) => s.playPrev);
   const queue = usePlayerStore((s) => s.queue);
   const [queueOpen, setQueueOpen] = useState(false);
-  const accentColor = useTrackAccent(currentMedia?.thumbnail_url);
+  const accentColor = useTrackAccent(currentMedia ? thumbnailUri(currentMedia) : null);
 
-  if (!currentMedia) return null;
+  if (!currentMedia || !isFocused) return null;
 
   const progress = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0;
 
@@ -121,21 +125,21 @@ export function MiniPlayerBar() {
       {queueOpen && <QueuePreview onJump={() => setQueueOpen(false)} />}
       <Pressable onPress={() => navigation.navigate('Player')} style={isDesktop ? styles.pressDesktop : undefined}>
         <View style={[playing && styles.glowWrap, playing && accentColor && { shadowColor: accentColor }]}>
-          <GlassPanel style={styles.panel} overlayColor="rgba(18,28,24,0.6)">
+          <GlassPanel style={styles.panel} overlayColor="rgba(18,28,24,0.9)">
             <View style={styles.content}>
-              {currentMedia.thumbnail_url ? (
-                <Image source={{ uri: currentMedia.thumbnail_url }} style={styles.cover} />
+              {thumbnailUri(currentMedia) ? (
+                <Image source={{ uri: thumbnailUri(currentMedia)! }} style={styles.cover} />
               ) : (
-                <LinearGradient colors={colors.gradientPrimary} style={styles.cover}>
-                  <Ionicons name="musical-notes" size={18} color="#0A0F0D" />
+                <LinearGradient colors={coverGradient(currentMedia.id)} style={styles.cover}>
+                  <Ionicons name="musical-notes" size={18} color="rgba(231,235,230,0.6)" />
                 </LinearGradient>
               )}
               <View style={styles.textWrap}>
                 <Text numberOfLines={1} style={styles.title}>
-                  {currentMedia.title ?? currentMedia.recognized_title ?? 'Untitled'}
+                  {displayTitle(currentMedia)}
                 </Text>
                 <Text numberOfLines={1} style={styles.artist}>
-                  {currentMedia.artist ?? currentMedia.recognized_artist ?? 'Unknown artist'}
+                  {displayArtist(currentMedia) ?? 'Unknown artist'}
                 </Text>
               </View>
               <AmplitudeBars playing={playing} amplitude={amplitude} />

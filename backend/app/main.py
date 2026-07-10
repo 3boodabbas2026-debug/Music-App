@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 import os
 from pathlib import Path
@@ -11,12 +12,20 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.db.session import init_models
 from app.websockets.job_status import router as ws_router
+from app.workers import job_engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_models()
+    # In-process background jobs can't survive a restart — clear the zombies
+    # so the client sees "failed, retry" instead of "Running · 16h".
+    await job_engine.fail_orphaned_jobs()
+    # Poster frames for videos imported before thumbnail generation existed.
+    # Fire-and-forget: ffmpeg over a few files, no reason to delay startup.
+    backfill = asyncio.create_task(job_engine.backfill_video_thumbnails())
     yield
+    backfill.cancel()
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

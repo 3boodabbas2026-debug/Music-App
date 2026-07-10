@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { Media } from './types';
+import { looksLikeGarbageTitle } from '../../utils/mediaDisplay';
 
 /**
  * Lyrics via lrclib.net — a free, CORS-open lyrics database with word-for-word
@@ -40,7 +41,8 @@ export function parseLrc(lrc: string): SyncedLine[] {
 }
 
 async function queryLrclib(media: Media): Promise<LrclibRecord | null> {
-  const title = media.title ?? media.recognized_title;
+  // Never search lrclib with a base64-ish garbage title — it can only miss.
+  const title = !looksLikeGarbageTitle(media.title) ? media.title : media.recognized_title;
   const artist = media.artist ?? media.recognized_artist;
   if (!title) return null;
 

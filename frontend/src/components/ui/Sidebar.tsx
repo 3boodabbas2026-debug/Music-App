@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUiStore } from '../../store/uiStore';
@@ -65,12 +64,9 @@ export function Sidebar() {
           },
         ]}
       >
-        <BlurView
-          tint="dark"
-          intensity={80}
-          experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : undefined}
-          style={StyleSheet.absoluteFill}
-        />
+        {/* No real blur — see GlassPanel for why. The overlay tint below is
+            already near-opaque, so the drawer looks the same without paying
+            the WebView backdrop-filter cost while sliding. */}
         <View style={styles.panelOverlay} />
         <View style={styles.panelContent}>
           <AppSidebar variant="drawer" onNavigate={closeSidebar} />
@@ -100,7 +96,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(10,15,13,0.86)',
+    backgroundColor: 'rgba(10,15,13,0.97)',
   },
   panelContent: {
     flex: 1,

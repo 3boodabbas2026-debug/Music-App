@@ -41,8 +41,10 @@ export const gradients = {
   aurora: [palette.primary, palette.secondary, palette.gold] as const,
   /** Subtle card wash — barely-lifted midnight green, no loud colour. */
   heroCard: ['#121C18', '#152420', '#121C18'] as const,
-  /** Ambient screen background at rest — pine black into deep navy. */
-  screenIdle: ['#050805', '#0A0F0D', '#0A120F'] as const,
+  /** Ambient screen background at rest — night-sky navy warming into deep
+   * forest green toward the horizon, so the sky has visible depth instead of
+   * reading as one flat near-black. */
+  screenIdle: ['#04080C', '#081411', '#0D1F17'] as const,
   /** Ambient screen background while the mic is hot — aurora drift. */
   screenListening: ['#08201B', '#0C2620', '#0A0F0D'] as const,
   /** Placeholder cover art wash. */

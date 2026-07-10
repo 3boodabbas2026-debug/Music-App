@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { Media } from '../api/types';
+import { displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 
 /**
  * Web Media Session bridge: puts the current track on the OS media surface
@@ -26,13 +27,12 @@ function session(): MediaSession | null {
 export function updateMetadata(media: Media): void {
   const ms = session();
   if (!ms) return;
+  const artworkUri = thumbnailUri(media);
   ms.metadata = new MediaMetadata({
-    title: media.title ?? media.recognized_title ?? 'Untitled',
-    artist: media.artist ?? media.recognized_artist ?? 'Unknown artist',
+    title: displayTitle(media),
+    artist: displayArtist(media) ?? 'Unknown artist',
     album: media.album ?? 'Duskglen',
-    artwork: media.thumbnail_url
-      ? [{ src: media.thumbnail_url, sizes: '512x512', type: 'image/jpeg' }]
-      : [],
+    artwork: artworkUri ? [{ src: artworkUri, sizes: '512x512', type: 'image/jpeg' }] : [],
   });
 }
 
