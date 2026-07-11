@@ -1,13 +1,12 @@
-import { memo, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Animated,
   FlatList,
-  Image,
   Linking,
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,12 +20,25 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
+import {
+  formatDuration,
+  GridCard,
+  ListRow,
+  metadataLine,
+  SkeletonGrid,
+} from '../components/library/LibraryMediaView';
+import {
+  EditMediaModal,
+  PlaylistDetailModal,
+  PlaylistPickerModal,
+  PlaylistsPane,
+  SheetAction,
+} from '../components/library/LibrarySheets';
 import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
 import { EmptyState } from '../components/ui/EmptyState';
-import { FadeImage } from '../components/ui/FadeImage';
+import { Artwork } from '../components/ui/Artwork';
 import { Reveal } from '../components/ui/Reveal';
 import { tokenStorage } from '../services/storage/tokenStorage';
-import { GradientText } from '../components/ui/GradientText';
 import { PressableScale } from '../components/ui/PressableScale';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
@@ -35,7 +47,7 @@ import * as recognitionsApi from '../services/api/recognitions';
 import { watchJob } from '../services/api/jobSocket';
 import type { Media, Playlist } from '../services/api/types';
 import * as offlineMedia from '../services/storage/offlineMedia';
-import { coverGradient, coverGlyphColor, displayArtist as artistOf, displayTitle, looksLikeGarbageTitle, thumbnailUri } from '../utils/mediaDisplay';
+import { displayArtist as artistOf, displayTitle, looksLikeGarbageTitle } from '../utils/mediaDisplay';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { MAX_PINS, usePinStore } from '../store/pinStore';
@@ -54,9 +66,9 @@ type RemixFilter = 'all' | 'original' | 'remix';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'audio', label: 'Audio' },
-  { key: 'video', label: 'Video' },
-  { key: 'favorites', label: '♥' },
+  { key: 'audio', label: 'Songs' },
+  { key: 'video', label: 'Videos' },
+  { key: 'favorites', label: 'Favorites' },
   { key: 'playlists', label: 'Playlists' },
 ];
 
@@ -70,27 +82,10 @@ const SORT_LABEL: Record<SortMode, string> = {
 };
 const SORT_ORDER: SortMode[] = ['newest', 'title', 'artist', 'genre', 'year', 'longest'];
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '--:--';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
 /** Artist for display in this screen — falls back to a muted label where a
  * line of text is structurally expected (sheet subtitle, sort). */
 function displayArtist(media: Media): string {
   return artistOf(media) ?? 'Unknown artist';
-}
-
-/** Genre / year / remix line from auto-recognition metadata — empty string
- * (falsy) until a track has actually been through recognition at least once. */
-function metadataLine(media: Media): string {
-  const parts: string[] = [];
-  if (media.genre) parts.push(media.genre);
-  if (media.release_year) parts.push(String(media.release_year));
-  if (media.is_remix) parts.push('Remix');
-  return parts.join(' · ');
 }
 
 const LIBRARY_MAX_WIDTH = 1160;
@@ -438,6 +433,15 @@ export function LibraryScreen() {
     : width - spacing.lg * 2;
   const columns = view === 'grid' ? (isDesktop ? Math.max(3, Math.floor(containerWidth / 224)) : 2) : 1;
   const cellSize = (containerWidth - spacing.md * (columns - 1)) / columns;
+  const hasActiveFilters = !!query || !!genreFilter || !!yearFilter || remixFilter !== 'all' || tab === 'favorites';
+
+  function resetFilters() {
+    setQuery('');
+    setGenreFilter(null);
+    setYearFilter(null);
+    setRemixFilter('all');
+    if (tab === 'favorites') setTab('all');
+  }
 
   return (
     <View style={styles.root}>
@@ -445,8 +449,13 @@ export function LibraryScreen() {
         <Reveal>
           <View style={styles.headerRow}>
             <View style={styles.headerText}>
-              <Text style={styles.eyebrow}>THE COLLECTION</Text>
-              <GradientText style={styles.megaTitle}>Library</GradientText>
+              <Text style={styles.eyebrow}>YOUR MUSIC</Text>
+              <Text style={styles.megaTitle}>Library</Text>
+              <Text style={styles.librarySummary}>
+                {items.length === 0
+                  ? 'A private collection, ready when you are.'
+                  : `${items.length} item${items.length === 1 ? '' : 's'} · ${Object.keys(offlineIds).length} offline`}
+              </Text>
             </View>
             <SidebarTrigger />
           </View>
@@ -474,21 +483,34 @@ export function LibraryScreen() {
 
         <Reveal delay={120}>
         <View style={styles.controlsRow}>
-          <View style={styles.tabRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabRow}
+            accessibilityRole="tablist"
+          >
             {TABS.map((t) => (
               <Pressable
                 key={t.key}
                 onPress={() => setTab(t.key)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: tab === t.key }}
                 style={[styles.tabChip, tab === t.key && styles.tabChipActive]}
               >
                 <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>{t.label}</Text>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
           {tab !== 'playlists' && (
-            <View style={styles.toolRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
               {unnamedCount > 0 && (
-                <Pressable onPress={handleFixNames} disabled={naming} style={[styles.toolChip, styles.fixNamesChip]}>
+                <Pressable
+                  onPress={handleFixNames}
+                  disabled={naming}
+                  accessibilityRole="button"
+                  accessibilityLabel={naming ? 'Naming tracks' : `Fix ${unnamedCount} track names`}
+                  style={[styles.toolChip, styles.fixNamesChip]}
+                >
                   {naming ? (
                     <ActivityIndicator size="small" color={colors.cyan} />
                   ) : (
@@ -501,23 +523,27 @@ export function LibraryScreen() {
               )}
               <Pressable
                 onPress={() => setSort(SORT_ORDER[(SORT_ORDER.indexOf(sort) + 1) % SORT_ORDER.length])}
+                accessibilityRole="button"
+                accessibilityLabel={`Sort by ${SORT_LABEL[sort]}. Tap for next sort option`}
                 style={styles.toolChip}
               >
                 <Ionicons name="swap-vertical" size={13} color={colors.textSecondary} />
-                <Text style={styles.toolLabel}>{SORT_LABEL[sort]}</Text>
+                <Text style={styles.toolLabel}>Sort: {SORT_LABEL[sort]}</Text>
               </Pressable>
               {genres.length > 0 && (
-                <Pressable onPress={cycleGenre} style={[styles.toolChip, !!genreFilter && styles.toolChipActive]}>
+                <Pressable onPress={cycleGenre} accessibilityRole="button" accessibilityLabel={`Genre filter: ${genreFilter ?? 'all'}`} style={[styles.toolChip, !!genreFilter && styles.toolChipActive]}>
                   <Text numberOfLines={1} style={styles.toolLabel}>{genreFilter ?? 'All genres'}</Text>
                 </Pressable>
               )}
               {years.length > 0 && (
-                <Pressable onPress={cycleYear} style={[styles.toolChip, !!yearFilter && styles.toolChipActive]}>
+                <Pressable onPress={cycleYear} accessibilityRole="button" accessibilityLabel={`Year filter: ${yearFilter ?? 'all'}`} style={[styles.toolChip, !!yearFilter && styles.toolChipActive]}>
                   <Text style={styles.toolLabel}>{yearFilter ?? 'All years'}</Text>
                 </Pressable>
               )}
               <Pressable
                 onPress={() => setRemixFilter(remixFilter === 'all' ? 'original' : remixFilter === 'original' ? 'remix' : 'all')}
+                accessibilityRole="button"
+                accessibilityLabel={`Mix filter: ${remixFilter}`}
                 style={[styles.toolChip, remixFilter !== 'all' && styles.toolChipActive]}
               >
                 <Text style={styles.toolLabel}>{remixFilter === 'all' ? 'All mixes' : remixFilter === 'remix' ? 'Remixes' : 'Originals'}</Text>
@@ -541,6 +567,8 @@ export function LibraryScreen() {
                 <Pressable
                   onPress={() => handleDownloadMany(visible)}
                   disabled={bulkDownloading}
+                  accessibilityRole="button"
+                  accessibilityLabel={bulkDownloading ? 'Downloading visible items' : 'Download visible items'}
                   style={[styles.toolChip, bulkDownloading && { opacity: 0.6 }]}
                 >
                   {bulkDownloading ? (
@@ -555,7 +583,7 @@ export function LibraryScreen() {
                   </Text>
                 </Pressable>
               )}
-            </View>
+            </ScrollView>
           )}
         </View>
         </Reveal>
@@ -585,14 +613,23 @@ export function LibraryScreen() {
           columnWrapperStyle={view === 'grid' ? styles.gridRow : undefined}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={
-            <EmptyState
-              title={tab === 'favorites' ? 'No favorites yet' : 'Nothing here yet'}
-              subtitle={
-                tab === 'favorites'
-                  ? 'Long-press any track and tap the heart.'
-                  : 'Downloaded and recognized tracks will show up here.'
-              }
-            />
+            <View style={styles.emptyWrap}>
+              <EmptyState
+                title={hasActiveFilters ? 'Nothing matches' : 'Your library is ready'}
+                subtitle={
+                  hasActiveFilters
+                    ? 'Try a broader search or clear the active filters.'
+                    : 'Save a link or identify a song to start your collection.'
+                }
+              />
+              <Pressable
+                onPress={hasActiveFilters ? resetFilters : () => navigation.navigate('Main', { screen: 'Home' })}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.75 }]}
+              >
+                <Text style={styles.emptyActionLabel}>{hasActiveFilters ? 'Clear filters' : 'Add your first track'}</Text>
+              </Pressable>
+            </View>
           }
           renderItem={({ item }) =>
             view === 'grid' ? (
@@ -680,13 +717,7 @@ export function LibraryScreen() {
             <View style={[styles.sheet, isDesktop && styles.sheetDesktop, { paddingBottom: insets.bottom + spacing.lg }]}>
               {!isDesktop && <View style={styles.sheetHandle} />}
               <View style={styles.sheetHeader}>
-                {thumbnailUri(sheetMedia) ? (
-                  <Image source={{ uri: thumbnailUri(sheetMedia)! }} style={styles.sheetCover} />
-                ) : (
-                  <LinearGradient colors={coverGradient(sheetMedia.id)} style={styles.sheetCover}>
-                    <Ionicons name="musical-notes" size={22} color={coverGlyphColor(sheetMedia.id)} />
-                  </LinearGradient>
-                )}
+                <Artwork media={sheetMedia} size={52} borderRadius={radii.sm} />
                 <View style={styles.sheetHeaderText}>
                   <Text numberOfLines={1} style={styles.sheetTitle}>{displayTitle(sheetMedia)}</Text>
                   <Text numberOfLines={1} style={styles.sheetSub}>
@@ -814,616 +845,13 @@ export function LibraryScreen() {
   );
 }
 
-function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; onOpen: (id: string) => void }) {
-  const createPlaylist = usePlaylistStore((s) => s.create);
-  const [name, setName] = useState('');
-  const [creating, setCreating] = useState(false);
-
-  async function handleCreate() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setCreating(true);
-    try {
-      await createPlaylist(trimmed);
-      setName('');
-      toast('Playlist created', 'success');
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't create that playlist."), 'error');
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  return (
-    <FlatList
-      data={playlists}
-      keyExtractor={(item) => item.id}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.listContent}
-      ListHeaderComponent={
-        <View style={styles.createRow}>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="New playlist name"
-            placeholderTextColor={colors.textMuted}
-            selectionColor={colors.cyan}
-            style={styles.createInput}
-            onSubmitEditing={handleCreate}
-          />
-          <PressableScale onPress={handleCreate} disabled={creating || !name.trim()} scaleTo={0.9}>
-            <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.createButton}>
-              {creating ? <ActivityIndicator size="small" color="#100B18" /> : <Ionicons name="add" size={20} color="#100B18" />}
-            </LinearGradient>
-          </PressableScale>
-        </View>
-      }
-      ListEmptyComponent={
-        <EmptyState title="No playlists yet" subtitle="Name one above, then long-press any track to add it." />
-      }
-      renderItem={({ item }) => {
-        const coverMedia = item.items.find((m) => m.thumbnail_url);
-        const coverUrl = coverMedia ? thumbnailUri(coverMedia) : null;
-        return (
-          <Pressable
-            onPress={() => onOpen(item.id)}
-            style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
-          >
-            {coverUrl ? (
-              <Image source={{ uri: coverUrl }} style={styles.listCover} />
-            ) : (
-              <LinearGradient colors={gradients.coverFallback} style={styles.listCover}>
-                <Ionicons name="list" size={16} color="rgba(248,250,252,0.4)" />
-              </LinearGradient>
-            )}
-            <View style={styles.listText}>
-              <Text numberOfLines={1} style={styles.cardTitle}>{item.name}</Text>
-              <Text numberOfLines={1} style={styles.cardArtist}>
-                {item.items.length} {item.items.length === 1 ? 'track' : 'tracks'}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </Pressable>
-        );
-      }}
-    />
-  );
-}
-
-function PlaylistPickerModal({
-  mediaIds,
-  label,
-  onClose,
-  onDone,
-}: {
-  mediaIds: string[];
-  label: string;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const insets = useSafeAreaInsets();
-  const { isDesktop } = useResponsive();
-  const playlists = usePlaylistStore((s) => s.playlists);
-  const addItem = usePlaylistStore((s) => s.addItem);
-  const createPlaylist = usePlaylistStore((s) => s.create);
-  const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  // Sequential, not Promise.all — addItem's store update replaces the whole
-  // playlist with whatever the server just returned, so concurrent requests
-  // for the same playlist can race and clobber each other's item.
-  async function addAllTo(playlistId: string) {
-    for (const mediaId of mediaIds) {
-      await addItem(playlistId, mediaId);
-    }
-  }
-
-  async function pick(playlist: Playlist) {
-    setBusy(true);
-    try {
-      await addAllTo(playlist.id);
-      toast(
-        mediaIds.length > 1 ? `Added ${mediaIds.length} tracks to “${playlist.name}”` : `Added to “${playlist.name}”`,
-        'success',
-      );
-      onDone();
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't add to that playlist."), 'error');
-      setBusy(false);
-    }
-  }
-
-  async function createAndPick() {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    setBusy(true);
-    try {
-      const playlist = await createPlaylist(trimmed);
-      await addAllTo(playlist.id);
-      toast(
-        mediaIds.length > 1 ? `Added ${mediaIds.length} tracks to “${playlist.name}”` : `Added to “${playlist.name}”`,
-        'success',
-      );
-      onDone();
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't create that playlist."), 'error');
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={[styles.modalRoot, isDesktop && styles.modalRootDesktop]}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={[styles.sheet, isDesktop && styles.sheetDesktop, { paddingBottom: insets.bottom + spacing.lg }]}>
-          {!isDesktop && <View style={styles.sheetHandle} />}
-          <Text style={styles.editTitle}>Add to playlist</Text>
-          <Text numberOfLines={1} style={styles.sheetSub}>{label}</Text>
-
-          <View style={[styles.createRow, { marginTop: spacing.md }]}>
-            <TextInput
-              value={name}
-              onChangeText={setName}
-              placeholder="New playlist name"
-              placeholderTextColor={colors.textMuted}
-              selectionColor={colors.cyan}
-              style={styles.createInput}
-              onSubmitEditing={createAndPick}
-            />
-            <PressableScale onPress={createAndPick} disabled={busy || !name.trim()} scaleTo={0.9}>
-              <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.createButton}>
-                <Ionicons name="add" size={20} color="#100B18" />
-              </LinearGradient>
-            </PressableScale>
-          </View>
-
-          {playlists.map((playlist) => (
-            <Pressable
-              key={playlist.id}
-              onPress={() => pick(playlist)}
-              disabled={busy}
-              style={({ pressed }) => [styles.sheetRow, pressed && styles.sheetRowPressed]}
-            >
-              <Ionicons name="list" size={19} color={colors.textSecondary} />
-              <Text style={styles.sheetRowLabel}>{playlist.name}</Text>
-              <Text style={styles.sheetSub}>{playlist.items.length}</Text>
-            </Pressable>
-          ))}
-          {playlists.length === 0 && (
-            <Text style={[styles.sheetSub, { textAlign: 'center', paddingVertical: spacing.md }]}>
-              No playlists yet — create one above.
-            </Text>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function PlaylistDetailModal({
-  playlistId,
-  onClose,
-  onPlayAll,
-}: {
-  playlistId: string;
-  onClose: () => void;
-  onPlayAll: (playlist: Playlist) => void;
-}) {
-  const insets = useSafeAreaInsets();
-  const { isDesktop } = useResponsive();
-  const playlist = usePlaylistStore((s) => s.playlists.find((p) => p.id === playlistId));
-  const removeItem = usePlaylistStore((s) => s.removeItem);
-  const removePlaylist = usePlaylistStore((s) => s.remove);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-
-  if (!playlist) return null;
-
-  async function handleDelete() {
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      return;
-    }
-    try {
-      await removePlaylist(playlistId);
-      toast('Playlist deleted', 'success');
-      onClose();
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't delete that playlist."), 'error');
-    }
-  }
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={[styles.modalRoot, isDesktop && styles.modalRootDesktop]}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View
-          style={[
-            styles.sheet,
-            styles.detailSheet,
-            isDesktop && styles.sheetDesktop,
-            { paddingBottom: insets.bottom + spacing.lg },
-          ]}
-        >
-          {!isDesktop && <View style={styles.sheetHandle} />}
-          <View style={styles.detailHeader}>
-            <View style={styles.detailHeaderText}>
-              <Text numberOfLines={1} style={styles.editTitle}>{playlist.name}</Text>
-              <Text style={styles.sheetSub}>
-                {playlist.items.length} {playlist.items.length === 1 ? 'track' : 'tracks'}
-              </Text>
-            </View>
-            <Pressable onPress={handleDelete} hitSlop={8} style={styles.detailDelete}>
-              <Ionicons name="trash-outline" size={18} color={colors.danger} />
-              {confirmDelete && <Text style={styles.detailDeleteLabel}>Sure?</Text>}
-            </Pressable>
-          </View>
-
-          {playlist.items.length > 0 && (
-            <PressableScale onPress={() => onPlayAll(playlist)} scaleTo={0.97}>
-              <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.editSave}>
-                <Text style={styles.editSaveLabel}>Play all</Text>
-              </LinearGradient>
-            </PressableScale>
-          )}
-
-          <FlatList
-            data={playlist.items}
-            keyExtractor={(item) => item.id}
-            style={styles.detailList}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={
-              <Text style={[styles.sheetSub, { textAlign: 'center', paddingVertical: spacing.lg }]}>
-                Empty — long-press a track in your library to add it here.
-              </Text>
-            }
-            renderItem={({ item }) => (
-              <View style={styles.detailRow}>
-                {thumbnailUri(item) ? (
-                  <Image source={{ uri: thumbnailUri(item)! }} style={styles.detailCover} />
-                ) : (
-                  <LinearGradient colors={coverGradient(item.id)} style={styles.detailCover}>
-                    <Ionicons name="musical-notes" size={14} color={coverGlyphColor(item.id)} />
-                  </LinearGradient>
-                )}
-                <View style={styles.listText}>
-                  <Text numberOfLines={1} style={styles.cardTitle}>{displayTitle(item)}</Text>
-                  <Text numberOfLines={1} style={styles.cardArtist}>{displayArtist(item)}</Text>
-                </View>
-                <Pressable
-                  onPress={async () => {
-                    try {
-                      await removeItem(playlistId, item.id);
-                    } catch (err) {
-                      toast(apiErrorMessage(err, "Couldn't remove that track."), 'error');
-                    }
-                  }}
-                  hitSlop={8}
-                >
-                  <Ionicons name="close" size={17} color={colors.textMuted} />
-                </Pressable>
-              </View>
-            )}
-          />
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-function SheetAction({
-  icon,
-  label,
-  onPress,
-  tint,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-  tint?: string;
-}) {
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.sheetRow, pressed && styles.sheetRowPressed]}>
-      <Ionicons name={icon} size={19} color={tint ?? colors.textSecondary} />
-      <Text style={[styles.sheetRowLabel, tint ? { color: tint } : null]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function EditMediaModal({
-  media,
-  onClose,
-  onSaved,
-}: {
-  media: Media;
-  onClose: () => void;
-  onSaved: (updated: Media) => void;
-}) {
-  const insets = useSafeAreaInsets();
-  const { isDesktop } = useResponsive();
-  const [title, setTitle] = useState(media.title ?? media.recognized_title ?? '');
-  const [artist, setArtist] = useState(media.artist ?? media.recognized_artist ?? '');
-  const [album, setAlbum] = useState(media.album ?? '');
-  const [genre, setGenre] = useState(media.genre ?? '');
-  const [releaseYear, setReleaseYear] = useState(media.release_year ? String(media.release_year) : '');
-  const [isRemix, setIsRemix] = useState(media.is_remix === true);
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    const parsedYear = releaseYear.trim() ? Number(releaseYear) : null;
-    if (parsedYear != null && (!Number.isInteger(parsedYear) || parsedYear < 1000 || parsedYear > 2100)) {
-      toast('Enter a release year between 1000 and 2100.', 'error');
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await libraryApi.updateMedia(media.id, {
-        title: title.trim() || null,
-        artist: artist.trim() || null,
-        album: album.trim() || null,
-        genre: genre.trim() || null,
-        release_year: parsedYear,
-        is_remix: isRemix,
-      });
-      onSaved(updated);
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't save changes."), 'error');
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={[styles.modalRoot, isDesktop && styles.modalRootDesktop]}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={[styles.sheet, isDesktop && styles.sheetDesktop, { paddingBottom: insets.bottom + spacing.lg }]}>
-          {!isDesktop && <View style={styles.sheetHandle} />}
-          <Text style={styles.editTitle}>Edit details</Text>
-          {[
-            { label: 'Title', value: title, set: setTitle },
-            { label: 'Artist', value: artist, set: setArtist },
-            { label: 'Album', value: album, set: setAlbum },
-            { label: 'Genre', value: genre, set: setGenre },
-            { label: 'Release year', value: releaseYear, set: setReleaseYear },
-          ].map((field) => (
-            <View key={field.label} style={styles.editField}>
-              <Text style={styles.editLabel}>{field.label}</Text>
-              <TextInput
-                value={field.value}
-                onChangeText={field.set}
-                placeholder={field.label}
-                placeholderTextColor={colors.textMuted}
-                selectionColor={colors.cyan}
-                style={styles.editInput}
-              />
-            </View>
-          ))}
-          <Pressable onPress={() => setIsRemix((value) => !value)} style={[styles.remixToggle, isRemix && styles.toolChipActive]}>
-            <Ionicons name={isRemix ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={isRemix ? colors.cyan : colors.textMuted} />
-            <Text style={styles.editLabel}>This track is a remix</Text>
-          </Pressable>
-          <PressableScale onPress={save} disabled={saving} scaleTo={0.97}>
-            <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.editSave}>
-              {saving ? (
-                <ActivityIndicator size="small" color="#100B18" />
-              ) : (
-                <Text style={styles.editSaveLabel}>Save</Text>
-              )}
-            </LinearGradient>
-          </PressableScale>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-const GridCard = memo(function GridCard({
-  media,
-  size,
-  favorite,
-  selectMode,
-  selected,
-  onPress,
-  onLongPress,
-}: {
-  media: Media;
-  size: number;
-  favorite: boolean;
-  selectMode?: boolean;
-  selected?: boolean;
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const coverUri = thumbnailUri(media);
-  const artist = artistOf(media);
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${displayTitle(media)}${artist ? `, ${artist}` : ''}${metadataLine(media) ? `, ${metadataLine(media)}` : ''}`}
-      delayLongPress={350}
-      onHoverIn={Platform.OS === 'web' ? () => setHovered(true) : undefined}
-      onHoverOut={Platform.OS === 'web' ? () => setHovered(false) : undefined}
-    >
-      <View style={[styles.card, hovered && styles.cardHovered, selected && styles.cardSelected, { width: size, height: size }]}>
-        {/* Video posters are 16:9 ffmpeg frame grabs — a plain `cover` crop
-            into this square cell aggressively cuts off the top/bottom of the
-            frame, which reads as messy. Keep the gradient as a permanent
-            backdrop and letterbox the poster with `contain` instead; audio
-            covers (already closer to square) keep the old full-bleed crop. */}
-        <LinearGradient
-          colors={coverGradient(media.id)}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        {coverUri && (
-          <FadeImage
-            uri={coverUri}
-            resizeMode={media.media_type === 'video' ? 'contain' : 'cover'}
-            style={StyleSheet.absoluteFill as object}
-          />
-        )}
-        <LinearGradient colors={gradients.coverScrim} style={styles.scrim} />
-
-        {!coverUri && (
-          <View style={styles.glyphWrap}>
-            <Ionicons
-              name={media.media_type === 'video' ? 'videocam' : 'musical-notes'}
-              size={38}
-              color={`${coverGlyphColor(media.id)}59`}
-            />
-          </View>
-        )}
-
-        <View style={styles.durationChip}>
-          <Ionicons name={media.media_type === 'video' ? 'videocam' : 'musical-notes'} size={10} color={colors.textSecondary} />
-          <Text style={styles.durationText}>{formatDuration(media.duration_seconds)}</Text>
-        </View>
-        {favorite && (
-          <View style={styles.heartChip}>
-            <Ionicons name="heart" size={12} color={colors.pink} />
-          </View>
-        )}
-
-        {selectMode && (
-          <View style={[styles.selectCheck, selected && styles.selectCheckActive]}>
-            {selected && <Ionicons name="checkmark" size={13} color="#100B18" />}
-          </View>
-        )}
-
-        {/* Always-visible actions chip — hover and long-press exist too, but
-            in a touch WebView neither is discoverable; this is the one tap
-            target every device gets. */}
-        {!selectMode && (
-          <Pressable onPress={onLongPress} accessibilityLabel={`More options for ${displayTitle(media)}`} style={[styles.moreChip, hovered && styles.moreChipHovered]} hitSlop={8}>
-            <Ionicons name="ellipsis-horizontal" size={15} color={colors.textPrimary} />
-          </Pressable>
-        )}
-        {hovered && !selectMode && (
-          <View pointerEvents="none" style={styles.playFabWrap}>
-            <LinearGradient
-              colors={colors.gradientPrimary}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.playFab}
-            >
-              <Ionicons name="play" size={22} color="#100B18" style={{ marginLeft: 2 }} />
-            </LinearGradient>
-          </View>
-        )}
-
-        <View style={styles.meta}>
-          <Text numberOfLines={1} style={styles.cardTitle}>{displayTitle(media)}</Text>
-          {artist && <Text numberOfLines={1} style={styles.cardArtist}>{artist}</Text>}
-          {!!metadataLine(media) && <Text numberOfLines={1} style={styles.cardMetadata}>{metadataLine(media)}</Text>}
-        </View>
-      </View>
-    </Pressable>
-  );
-});
-
-const ListRow = memo(function ListRow({
-  media,
-  favorite,
-  selectMode,
-  selected,
-  onPress,
-  onLongPress,
-}: {
-  media: Media;
-  favorite: boolean;
-  selectMode?: boolean;
-  selected?: boolean;
-  onPress: () => void;
-  onLongPress: () => void;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const coverUri = thumbnailUri(media);
-  const artist = artistOf(media);
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${displayTitle(media)}${artist ? `, ${artist}` : ''}${metadataLine(media) ? `, ${metadataLine(media)}` : ''}`}
-      delayLongPress={350}
-      onHoverIn={Platform.OS === 'web' ? () => setHovered(true) : undefined}
-      onHoverOut={Platform.OS === 'web' ? () => setHovered(false) : undefined}
-      style={({ pressed }) => [styles.listRow, hovered && styles.listRowHovered, selected && styles.listRowSelected, pressed && styles.listRowPressed]}
-    >
-      {selectMode && (
-        <View style={[styles.selectCheckInline, selected && styles.selectCheckActive]}>
-          {selected && <Ionicons name="checkmark" size={12} color="#100B18" />}
-        </View>
-      )}
-      {coverUri ? (
-        <FadeImage uri={coverUri} style={styles.listCover as object} />
-      ) : (
-        <LinearGradient colors={coverGradient(media.id)} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.listCover}>
-          <Ionicons
-            name={media.media_type === 'video' ? 'videocam' : 'musical-notes'}
-            size={16}
-            color={`${coverGlyphColor(media.id)}73`}
-          />
-        </LinearGradient>
-      )}
-      <View style={styles.listText}>
-        <Text numberOfLines={1} style={styles.cardTitle}>{displayTitle(media)}</Text>
-        {artist && <Text numberOfLines={1} style={styles.cardArtist}>{artist}</Text>}
-        {!!metadataLine(media) && <Text numberOfLines={1} style={styles.cardMetadata}>{metadataLine(media)}</Text>}
-      </View>
-      <Ionicons
-        name={media.media_type === 'video' ? 'videocam-outline' : 'musical-notes-outline'}
-        size={13}
-        color={colors.textMuted}
-      />
-      {favorite && <Ionicons name="heart" size={14} color={colors.pink} />}
-      {!selectMode && (
-        <Pressable onPress={onLongPress} accessibilityLabel={`More options for ${displayTitle(media)}`} hitSlop={10} style={styles.rowMoreButton}>
-          <Ionicons name="ellipsis-horizontal" size={16} color={colors.textSecondary} />
-        </Pressable>
-      )}
-      <Text style={styles.durationText}>{formatDuration(media.duration_seconds)}</Text>
-    </Pressable>
-  );
-});
-
-/** Shimmering placeholder grid/list shown only during the very first load, before any cached or live data has arrived. */
-function SkeletonGrid({ columns, cellSize, view }: { columns: number; cellSize: number; view: ViewMode }) {
-  const pulse = useState(() => new Animated.Value(0.4))[0];
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.9, duration: 700, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
-
-  const count = view === 'grid' ? columns * 3 : 6;
-  return (
-    <View style={view === 'grid' ? styles.skeletonGridWrap : { gap: spacing.md }}>
-      {Array.from({ length: count }).map((_, i) =>
-        view === 'grid' ? (
-          <Animated.View key={i} style={[styles.skeletonCard, { width: cellSize, height: cellSize, opacity: pulse }]} />
-        ) : (
-          <Animated.View key={i} style={[styles.skeletonRow, { opacity: pulse }]} />
-        ),
-      )}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#09060F' },
+  root: { flex: 1, backgroundColor: colors.bg },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1, paddingRight: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.xs },
-  megaTitle: { ...typography.mega, marginBottom: spacing.md },
+  megaTitle: { ...typography.mega, color: colors.textPrimary },
+  librarySummary: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.md },
   searchCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1436,14 +864,10 @@ const styles = StyleSheet.create({
   },
   searchInput: { ...typography.body, flex: 1, color: colors.textPrimary, paddingVertical: 0 },
   controlsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
     gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  tabRow: { flexDirection: 'row', gap: 6 },
+  tabRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.lg },
   tabChip: {
     paddingVertical: 7,
     paddingHorizontal: spacing.md - 2,
@@ -1453,7 +877,7 @@ const styles = StyleSheet.create({
   tabChipActive: { backgroundColor: 'rgba(255,138,92,0.18)' },
   tabLabel: { ...typography.caption, color: colors.textMuted },
   tabLabelActive: { color: colors.cyan, fontFamily: 'Sora_500Medium' },
-  toolRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  toolRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.lg },
   toolChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1468,127 +892,16 @@ const styles = StyleSheet.create({
   fixNamesChip: { backgroundColor: 'rgba(255,138,92,0.14)', borderWidth: 1, borderColor: 'rgba(255,138,92,0.3)' },
   gridRow: { gap: spacing.md },
   listContent: { gap: spacing.md, paddingBottom: layout.tabBarClearance },
-  card: {
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-    borderWidth: 1,
-    borderColor: 'rgba(174,165,192,0.12)',
-  },
-  cardHovered: {
-    borderColor: 'rgba(255,138,92,0.45)',
-  },
-  cardSelected: {
-    borderColor: colors.cyan,
-    borderWidth: 2,
-  },
-  selectCheck: {
-    position: 'absolute',
-    top: spacing.sm,
-    right: spacing.sm,
-    width: 22,
-    height: 22,
-    borderRadius: radii.pill,
-    borderWidth: 2,
-    borderColor: colors.textPrimary,
-    alignItems: 'center',
+  emptyWrap: { alignItems: 'center', paddingBottom: spacing.xl },
+  emptyAction: {
+    minHeight: 46,
     justifyContent: 'center',
-    backgroundColor: 'rgba(9,6,15,0.4)',
-  },
-  selectCheckInline: {
-    width: 20,
-    height: 20,
+    paddingHorizontal: spacing.lg,
     borderRadius: radii.pill,
-    borderWidth: 2,
-    borderColor: colors.textMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectCheckActive: {
     backgroundColor: colors.cyan,
-    borderColor: colors.cyan,
+    marginTop: -spacing.md,
   },
-  moreChip: {
-    position: 'absolute',
-    top: spacing.sm,
-    left: spacing.sm,
-    width: 30,
-    height: 30,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(9,6,15,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 2,
-  },
-  moreChipHovered: { backgroundColor: 'rgba(9,6,15,0.85)' },
-  playFabWrap: {
-    position: 'absolute',
-    right: spacing.sm + 2,
-    bottom: 54,
-    shadowColor: colors.cyan,
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  playFab: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowMoreButton: {
-    width: 30,
-    height: 30,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(9,6,15,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '60%' },
-  glyphWrap: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  durationChip: {
-    position: 'absolute',
-    top: spacing.sm,
-    right: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(9,6,15,0.65)',
-    borderRadius: radii.pill,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-  },
-  heartChip: {
-    position: 'absolute',
-    top: spacing.sm,
-    left: spacing.sm,
-    backgroundColor: 'rgba(9,6,15,0.65)',
-    borderRadius: radii.pill,
-    padding: 5,
-  },
-  durationText: { ...typography.caption, fontSize: 11, color: colors.textSecondary, fontVariant: ['tabular-nums'] },
-  meta: { padding: spacing.sm + 2 },
-  cardTitle: { ...typography.subtitle, fontSize: 15, lineHeight: 19, color: colors.textPrimary },
-  cardArtist: { ...typography.caption, fontSize: 12, color: colors.textMuted },
-  cardMetadata: { ...typography.caption, fontSize: 11, color: colors.cyan, opacity: 0.88 },
-  listRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    backgroundColor: 'rgba(27,20,38,0.5)',
-    borderRadius: radii.md,
-    padding: spacing.sm,
-  },
-  listRowHovered: { backgroundColor: 'rgba(27,20,38,0.85)' },
-  listRowPressed: { backgroundColor: 'rgba(255,138,92,0.10)' },
-  listRowSelected: { borderWidth: 1, borderColor: colors.cyan },
-  skeletonGridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  skeletonCard: { borderRadius: radii.lg, backgroundColor: 'rgba(174,165,192,0.08)' },
-  skeletonRow: { height: 68, borderRadius: radii.md, backgroundColor: 'rgba(174,165,192,0.08)' },
+  emptyActionLabel: { ...typography.caption, color: colors.bg, fontFamily: 'Sora_600SemiBold' },
   bulkBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1612,15 +925,6 @@ const styles = StyleSheet.create({
   },
   bulkButtonDanger: { backgroundColor: 'rgba(232,80,110,0.14)' },
   bulkButtonLabel: { ...typography.caption, fontSize: 13, color: colors.textPrimary },
-  listCover: {
-    width: 48,
-    height: 48,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  listText: { flex: 1 },
-
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
   modalRootDesktop: { justifyContent: 'center', alignItems: 'center' },
   modalBackdrop: { ...StyleSheet.absoluteFill as object, backgroundColor: 'rgba(3,5,3,0.65)' },
@@ -1655,112 +959,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginBottom: spacing.md,
   },
-  sheetCover: {
-    width: 52,
-    height: 52,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   sheetHeaderText: { flex: 1 },
   sheetTitle: { ...typography.subtitle, color: colors.textPrimary },
   sheetSub: { ...typography.caption, color: colors.textMuted },
-  sheetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.md - 3,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.md,
-  },
-  sheetRowPressed: { backgroundColor: 'rgba(255,138,92,0.10)' },
-  sheetRowLabel: { ...typography.body, color: colors.textPrimary },
-
-  editTitle: { ...typography.title, fontSize: 20, lineHeight: 26, color: colors.textPrimary, marginBottom: spacing.md },
-  editField: { marginBottom: spacing.md, gap: 4 },
-  editLabel: { ...typography.caption, color: colors.textSecondary },
-  editInput: {
-    ...typography.body,
-    color: colors.textPrimary,
-    backgroundColor: 'rgba(9,6,15,0.6)',
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md - 4,
-  },
-  remixToggle: {
-    minHeight: 44,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: 'rgba(9,6,15,0.45)',
-  },
-  editSave: {
-    borderRadius: radii.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  editSaveLabel: { ...typography.subtitle, fontFamily: 'Sora_600SemiBold', color: '#100B18' },
-
-  createRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  createInput: {
-    ...typography.body,
-    flex: 1,
-    color: colors.textPrimary,
-    backgroundColor: 'rgba(27,20,38,0.6)',
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md - 6,
-  },
-  createButton: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  detailSheet: {
-    maxHeight: '82%',
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  detailHeaderText: { flex: 1 },
-  detailDelete: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: spacing.sm + 2,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(232,80,110,0.10)',
-  },
-  detailDeleteLabel: { ...typography.caption, fontSize: 12, color: colors.danger },
-  detailList: {
-    marginTop: spacing.md,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  detailCover: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

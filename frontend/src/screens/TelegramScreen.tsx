@@ -9,15 +9,17 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
 import { GlassPanel } from '../components/ui/GlassPanel';
-import { GradientText } from '../components/ui/GradientText';
-import { PressableScale } from '../components/ui/PressableScale';
+import { IconButton } from '../components/ui/IconButton';
 import { ProgressRing } from '../components/ui/ProgressRing';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { TextField } from '../components/ui/TextField';
 import * as telegramApi from '../services/api/telegram';
 import { watchJob } from '../services/api/jobSocket';
@@ -202,17 +204,22 @@ export function TelegramScreen({ navigation }: Props) {
     <View style={styles.root}>
       <ScreenContainer maxWidth={760}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => navigation.goBack()} accessibilityLabel="Go back" hitSlop={12} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
-          </Pressable>
-          <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>DIRECT INTAKE</Text>
-            <GradientText style={styles.megaTitle}>Telegram</GradientText>
-          </View>
+          <IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" />
+          <SectionHeader
+            eyebrow="Direct intake"
+            title="Telegram"
+            subtitle="Bring music and video from the conversations you already keep."
+            style={styles.headerText}
+          />
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          {phase === 'loading' && <ActivityIndicator color={colors.cyan} style={styles.loading} />}
+          {phase === 'loading' ? (
+            <View accessibilityLiveRegion="polite" style={styles.loadingState}>
+              <ActivityIndicator color={colors.cyan} />
+              <Text style={styles.hint}>Checking your Telegram connection…</Text>
+            </View>
+          ) : null}
 
           {phase === 'setup' && (
             <GlassPanel style={styles.panel}>
@@ -242,10 +249,10 @@ export function TelegramScreen({ navigation }: Props) {
                 <TextField label="API ID" value={apiId} onChangeText={setApiId} keyboardType="numeric" placeholder="1234567" />
                 <TextField label="API Hash" value={apiHash} onChangeText={setApiHash} autoCapitalize="none" placeholder="a1b2c3…" />
                 <TextField label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+90…" />
-                {error ? <Text style={styles.error}>{error}</Text> : null}
-                <ActionButton
+                {error ? <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
+                <Button
                   label="Send login code"
-                  busy={busy}
+                  loading={busy}
                   disabled={!apiId.trim() || !apiHash.trim() || !phone.trim()}
                   onPress={handleConnect}
                 />
@@ -259,8 +266,8 @@ export function TelegramScreen({ navigation }: Props) {
                 <Text style={styles.panelTitle}>Enter the code</Text>
                 <Text style={styles.hint}>Telegram sent a login code to {phone}.</Text>
                 <TextField label="Code" value={code} onChangeText={setCode} keyboardType="numeric" placeholder="12345" />
-                {error ? <Text style={styles.error}>{error}</Text> : null}
-                <ActionButton label="Verify" busy={busy} disabled={!code.trim()} onPress={handleVerifyCode} />
+                {error ? <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
+                <Button label="Verify" loading={busy} disabled={!code.trim()} onPress={handleVerifyCode} />
               </View>
             </GlassPanel>
           )}
@@ -271,8 +278,8 @@ export function TelegramScreen({ navigation }: Props) {
                 <Text style={styles.panelTitle}>Two-step verification</Text>
                 <Text style={styles.hint}>Your account has a 2FA password — enter it to finish linking.</Text>
                 <TextField label="Password" value={password} onChangeText={setPassword} secureTextEntry placeholder="••••••••" />
-                {error ? <Text style={styles.error}>{error}</Text> : null}
-                <ActionButton label="Unlock" busy={busy} disabled={!password} onPress={handleVerifyPassword} />
+                {error ? <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
+                <Button label="Unlock" loading={busy} disabled={!password} onPress={handleVerifyPassword} />
               </View>
             </GlassPanel>
           )}
@@ -292,27 +299,18 @@ export function TelegramScreen({ navigation }: Props) {
                   </View>
 
                   {!dialogs ? (
-                    <ActionButton label="Load my chats" busy={busy} onPress={loadDialogs} />
+                    <Button label="Load my chats" loading={busy} onPress={loadDialogs} />
                   ) : (
                     <>
-                      <View style={styles.chipRow}>
-                        <Pressable
-                          onPress={() => setPickerTab('chats')}
-                          style={[styles.chip, pickerTab === 'chats' && styles.chipActive]}
-                        >
-                          <Text style={[styles.chipLabel, pickerTab === 'chats' && styles.chipLabelActive]}>
-                            Chats{selectedChatList.length > 0 ? ` (${selectedChatList.length})` : ''}
-                          </Text>
-                        </Pressable>
-                        <Pressable
-                          onPress={() => setPickerTab('folders')}
-                          style={[styles.chip, pickerTab === 'folders' && styles.chipActive]}
-                        >
-                          <Text style={[styles.chipLabel, pickerTab === 'folders' && styles.chipLabelActive]}>
-                            Folders{folders?.length ? ` (${folders.length})` : ''}
-                          </Text>
-                        </Pressable>
-                      </View>
+                      <SegmentedControl
+                        accessibilityLabel="Telegram source type"
+                        value={pickerTab}
+                        onValueChange={setPickerTab}
+                        options={[
+                          { value: 'chats', label: `Chats${selectedChatList.length > 0 ? ` (${selectedChatList.length})` : ''}` },
+                          { value: 'folders', label: `Folders${folders?.length ? ` (${folders.length})` : ''}` },
+                        ]}
+                      />
 
                       {pickerTab === 'chats' ? (
                         <>
@@ -320,6 +318,7 @@ export function TelegramScreen({ navigation }: Props) {
                           <View style={styles.searchCapsule}>
                             <Ionicons name="search" size={15} color={colors.textMuted} />
                             <TextInput
+                              accessibilityLabel="Search Telegram chats"
                               value={dialogQuery}
                               onChangeText={setDialogQuery}
                               placeholder="Search chats"
@@ -335,6 +334,9 @@ export function TelegramScreen({ navigation }: Props) {
                                 <Pressable
                                   key={dialog.id}
                                   onPress={() => toggleChat(dialog)}
+                                  accessibilityRole="checkbox"
+                                  accessibilityLabel={dialog.title}
+                                  accessibilityState={{ checked: active }}
                                   style={[styles.dialogRow, active && styles.dialogRowActive]}
                                 >
                                   <Ionicons
@@ -349,7 +351,9 @@ export function TelegramScreen({ navigation }: Props) {
                                 </Pressable>
                               );
                             })}
-                            {filteredDialogs?.length === 0 && <Text style={styles.hint}>No chats match that search.</Text>}
+                            {filteredDialogs?.length === 0 ? (
+                              <EmptyState compact icon="search-outline" title="No matching chats" subtitle="Try a different name or clear the search." />
+                            ) : null}
                           </View>
                         </>
                       ) : (
@@ -362,6 +366,9 @@ export function TelegramScreen({ navigation }: Props) {
                                 <Pressable
                                   key={folder.id}
                                   onPress={() => pickFolder(folder)}
+                                  accessibilityRole="radio"
+                                  accessibilityLabel={`${folder.title}, ${folder.chat_count} chats`}
+                                  accessibilityState={{ checked: active }}
                                   style={[styles.dialogRow, active && styles.dialogRowActive]}
                                 >
                                   <Ionicons
@@ -376,9 +383,9 @@ export function TelegramScreen({ navigation }: Props) {
                                 </Pressable>
                               );
                             })}
-                            {folders?.length === 0 && (
-                              <Text style={styles.hint}>You don't have any custom folders in Telegram yet.</Text>
-                            )}
+                            {folders?.length === 0 ? (
+                              <EmptyState compact icon="folder-open-outline" title="No Telegram folders" subtitle="Create a custom folder in Telegram, then reload your chats." />
+                            ) : null}
                           </View>
                         </>
                       )}
@@ -397,39 +404,26 @@ export function TelegramScreen({ navigation }: Props) {
                           ? `Import from ${selectedChatList[0].title}`
                           : `Import from ${selectedChatList.length} chats`}
                     </Text>
-                    <View style={styles.chipRow}>
-                      {(['music', 'video'] as const).map((kind) => (
-                        <Pressable
-                          key={kind}
-                          onPress={() => setMediaKind(kind)}
-                          style={[styles.chip, mediaKind === kind && styles.chipActive]}
-                        >
-                          <Ionicons
-                            name={kind === 'music' ? 'musical-notes' : 'videocam'}
-                            size={13}
-                            color={mediaKind === kind ? colors.cyan : colors.textMuted}
-                          />
-                          <Text style={[styles.chipLabel, mediaKind === kind && styles.chipLabelActive]}>
-                            {kind === 'music' ? 'Music' : 'Video'}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                    <View style={styles.chipRow}>
-                      {LIMITS.map(({ label, value }) => (
-                        <Pressable
-                          key={label}
-                          onPress={() => setLimit(value)}
-                          style={[styles.chip, limit === value && styles.chipActive]}
-                        >
-                          <Text style={[styles.chipLabel, limit === value && styles.chipLabelActive]}>
-                            {value === null ? 'All' : `${label} files`}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                    {error ? <Text style={styles.error}>{error}</Text> : null}
-                    {!importing && <ActionButton label="Start import" busy={false} onPress={handleImport} />}
+                    <SegmentedControl
+                      accessibilityLabel="Media type to import"
+                      value={mediaKind}
+                      onValueChange={setMediaKind}
+                      options={[
+                        { value: 'music', label: 'Music', icon: 'musical-notes' },
+                        { value: 'video', label: 'Video', icon: 'videocam' },
+                      ]}
+                    />
+                    <SegmentedControl
+                      accessibilityLabel="Maximum files to import"
+                      value={limit === null ? 'all' : String(limit)}
+                      onValueChange={(next) => setLimit(next === 'all' ? null : Number(next))}
+                      options={LIMITS.map(({ label, value }) => ({
+                        value: value === null ? 'all' : String(value),
+                        label: value === null ? 'All' : label,
+                      }))}
+                    />
+                    {error ? <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
+                    {!importing ? <Button label="Start import" onPress={handleImport} /> : null}
                   </View>
                 </GlassPanel>
               )}
@@ -472,42 +466,12 @@ export function TelegramScreen({ navigation }: Props) {
   );
 }
 
-function ActionButton({
-  label,
-  onPress,
-  busy,
-  disabled,
-}: {
-  label: string;
-  onPress: () => void;
-  busy: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <PressableScale onPress={onPress} disabled={busy || disabled} scaleTo={0.97}>
-      <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.action}>
-        {busy ? <ActivityIndicator size="small" color="#100B18" /> : <Text style={styles.actionLabel}>{label}</Text>}
-      </LinearGradient>
-    </PressableScale>
-  );
-}
-
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#09060F' },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(27,20,38,0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  root: { flex: 1, backgroundColor: colors.bg },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.xl },
   headerText: { flex: 1 },
-  eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: 2 },
-  megaTitle: { ...typography.mega, fontSize: 34, lineHeight: 40 },
   scroll: { gap: spacing.md, paddingBottom: spacing.xxl },
-  loading: { marginTop: spacing.xxl },
+  loadingState: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   panel: {},
   panelContent: { padding: spacing.lg, gap: spacing.md },
   panelTitle: { ...typography.title, fontSize: 19, lineHeight: 24, color: colors.textPrimary },
@@ -517,31 +481,28 @@ const styles = StyleSheet.create({
   stepNumber: { color: colors.cyan, fontFamily: 'Sora_600SemiBold' },
   stepLink: { color: colors.cyan, textDecorationLine: 'underline' },
   error: { ...typography.caption, color: colors.danger },
-  action: {
-    borderRadius: radii.md,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionLabel: { ...typography.subtitle, fontFamily: 'Sora_600SemiBold', color: '#100B18' },
   linkedRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   linkedBadge: {
     width: 40,
     height: 40,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(95,191,142,0.12)',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  failedBadge: { backgroundColor: 'rgba(232,80,110,0.12)' },
+  failedBadge: { borderColor: colors.danger },
   searchCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: 'rgba(9,6,15,0.6)',
-    borderRadius: radii.pill,
+    backgroundColor: colors.surfaceBright,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
     paddingHorizontal: spacing.md,
-    height: 42,
+    minHeight: 48,
   },
   searchInput: { ...typography.body, flex: 1, color: colors.textPrimary, paddingVertical: 0 },
   dialogList: { gap: 2 },
@@ -549,27 +510,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    minHeight: 48,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
   },
-  dialogRowActive: { backgroundColor: 'rgba(255,138,92,0.10)' },
+  dialogRowActive: { backgroundColor: colors.surfaceElevated },
   dialogTitle: { ...typography.body, color: colors.textSecondary, flex: 1 },
   dialogTitleActive: { color: colors.textPrimary },
   dialogHandle: { ...typography.caption, fontSize: 11, color: colors.textMuted },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(9,6,15,0.5)',
-  },
-  chipActive: { backgroundColor: 'rgba(255,138,92,0.16)' },
-  chipLabel: { ...typography.caption, color: colors.textMuted },
-  chipLabelActive: { color: colors.cyan, fontFamily: 'Sora_500Medium' },
   jobRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   jobPct: { ...typography.caption, fontSize: 11, color: colors.cyan, fontFamily: 'Sora_600SemiBold' },
 });

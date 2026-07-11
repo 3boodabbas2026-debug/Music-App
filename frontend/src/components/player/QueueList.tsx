@@ -1,11 +1,11 @@
-import { FlatList, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { Artwork } from '../ui/Artwork';
 import { usePlayerStore } from '../../store/playerStore';
 import type { Media } from '../../services/api/types';
-import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
-import { colors, gradients, radii, spacing, typography } from '../../theme/tokens';
+import { displayArtist, displayTitle } from '../../utils/mediaDisplay';
+import { colors, radii, spacing, typography } from '../../theme/tokens';
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return '--:--';
@@ -61,13 +61,12 @@ export function QueueList() {
             <Text style={[styles.index, isCurrent && styles.indexCurrent]}>
               {isCurrent ? (playing ? '▶' : '❚❚') : index + 1}
             </Text>
-            {thumbnailUri(item) ? (
-              <Image source={{ uri: thumbnailUri(item)! }} style={styles.cover} />
-            ) : (
-              <LinearGradient colors={coverGradient(item.id)} style={styles.cover}>
-                <Ionicons name="musical-notes" size={13} color="rgba(248,250,252,0.4)" />
-              </LinearGradient>
-            )}
+            <Artwork
+              media={item}
+              size={38}
+              borderRadius={radii.sm - 4}
+              accessibilityLabel={`${title(item)} by ${artist(item)} artwork`}
+            />
             <View style={styles.text}>
               <Text numberOfLines={1} style={[styles.title, isCurrent && styles.titleCurrent]}>
                 {title(item)}
@@ -110,13 +109,6 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   indexCurrent: { color: colors.cyan },
-  cover: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.sm - 4,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   text: { flex: 1 },
   title: { ...typography.subtitle, fontSize: 14, lineHeight: 18, color: colors.textSecondary },
   titleCurrent: { color: colors.textPrimary },

@@ -32,7 +32,7 @@ export function LoginScreen({ navigation }: Props) {
   }
 
   return (
-    <AuthLayout eyebrow="DUSKGLEN" title="Welcome back." subtitle="Your hollow has been waiting.">
+    <AuthLayout eyebrow="DUSKGLEN" title="Welcome back" subtitle="Your music, right where you left it.">
       <TextField
         label="Email"
         value={email}

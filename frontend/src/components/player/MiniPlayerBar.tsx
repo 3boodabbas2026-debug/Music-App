@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Artwork } from '../ui/Artwork';
 import { GlassPanel } from '../ui/GlassPanel';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useTrackAccent } from '../../hooks/useTrackAccent';
 import { usePlayerStore } from '../../store/playerStore';
-import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
+import { displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 import { colors, layout, radii, spacing, typography } from '../../theme/tokens';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -127,13 +127,13 @@ export function MiniPlayerBar() {
         <View style={[playing && styles.glowWrap, playing && accentColor && { shadowColor: accentColor }]}>
           <GlassPanel style={styles.panel} overlayColor="rgba(27,20,38,0.9)">
             <View style={styles.content}>
-              {thumbnailUri(currentMedia) ? (
-                <Image source={{ uri: thumbnailUri(currentMedia)! }} style={styles.cover} />
-              ) : (
-                <LinearGradient colors={coverGradient(currentMedia.id)} style={styles.cover}>
-                  <Ionicons name="musical-notes" size={18} color="rgba(241,237,247,0.6)" />
-                </LinearGradient>
-              )}
+              <Artwork
+                media={currentMedia}
+                size={42}
+                priority
+                borderRadius={radii.sm}
+                accessibilityLabel={`${displayTitle(currentMedia)} artwork`}
+              />
               <View style={styles.textWrap}>
                 <Text numberOfLines={1} style={styles.title}>
                   {displayTitle(currentMedia)}
@@ -201,13 +201,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
-  },
-  cover: {
-    width: 42,
-    height: 42,
-    borderRadius: radii.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   textWrap: { flex: 1 },
   title: { ...typography.subtitle, color: colors.textPrimary },

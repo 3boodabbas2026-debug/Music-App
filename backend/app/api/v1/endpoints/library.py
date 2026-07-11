@@ -1,16 +1,19 @@
 import asyncio
+import logging
 import re
 from pathlib import Path
 
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_stream_user
 from app.db.session import get_db
+from app.models.job import Job
 from app.models.media import Media
+from app.models.playlist import PlaylistItem
 from app.models.user import User
 from app.schemas.media import MediaOut, MediaUpdate
 from app.services import thumbnails
@@ -18,6 +21,7 @@ from app.services.admin_events import log_event
 from app.services.storage import backend as storage_backend
 
 router = APIRouter(prefix="/library", tags=["library"])
+logger = logging.getLogger(__name__)
 
 CHUNK_SIZE = 1024 * 1024
 RANGE_RE = re.compile(r"bytes=(\d*)-(\d*)")
@@ -57,6 +61,41 @@ async def _get_owned_media(media_id: str, current_user: User, db: AsyncSession) 
     return media
 
 
+async def _commit_or_rollback(db: AsyncSession) -> None:
+    """Leave the request session usable after a failed write.
+
+    Request-scoped sessions are closed after the response, but an explicit
+    rollback is still important for direct callers/tests and prevents later
+    dependency work from encountering a pending-rollback session.
+    """
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+
+
+async def _delete_media_files_best_effort(file_path: str, backend: str) -> None:
+    """Remove storage only after the database no longer references it.
+
+    Database integrity is authoritative.  A transient storage outage should
+    leave an orphaned object for later operational cleanup, not resurrect a DB
+    row or turn a successful library deletion into a client-visible failure.
+    """
+    try:
+        await asyncio.to_thread(storage_backend.delete_file, file_path, backend)
+    except Exception:
+        logger.exception("Media metadata was deleted, but storage cleanup failed")
+
+    if backend != "local":
+        return
+
+    try:
+        await asyncio.to_thread(thumbnails.thumbnail_path_for(file_path).unlink, missing_ok=True)
+    except Exception:
+        logger.exception("Media metadata was deleted, but thumbnail cleanup failed")
+
+
 @router.get("/{media_id}", response_model=MediaOut)
 async def get_media(
     media_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
@@ -75,7 +114,7 @@ async def update_media(
     media = await _get_owned_media(media_id, current_user, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(media, field, value)
-    await db.commit()
+    await _commit_or_rollback(db)
     await db.refresh(media)
     return MediaOut.model_validate(media)
 
@@ -85,11 +124,42 @@ async def delete_media(
     media_id: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> None:
     media = await _get_owned_media(media_id, current_user, db)
-    await asyncio.to_thread(storage_backend.delete_file, media.file_path, media.storage_backend or "local")
-    thumbnails.thumbnail_path_for(media.file_path).unlink(missing_ok=True)
+
+    # Capture storage coordinates before deleting the ORM row.  All database
+    # references are resolved in the same transaction: playlist membership is
+    # owned by the media row, while completed jobs remain useful history and
+    # merely lose their optional result pointer.
+    file_path = media.file_path
+    backend = media.storage_backend or "local"
+    playlist_ids = list(
+        (
+            await db.scalars(
+                select(PlaylistItem.playlist_id)
+                .where(PlaylistItem.media_id == media.id)
+                .distinct()
+            )
+        ).all()
+    )
+    await db.execute(delete(PlaylistItem).where(PlaylistItem.media_id == media.id))
+    if playlist_ids:
+        remaining_items = (
+            await db.scalars(
+                select(PlaylistItem)
+                .where(PlaylistItem.playlist_id.in_(playlist_ids))
+                .order_by(PlaylistItem.playlist_id, PlaylistItem.position, PlaylistItem.id)
+            )
+        ).all()
+        positions: dict[str, int] = {}
+        for item in remaining_items:
+            item.position = positions.get(item.playlist_id, 0)
+            positions[item.playlist_id] = item.position + 1
+    await db.execute(update(Job).where(Job.result_media_id == media.id).values(result_media_id=None))
     await log_event(db, "media_deleted", user_id=current_user.id, detail=media.title or media.id)
     await db.delete(media)
-    await db.commit()
+    await _commit_or_rollback(db)
+
+    # Never destroy the only bytes before the database transaction succeeds.
+    await _delete_media_files_best_effort(file_path, backend)
 
 
 @router.get("/{media_id}/thumbnail", include_in_schema=False)

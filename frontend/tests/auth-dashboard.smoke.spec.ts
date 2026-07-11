@@ -25,8 +25,10 @@ async function mockApi(page: import('@playwright/test').Page, library: unknown[]
       return;
     }
     if (url.pathname.endsWith('/library') && route.request().method() === 'GET') {
-      const q = (url.searchParams.get('q') ?? '').toLowerCase();
-      const filtered = q ? library.filter((item: any) => `${item.title} ${item.artist}`.toLowerCase().includes(q)) : library;
+      const query = (url.searchParams.get('q') ?? '').toLowerCase();
+      const filtered = query
+        ? library.filter((item: any) => `${item.title} ${item.artist}`.toLowerCase().includes(query))
+        : library;
       await route.fulfill({ contentType: 'application/json', body: JSON.stringify(filtered) });
       return;
     }
@@ -36,21 +38,57 @@ async function mockApi(page: import('@playwright/test').Page, library: unknown[]
 
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/');
-  await expect(page.getByText('Welcome back.')).toBeVisible();
-  await page.getByPlaceholder('you@example.com').fill(user.email);
-  await page.getByPlaceholder('••••••••').fill('correct-horse-battery-staple');
+  await expect(page.getByText('Welcome back', { exact: true })).toBeVisible();
+  await page.getByLabel('Email').fill(user.email);
+  await page.getByLabel('Password').fill('correct-horse-battery-staple');
   await page.getByRole('button', { name: 'Log in' }).click();
 }
 
-test('login opens the mobile dashboard without runtime errors', async ({ page }) => {
+async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const viewportWidth = document.documentElement.clientWidth;
+        const contentWidth = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
+        return contentWidth - viewportWidth;
+      }),
+    )
+    .toBeLessThanOrEqual(1);
+}
+
+test('the 390px mobile shell navigates across every primary destination without errors or overflow', async ({ page }) => {
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
 
   await mockApi(page);
   await login(page);
 
-  await expect(page.getByText('Bring something in — paste any link.')).toBeVisible();
-  await expect(page.getByPlaceholder('https:// TikTok · YouTube · anything')).toBeVisible();
+  expect(page.viewportSize()).toEqual({ width: 390, height: 844 });
+
+  await expect(page.getByText('Bring a track home.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Media link' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Today' })).toHaveAttribute('aria-selected', 'true');
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByRole('tab', { name: 'Library' }).click();
+  await expect(page.getByText('YOUR MUSIC', { exact: true })).toBeVisible();
+  await expect(page.getByPlaceholder('Search title or artist')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByRole('tab', { name: 'Identify' }).click();
+  await expect(page.getByText('What’s playing?', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Start listening' })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByRole('tab', { name: 'Activity' }).click();
+  await expect(page.getByText('YOUR IMPORTS', { exact: true })).toBeVisible();
+  await expect(page.getByText('Nothing in motion', { exact: true })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByRole('tab', { name: 'Today' }).click();
+  await expect(page.getByText('Bring a track home.', { exact: true })).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
   expect(pageErrors).toEqual([]);
 });
 
@@ -67,20 +105,27 @@ test('an expired access token refreshes without logging the user out', async ({ 
     }
     if (url.pathname.endsWith('/auth/refresh')) {
       refreshCalls += 1;
-      await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ access_token: 'fresh-access', token_type: 'bearer' }) });
+      await route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ access_token: 'fresh-access', token_type: 'bearer' }),
+      });
       return;
     }
     if (url.pathname.endsWith('/library') && route.request().headers().authorization === 'Bearer expired-access') {
-      await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ detail: 'Expired token' }) });
+      await route.fulfill({
+        status: 401,
+        contentType: 'application/json',
+        body: JSON.stringify({ detail: 'Expired token' }),
+      });
       return;
     }
     await route.fulfill({ contentType: 'application/json', body: JSON.stringify([]) });
   });
 
   await login(page);
-  await expect(page.getByText('Bring something in — paste any link.')).toBeVisible();
+  await expect(page.getByText('Bring a track home.', { exact: true })).toBeVisible();
   await expect.poll(() => refreshCalls).toBe(1);
-  await expect(page.getByText('Welcome back.')).toHaveCount(0);
+  await expect(page.getByText('Welcome back', { exact: true })).toHaveCount(0);
 });
 
 test('a 520-track library stays virtualized, searchable, and selectable', async ({ page }) => {
@@ -106,7 +151,7 @@ test('a 520-track library stays virtualized, searchable, and selectable', async 
 
   await mockApi(page, library);
   await login(page);
-  await page.getByRole('button', { name: 'Library' }).click();
+  await page.getByRole('tab', { name: 'Library' }).click();
   await expect(page.getByPlaceholder('Search title or artist')).toBeVisible();
 
   const renderedRows = await page.getByText(/^Track \d+$/).count();
@@ -114,7 +159,7 @@ test('a 520-track library stays virtualized, searchable, and selectable', async 
   expect(renderedRows).toBeLessThan(80);
 
   await page.getByPlaceholder('Search title or artist').fill('Track 519');
-  const targetCard = page.getByRole('button', { name: 'Track 519, Artist 19, Ambient · 2019' });
+  const targetCard = page.getByRole('button', { name: /^Track 519, Artist 19, Ambient.*2019$/ });
   await expect(targetCard).toHaveCount(1);
   await expect(targetCard).toBeVisible();
   await page.getByRole('button', { name: 'Select tracks' }).click();

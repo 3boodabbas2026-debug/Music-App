@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
-  Image,
   PanResponder,
   Pressable,
   StyleSheet,
@@ -10,11 +9,13 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Artwork } from '../ui/Artwork';
 import { GradientText } from '../ui/GradientText';
 import { PressableScale } from '../ui/PressableScale';
 import { streamUrl } from '../../services/api/library';
@@ -212,7 +213,20 @@ export function GlobalVideoStage() {
         {!videoReady && (
           <View style={styles.posterWrap} pointerEvents="none">
             {thumbnailUri(media) ? (
-              <Image source={{ uri: thumbnailUri(media)! }} style={styles.poster} resizeMode="cover" blurRadius={4} />
+              <Image
+                source={{ uri: thumbnailUri(media)! }}
+                style={styles.poster}
+                contentFit="cover"
+                blurRadius={4}
+                cachePolicy="memory-disk"
+                priority="high"
+                loading="eager"
+                recyclingKey={`video-poster-${media.id}`}
+                transition={160}
+                accessible
+                accessibilityLabel={`${displayTitle(media)} video poster`}
+                alt={`${displayTitle(media)} video poster`}
+              />
             ) : (
               <LinearGradient colors={coverGradient(media.id)} style={styles.poster} />
             )}
@@ -260,15 +274,19 @@ export function GlobalVideoStage() {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.stripContent}
                 renderItem={({ item }) => (
-                  <PressableScale onPress={() => setMediaId(item.id)} scaleTo={0.95}>
+                  <PressableScale
+                    onPress={() => setMediaId(item.id)}
+                    accessibilityLabel={`Play ${displayTitle(item)}`}
+                    scaleTo={0.95}
+                  >
                     <View style={styles.stripCard}>
-                      {thumbnailUri(item) ? (
-                        <Image source={{ uri: thumbnailUri(item)! }} style={styles.stripThumb} />
-                      ) : (
-                        <LinearGradient colors={coverGradient(item.id)} style={styles.stripThumb}>
-                          <Ionicons name="videocam" size={16} color="rgba(241,237,247,0.4)" />
-                        </LinearGradient>
-                      )}
+                      <Artwork
+                        media={item}
+                        size="100%"
+                        style={styles.stripThumb}
+                        borderRadius={radii.sm}
+                        accessibilityLabel={`${displayTitle(item)} video poster`}
+                      />
                       <Text numberOfLines={1} style={styles.stripTitle}>
                         {displayTitle(item)}
                       </Text>

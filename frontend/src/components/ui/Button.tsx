@@ -1,106 +1,108 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { ActivityIndicator, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
-import { colors, radii, shadows, spacing, typography } from '../../theme/tokens';
+import { colors, radii, spacing, typography } from '../../theme/tokens';
 
 type Props = {
   label: string;
   onPress: () => void;
-  variant?: 'primary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
   disabled?: boolean;
   loading?: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  icon?: keyof typeof Ionicons.glyphMap;
+  accessibilityHint?: string;
+  testID?: string;
 };
 
-export function Button({ label, onPress, variant = 'primary', disabled, loading, style }: Props) {
+export function Button({
+  label,
+  onPress,
+  variant = 'primary',
+  disabled,
+  loading,
+  style,
+  icon,
+  accessibilityHint,
+  testID,
+}: Props) {
   const isDisabled = disabled || loading;
-
-  if (variant === 'primary') {
-    return (
-      <Pressable
-        onPress={onPress}
-        disabled={isDisabled}
-        accessibilityRole="button"
-        accessibilityLabel={loading ? `${label}, in progress` : label}
-        accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
-        style={({ pressed }) => [
-          styles.primaryShadow,
-          { opacity: isDisabled ? 0.5 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] },
-          style,
-        ]}
-      >
-        <LinearGradient
-          colors={colors.gradientPrimary}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.primary}
-        >
-          {loading ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Text style={styles.primaryLabel}>{label}</Text>
-          )}
-        </LinearGradient>
-      </Pressable>
-    );
-  }
+  const isPrimary = variant === 'primary';
+  const isDanger = variant === 'danger';
 
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={loading ? `${label}, in progress` : label}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
       style={({ pressed }) => [
-        styles.ghost,
-        variant === 'danger' && styles.dangerSurface,
-        { opacity: isDisabled ? 0.5 : pressed ? 0.85 : 1 },
+        styles.base,
+        isPrimary && styles.primary,
+        variant === 'secondary' && styles.secondary,
+        variant === 'ghost' && styles.ghost,
+        isDanger && styles.danger,
+        pressed && !isDisabled && styles.pressed,
+        isDisabled && styles.disabled,
         style,
       ]}
     >
-      {loading ? (
-        <ActivityIndicator color={colors.cyan} />
-      ) : (
-        <Text style={[styles.ghostLabel, variant === 'danger' && styles.dangerLabel]}>{label}</Text>
-      )}
+      <View style={styles.content}>
+        {loading ? (
+          <ActivityIndicator size="small" color={isPrimary ? colors.textInverse : isDanger ? colors.danger : colors.cyan} />
+        ) : icon ? (
+          <Ionicons
+            name={icon}
+            size={18}
+            color={isPrimary ? colors.textInverse : isDanger ? colors.danger : colors.textPrimary}
+          />
+        ) : null}
+        <Text style={[styles.label, isPrimary && styles.primaryLabel, isDanger && styles.dangerLabel]}>{label}</Text>
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  primaryShadow: {
+  base: {
+    minHeight: 52,
     borderRadius: radii.md,
-    ...shadows.glowPrimary,
+    paddingVertical: 13,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   primary: {
-    borderRadius: radii.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.cyan,
+    borderColor: colors.cyan,
   },
-  primaryLabel: {
-    ...typography.subtitle,
-    color: colors.bg,
-    fontFamily: 'Sora_600SemiBold',
+  secondary: {
+    backgroundColor: colors.surfaceBright,
+    borderColor: colors.surfaceBorderStrong,
   },
   ghost: {
-    borderRadius: radii.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
+    backgroundColor: 'transparent',
+    borderColor: colors.surfaceBorder,
+  },
+  danger: {
+    backgroundColor: 'rgba(239,120,136,0.08)',
+    borderColor: 'rgba(239,120,136,0.24)',
+  },
+  pressed: { opacity: 0.86, transform: [{ scale: 0.985 }] },
+  disabled: { opacity: 0.45 },
+  content: {
+    minHeight: 22,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
+    gap: spacing.sm,
   },
-  ghostLabel: {
-    ...typography.subtitle,
-    color: colors.textPrimary,
-  },
-  dangerSurface: {
-    backgroundColor: 'rgba(232,80,110,0.12)',
-  },
-  dangerLabel: {
-    color: colors.danger,
-  },
+  label: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary, textAlign: 'center' },
+  primaryLabel: { color: colors.textInverse },
+  dangerLabel: { color: colors.danger },
 });

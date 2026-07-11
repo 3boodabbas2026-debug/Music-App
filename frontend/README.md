@@ -1,62 +1,65 @@
-# Duskglen — Frontend
+# Duskglen frontend
 
-React Native (Expo) client: paste-a-link downloader, Shazam-style recognition, and a Spotify-style
-library/player — all built around a single signature 3D "Moonlight" (audio-reactive via `@react-three/fiber`
-+ `expo-gl`) that changes character across idle / listening / playing states.
+Expo 57 / React Native Web client shipped as a production web bundle inside a
+Capacitor Android shell. Duskglen captures media links, identifies nearby
+music, organizes a private library, and provides queue, lyrics, offline, and
+background playback controls.
+
+## Runtime model
+
+The APK runs `expo export --platform web` inside Capacitor. Code should be
+optimized for a mobile WebView first, while remaining compatible with Expo's
+native preview where practical.
+
+- Avoid expensive backdrop blur and permanent animation loops.
+- Keep collection views virtualized.
+- Subscribe to high-frequency player state only where it is rendered.
+- Use the shared `Artwork` component for remote covers and posters.
+- Use semantic tokens and shared controls from `src/theme` and
+  `src/components/ui`.
 
 ## Setup
 
-Dependencies are already installed. Copy `.env.example` to `.env` and point it at your backend:
+Create `frontend/.env` from `.env.example` and point it at the API:
 
-```
+```env
 EXPO_PUBLIC_API_BASE_URL=http://<your-pc-lan-ip>:8095
 ```
 
-Physical devices and most emulators can't reach `127.0.0.1` on your dev machine — you need your PC's
-actual LAN IP (`ipconfig`), matching the backend started with `--host 0.0.0.0`. Android emulators
-specifically can also use `10.0.2.2`.
+Physical devices cannot use your computer's `127.0.0.1`. Use the computer's
+LAN address, or `10.0.2.2` from an Android emulator.
 
-## Run
+## Commands
 
 ```powershell
-npx expo start
+npm install
+npm run typecheck
+npm run build:web
+npm run test:smoke
+npm run build:android-web
 ```
 
-Scan the QR code with **Expo Go** (works out of the box — everything here, including the GL-based Moonlight
-and mic recording, runs in Expo Go; nothing needs a custom dev client build).
+`build:android-web` exports the web app and synchronizes the Capacitor Android
+project. Production APKs are built by `.github/workflows/android-apk.yml` only
+after typechecking, a production export, and the 390×844 Playwright smoke suite
+pass.
 
-## What's implemented
+## Product structure
 
-- **Auth**: login/register screens, JWT stored via AsyncStorage, auto-refresh on 401.
-- **Home tab**: paste a link, pick audio/video, live progress via the backend's WebSocket (falls back
-  gracefully if the socket drops — the job was already created via the POST response).
-- **Recognize tab**: real microphone capture (`expo-audio`), an 8s listening window, calls the backend's
-  recognition endpoint, and — the cross-feature payoff — a "Find & download" button that fires a
-  `ytsearch1:` yt-dlp query for the matched title/artist straight into the download pipeline.
-- **Library tab**: search, list, tap to play.
-- **Player**: full-screen Moonlight, real playback-position seek bar, play/pause.
-- **Moonlight** (`src/components/three/Moonlight.tsx`): one 3D component reused everywhere. Its `amplitude` prop is
-  **real signal, not simulated** — RMS of live mic PCM frames while listening, RMS of the audio player's
-  own `audioSampleUpdate` PCM frames while playing (see `PlayerService.ts`). There's no true per-frequency
-  FFT split (that would need a native analyser module beyond what Expo Go offers), so the visual motion
-  is a layered-sine treatment of that one real amplitude value, not four/eight independent bands.
+- **Today** — link capture, active work, resume, and recently added music.
+- **Library** — search, filters, favorites, playlists, bulk actions, and offline saves.
+- **Identify** — microphone recognition with explicit recovery and add-to-library flow.
+- **Activity** — download/recognition progress, cancel, retry, and history.
+- **Player** — artwork-led playback, queue, synced lyrics, repeat/shuffle, sleep, and lock-screen metadata.
+- **Secondary tools** — Telegram import, Replay, Settings, and role-gated Admin.
 
-## Honesty check on testing
+See [`../docs/PRODUCT_REBUILD.md`](../docs/PRODUCT_REBUILD.md) for the product,
+design-system, and feature decisions behind the current architecture.
 
-I verified this compiles and bundles cleanly: `npx tsc --noEmit` is clean, and `npx expo export
---platform android` successfully bundled all 1415 modules with no errors. I could **not** verify runtime
-behavior on an actual device/emulator or simulator from this environment — no Android/iOS tooling was
-available here, so I never saw the Moonlight actually render, watched a real recording round-trip on-device, or
-confirmed the seek bar visually. Please run it on your phone via Expo Go and sanity-check the three flows
-above (paste-link → progress → library; mic → recognize → find & download; library → player → seek)
-before treating it as done-done. The backend side of every one of these flows was independently verified
-against the real network (see backend README).
+## Notable choices
 
-## Notable library choices
-
-- `expo-audio` (not the deprecated `expo-av`) for both playback and mic recording — current SDK-matched
-  package.
-- `@react-three/fiber/native` + `expo-gl` for the Moonlight — works in plain Expo Go, no dev-client/eject
-  needed. A WebView + web-Three.js hybrid was considered for richer shader effects but adds bridge
-  latency; this native path was chosen to keep audio-reactive timing tight.
-- `zustand` over Redux — less boilerplate for a project this size.
+- `expo-audio` for playback and microphone capture.
+- `expo-image` for cached, recyclable, flicker-free artwork.
+- Zustand stores with narrow selectors for playback-sensitive surfaces.
+- React Navigation for the four-destination shell and secondary stack.
+- Static ambient backgrounds; motion is reserved for direct interaction and playback state.

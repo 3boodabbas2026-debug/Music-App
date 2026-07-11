@@ -1,219 +1,109 @@
-import { useMemo, useRef } from 'react';
-import { View } from 'react-native';
-import { Canvas, useFrame } from '@react-three/fiber/native';
-import * as THREE from 'three';
+import { useEffect, useRef } from 'react';
+import { AccessibilityInfo, Animated, Easing, StyleSheet, View } from 'react-native';
 
 export type MoonlightState = 'idle' | 'listening' | 'playing';
 
 type MoonlightProps = {
   state: MoonlightState;
-  /** 0-1 live input level: mic RMS while listening, playback RMS while playing. */
   amplitude?: number;
   size?: number;
-  /** When set (a color pulled from the current track's cover art), overrides
-   * the state-based palette so the moon's glow matches what's playing —
-   * still gold-paired, still Duskglen, just tuned to this one track. */
   accentColor?: string;
 };
 
-function hexToRgb(hex: string): [number, number, number] {
-  const n = parseInt(hex.replace('#', ''), 16);
-  return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
-}
-
-// Duskglen accents: ember coral, twilight lavender, star gold.
-const EMBER = hexToRgb('#FF8A5C');
-const LAVENDER = hexToRgb('#B39DFF');
-const GOLD = hexToRgb('#E8C468');
-const SILVER = hexToRgb('#F1EDF7');
-
-const PALETTE: Record<MoonlightState, [[number, number, number], [number, number, number]]> = {
-  idle: [EMBER, LAVENDER],
-  listening: [EMBER, GOLD],
-  playing: [LAVENDER, GOLD],
-};
-
-const STAR_COUNT = 42;
-
 /**
- * The app's one signature visual: a moon, softly glowing, drifting stars
- * around it — the same clearing the brand mark stands in. Replaces the old
- * spiky reactive-orb look with something calmer and considerably closer to
- * "a private night sky" than "an AI is listening" cliché.
+ * Duskglen's signature moon, built from composited native views.
+ *
+ * The previous native implementation ran a WebGL scene with a 9k-vertex
+ * sphere and per-frame geometry work. The shipped APK is a Capacitor WebView,
+ * and the remaining native/Expo preview does not need a second rendering
+ * engine for one brand mark. This version keeps the same emotional cue with
+ * a fraction of the startup, memory, and frame cost.
  */
-function MoonMesh({ state, amplitude = 0, accentColor }: MoonlightProps) {
-  const accentRgb = useMemo(() => (accentColor ? hexToRgb(accentColor) : null), [accentColor]);
-  const meshRef = useRef<THREE.Mesh>(null);
-  const materialRef = useRef<THREE.MeshStandardMaterial>(null);
-  const haloRef = useRef<THREE.Mesh>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
-  const ringMaterialRef = useRef<THREE.MeshBasicMaterial>(null);
-  const starsRef = useRef<THREE.Points>(null);
-  const starMaterialRef = useRef<THREE.PointsMaterial>(null);
-
-  const geometry = useMemo(() => new THREE.SphereGeometry(1, 96, 96), []);
-  const haloGeometry = useMemo(() => new THREE.SphereGeometry(1.14, 32, 32), []);
-  const ringGeometry = useMemo(() => new THREE.TorusGeometry(1.55, 0.006, 8, 128), []);
-
-  // Sparse drifting stars at varying distance — fireflies, not a dust cloud.
-  const starGeometry = useMemo(() => {
-    const positions = new Float32Array(STAR_COUNT * 3);
-    const seeds = new Float32Array(STAR_COUNT);
-    for (let i = 0; i < STAR_COUNT; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 1.7 + Math.random() * 1.1;
-      const height = (Math.random() - 0.5) * 2.0;
-      positions[i * 3] = Math.cos(angle) * radius;
-      positions[i * 3 + 1] = height;
-      positions[i * 3 + 2] = Math.sin(angle) * radius;
-      seeds[i] = Math.random() * Math.PI * 2;
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('seed', new THREE.BufferAttribute(seeds, 1));
-    return geo;
-  }, []);
-
-  const basePositions = useMemo(
-    () => Float32Array.from(geometry.attributes.position.array as ArrayLike<number>),
-    [geometry],
-  );
-  const elapsed = useRef(0);
-  const frameCount = useRef(0);
-
-  useFrame((_, delta) => {
-    elapsed.current += delta;
-    const t = elapsed.current;
-    const mesh = meshRef.current;
-    if (!mesh) return;
-
-    const speed = state === 'idle' ? 0.035 : state === 'listening' ? 0.07 : 0.1;
-    mesh.rotation.y += delta * speed;
-
-    // The per-vertex displacement + normal recompute below is the expensive
-    // part of this component (9,300 vertices, 3 trig calls each, every
-    // frame). The terrain breathes slowly on purpose, so recomputing it
-    // every 3rd frame instead of every frame is visually indistinguishable
-    // but cuts this loop's CPU cost by roughly two-thirds.
-    frameCount.current += 1;
-    if (frameCount.current % 3 === 0) {
-      const posAttr = geometry.attributes.position as THREE.BufferAttribute;
-      const intensity = state === 'idle' ? 0.015 : 0.02 + amplitude * 0.05;
-      for (let i = 0; i < posAttr.count; i++) {
-        const ix = i * 3;
-        const bx = basePositions[ix];
-        const by = basePositions[ix + 1];
-        const bz = basePositions[ix + 2];
-        const len = Math.sqrt(bx * bx + by * by + bz * bz) || 1;
-        const nx = bx / len;
-        const ny = by / len;
-        const nz = bz / len;
-        const noise = Math.sin(nx * 3 + t * 0.5) * 0.5 + Math.sin(ny * 4 + t * 0.35) * 0.3 + Math.sin(nz * 3.5 + t * 0.4) * 0.4;
-        const displacement = 1 + noise * intensity;
-        posAttr.setXYZ(i, bx * displacement, by * displacement, bz * displacement);
-      }
-      posAttr.needsUpdate = true;
-      geometry.computeVertexNormals();
-    }
-
-    const [c1, c2] = accentRgb ? ([accentRgb, GOLD] as const) : PALETTE[state];
-    const mix = (Math.sin(t * 0.35) + 1) / 2;
-    const r = SILVER[0] * 0.7 + (c1[0] + (c2[0] - c1[0]) * mix) * 0.3;
-    const g = SILVER[1] * 0.7 + (c1[1] + (c2[1] - c1[1]) * mix) * 0.3;
-    const b = SILVER[2] * 0.7 + (c1[2] + (c2[2] - c1[2]) * mix) * 0.3;
-    const glowR = c1[0] + (c2[0] - c1[0]) * mix;
-    const glowG = c1[1] + (c2[1] - c1[1]) * mix;
-    const glowB = c1[2] + (c2[2] - c1[2]) * mix;
-
-    if (materialRef.current) {
-      materialRef.current.color.setRGB(r, g, b);
-      materialRef.current.emissive.setRGB(glowR * 0.35, glowG * 0.35, glowB * 0.35);
-      materialRef.current.emissiveIntensity = state === 'idle' ? 0.4 : 0.55 + amplitude * 0.7;
-    }
-
-    const scale = state === 'idle' ? 1 + Math.sin(t * 0.6) * 0.015 : 1 + amplitude * 0.06;
-    mesh.scale.setScalar(scale);
-
-    if (haloRef.current) {
-      const haloMat = haloRef.current.material as THREE.MeshBasicMaterial;
-      haloMat.color.setRGB(glowR, glowG, glowB);
-      haloMat.opacity = 0.16 + amplitude * 0.22;
-      haloRef.current.scale.setScalar(scale * (1.08 + Math.sin(t * 0.9) * 0.02));
-    }
-
-    // One slim halo ring, tilted, drifting — a hint of celestial elegance
-    // instead of a busy wireframe cage.
-    if (ringRef.current) {
-      ringRef.current.rotation.z += delta * speed * 0.4;
-      ringRef.current.rotation.x = 1.15 + Math.sin(t * 0.2) * 0.05;
-    }
-    if (ringMaterialRef.current) {
-      ringMaterialRef.current.color.setRGB(glowR, glowG, glowB);
-      ringMaterialRef.current.opacity = 0.35 + amplitude * 0.35;
-    }
-
-    // Sparse stars: slow orbit + gentle twinkle, no dense dust-belt motion.
-    if (starsRef.current) {
-      starsRef.current.rotation.y += delta * (0.02 + amplitude * 0.15);
-    }
-    if (starMaterialRef.current) {
-      starMaterialRef.current.color.setRGB(SILVER[0], SILVER[1], SILVER[2]);
-      starMaterialRef.current.opacity = 0.55 + Math.sin(t * 1.6) * 0.2 + amplitude * 0.2;
-      starMaterialRef.current.size = 0.028 + amplitude * 0.012;
-    }
-  });
-
-  return (
-    <group>
-      <mesh ref={haloRef} geometry={haloGeometry}>
-        <meshBasicMaterial
-          transparent
-          opacity={0.16}
-          side={THREE.BackSide}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          color="#FF8A5C"
-        />
-      </mesh>
-      <mesh ref={meshRef} geometry={geometry}>
-        <meshStandardMaterial ref={materialRef} roughness={0.85} metalness={0.04} emissive="#FF8A5C" />
-      </mesh>
-      <mesh ref={ringRef} geometry={ringGeometry} rotation={[1.15, 0, 0]}>
-        <meshBasicMaterial
-          ref={ringMaterialRef}
-          transparent
-          opacity={0.35}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          color="#B39DFF"
-        />
-      </mesh>
-      <points ref={starsRef} geometry={starGeometry}>
-        <pointsMaterial
-          ref={starMaterialRef}
-          size={0.028}
-          sizeAttenuation
-          transparent
-          opacity={0.6}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          color="#F1EDF7"
-        />
-      </points>
-    </group>
-  );
-}
-
 export function Moonlight({ state, amplitude = 0, size = 220, accentColor }: MoonlightProps) {
+  const drift = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    let loop: Animated.CompositeAnimation | undefined;
+    let mounted = true;
+    AccessibilityInfo.isReduceMotionEnabled().then((reduced) => {
+      if (reduced || !mounted) return;
+      loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(drift, {
+            toValue: 1,
+            duration: 3400,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(drift, {
+            toValue: 0,
+            duration: 3400,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+      );
+      loop.start();
+    });
+    return () => {
+      mounted = false;
+      loop?.stop();
+    };
+  }, [drift]);
+
+  const glow = accentColor ?? (state === 'listening' ? '#F0C36A' : state === 'playing' ? '#B8A5FF' : '#FF755D');
+  const energy = Math.min(1, Math.max(0, amplitude));
+  const moonSize = size * 0.48;
+
   return (
-    <View style={{ width: size, height: size }}>
-      <Canvas camera={{ position: [0, 0, 3.4], fov: 42 }}>
-        <ambientLight intensity={0.4} />
-        <pointLight position={[2.2, 2.2, 2]} intensity={1.1} color="#F1EDF7" />
-        <pointLight position={[-2.2, -1.2, -2]} intensity={0.7} color="#B39DFF" />
-        <pointLight position={[0, -2.4, 1.5]} intensity={0.5} color="#E8C468" />
-        <MoonMesh state={state} amplitude={amplitude} accentColor={accentColor} />
-      </Canvas>
+    <View style={[styles.root, { width: size, height: size }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Animated.View
+        style={[
+          styles.halo,
+          {
+            width: size * 0.74,
+            height: size * 0.74,
+            borderRadius: size,
+            backgroundColor: `${glow}18`,
+            transform: [
+              { scale: drift.interpolate({ inputRange: [0, 1], outputRange: [1 + energy * 0.03, 1.07 + energy * 0.08] }) },
+            ],
+          },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.moon,
+          {
+            width: moonSize,
+            height: moonSize,
+            borderRadius: moonSize,
+            shadowColor: glow,
+            transform: [{ translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [2, -3] }) }],
+          },
+        ]}
+      >
+        <View style={[styles.crater, { width: moonSize * 0.16, height: moonSize * 0.16, borderRadius: moonSize, top: moonSize * 0.2, left: moonSize * 0.22 }]} />
+        <View style={[styles.crater, { width: moonSize * 0.1, height: moonSize * 0.1, borderRadius: moonSize, top: moonSize * 0.56, left: moonSize * 0.62 }]} />
+        <View style={[styles.shade, { width: moonSize, height: moonSize, borderRadius: moonSize, left: moonSize * 0.34 }]} />
+      </Animated.View>
+      <View style={[styles.orbit, { width: size * 0.82, height: size * 0.3, borderRadius: size, borderColor: `${glow}45` }]} />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  root: { alignItems: 'center', justifyContent: 'center' },
+  halo: { position: 'absolute' },
+  moon: {
+    overflow: 'hidden',
+    backgroundColor: '#F7F3FA',
+    shadowOpacity: 0.48,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 10,
+  },
+  shade: { position: 'absolute', top: 0, backgroundColor: 'rgba(43,31,58,0.18)' },
+  crater: { position: 'absolute', backgroundColor: 'rgba(78,60,91,0.12)' },
+  orbit: { position: 'absolute', borderWidth: 1, transform: [{ rotate: '-12deg' }] },
+});

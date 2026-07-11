@@ -1,49 +1,79 @@
-import { PropsWithChildren, useRef } from 'react';
-import { Animated, Platform, Pressable, StyleSheet, ViewStyle } from 'react-native';
+import { PropsWithChildren, useEffect, useRef, useState } from 'react';
+import {
+  AccessibilityInfo,
+  AccessibilityState,
+  Animated,
+  Platform,
+  Pressable,
+  PressableProps,
+  StyleProp,
+  StyleSheet,
+  ViewStyle,
+} from 'react-native';
 
 type Props = PropsWithChildren<{
-  onPress?: () => void;
+  onPress?: PressableProps['onPress'];
+  onLongPress?: PressableProps['onLongPress'];
   disabled?: boolean;
-  style?: ViewStyle | ViewStyle[];
-  /** Scale while pressed. */
+  style?: StyleProp<ViewStyle>;
   scaleTo?: number;
-  /** Scale while hovered (web/desktop pointers only). */
   hoverScaleTo?: number;
-  hitSlop?: number;
+  hitSlop?: PressableProps['hitSlop'];
   accessibilityLabel?: string;
   accessibilityHint?: string;
+  accessibilityState?: AccessibilityState;
+  testID?: string;
 }>;
 
-/**
- * Touchable that springs down on press and lifts slightly under a pointer —
- * every tap in the app should feel physical, and every hover should answer back.
- */
+/** Accessible 44pt touch target with restrained press feedback. */
 export function PressableScale({
   children,
   onPress,
+  onLongPress,
   disabled,
   style,
-  scaleTo = 0.94,
-  hoverScaleTo = 1.03,
+  scaleTo = 0.97,
+  hoverScaleTo = 1.01,
   hitSlop,
   accessibilityLabel,
   accessibilityHint,
+  accessibilityState,
+  testID,
 }: Props) {
   const scale = useRef(new Animated.Value(1)).current;
   const hovered = useRef(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
 
-  const to = (value: number) =>
-    Animated.spring(scale, { toValue: value, useNativeDriver: true, speed: 40, bounciness: 6 }).start();
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then(setReducedMotion);
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
+    return () => subscription.remove();
+  }, []);
+
+  const to = (value: number) => {
+    if (reducedMotion) {
+      scale.setValue(1);
+      return;
+    }
+    Animated.spring(scale, {
+      toValue: value,
+      useNativeDriver: true,
+      speed: 36,
+      bounciness: 1,
+    }).start();
+  };
 
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       disabled={disabled}
       hitSlop={hitSlop}
+      testID={testID}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ ...accessibilityState, disabled: !!disabled }}
       style={styles.hitTarget}
       onPressIn={() => to(scaleTo)}
       onPressOut={() => to(hovered.current ? hoverScaleTo : 1)}
@@ -64,7 +94,7 @@ export function PressableScale({
           : undefined
       }
     >
-      <Animated.View style={[style, { transform: [{ scale }] }, disabled ? { opacity: 0.5 } : null]}>
+      <Animated.View style={[style, { transform: [{ scale }] }, disabled && styles.disabled]}>
         {children}
       </Animated.View>
     </Pressable>
@@ -72,5 +102,11 @@ export function PressableScale({
 }
 
 const styles = StyleSheet.create({
-  hitTarget: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  hitTarget: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabled: { opacity: 0.45 },
 });

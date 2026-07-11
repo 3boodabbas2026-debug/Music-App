@@ -35,7 +35,13 @@ class Job(Base):
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    result_media_id: Mapped[str | None] = mapped_column(ForeignKey("media.id"), nullable=True)
+    # A completed job is historical activity, not an ownership relationship.
+    # Deleting the resulting library item must therefore keep the job and only
+    # clear this optional pointer.  The endpoint also performs this update
+    # explicitly for databases created before this FK policy existed.
+    result_media_id: Mapped[str | None] = mapped_column(
+        ForeignKey("media.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Populated for ad-hoc RECOGNIZE jobs (mic/file clip with no library media_id
     # attached) since there's no Media row to hang the match metadata off of.

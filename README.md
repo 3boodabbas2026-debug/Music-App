@@ -2,10 +2,9 @@
 
 *(repo/folder name: SuperMediaApp — see [GO_PUBLIC.md](GO_PUBLIC.md) for the brand rationale)*
 
-A universal link downloader (TikTok/YouTube/etc. via yt-dlp), Shazam-style recognition (shazamio), and
-a Spotify-style library/player, wrapped in a React Native client built around a single audio-reactive 3D
-"Moonlight" visual — a moon glimpsed through a pine treeline — that serves as the app's visual identity
-across every screen.
+A private music utility for saving media links, identifying nearby songs, organizing a personal library,
+and playing it back with queue, lyrics, offline, and lock-screen controls. The Expo web client ships inside
+a Capacitor Android shell and uses a restrained dusk-editorial visual system.
 
 Fresh project, independent of the `Telegram/` folder's `vault_app` — see that project's own history for
 where the recognition logic and general architecture pattern were ported from.
@@ -13,7 +12,7 @@ where the recognition logic and general architecture pattern were ported from.
 ```
 SuperMediaApp/
 ├── backend/   FastAPI — downloads, recognition, library, auth, streaming, WebSocket job progress
-└── frontend/  React Native (Expo) — 3D Orb, paste-link, recognize, library, player
+└── frontend/  Expo / React Native Web — capture, identify, library, activity, player
 ```
 
 Start here:
@@ -75,17 +74,14 @@ impersonation (via `curl-cffi`) is already enabled by default (`SMA_YTDLP_IMPERS
 are fresh but YouTube still rejects the Render IP, set `SMA_YTDLP_PROXY_URL` to a clean residential/ISP
 proxy and redeploy.
 
-## What's been verified vs. what needs your eyes
+## Quality gates
 
-**Backend — verified end-to-end against the real network**, in this session: registered a user, downloaded
-a real YouTube video through yt-dlp, streamed it back with working byte-range requests, ran it through the
-real Shazam recognition API (got a real, if low-confidence, match), watched live progress over the actual
-WebSocket connection, and exercised playlists/library CRUD and auth edge cases (401, 409). Bugs found
-during that testing (a few SQLAlchemy async footguns, a pydantic/ORM relationship-naming collision, a
-non-monotonic progress bar) were fixed and re-verified, not just patched and assumed fixed.
+- Backend integrity regressions cover deletion, playlist/job references,
+  ownership validation, bounded recognition uploads, and rollback behavior.
+- Frontend changes must pass `tsc --noEmit`, a production Expo export, and the
+  Playwright mobile smoke suite at 390×844.
+- The Android workflow requires that quality job before building and replacing
+  the rolling `apk-latest` release.
 
-**Frontend — compiles and bundles cleanly, not yet run on a device.** This sandbox has no
-Android/iOS/emulator tooling, so `npx tsc --noEmit` and a full `expo export` bundle are the strongest
-checks available here. The three core flows (paste-link → progress → library; mic → recognize → find &
-download; library → player → seek) are wired against the real, verified backend API, but I have not
-watched them run. Treat the frontend as "should work, please confirm on your phone" rather than "done."
+Hardware-specific media-session, microphone, and long-running playback checks
+should still be exercised on a physical Android device before a store release.

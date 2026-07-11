@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUiStore } from '../../store/uiStore';
@@ -48,9 +48,14 @@ export function Sidebar() {
   if (!rendered) return null;
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: slide }]}>
-        <Pressable style={styles.backdrop} onPress={closeSidebar} />
+        <Pressable
+          style={styles.backdrop}
+          onPress={closeSidebar}
+          accessibilityRole="button"
+          accessibilityLabel="Close navigation"
+        />
       </Animated.View>
 
       <Animated.View
@@ -69,7 +74,12 @@ export function Sidebar() {
             the WebView backdrop-filter cost while sliding. */}
         <View style={styles.panelOverlay} />
         <View style={styles.panelContent}>
-          <AppSidebar variant="drawer" onNavigate={closeSidebar} />
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.panelScroll}
+          >
+            <AppSidebar variant="drawer" onNavigate={closeSidebar} />
+          </ScrollView>
         </View>
       </Animated.View>
     </View>
@@ -101,5 +111,8 @@ const styles = StyleSheet.create({
   panelContent: {
     flex: 1,
     paddingHorizontal: spacing.lg,
+  },
+  panelScroll: {
+    flexGrow: 1,
   },
 });

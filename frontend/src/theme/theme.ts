@@ -1,156 +1,125 @@
 /**
- * "Duskglen" design system — the single source of truth for the app's look.
+ * Duskglen's visual foundation.
  *
- * Visual concept: the glen at true dusk — the minute after the sun slips
- * below the treeline. An ink-violet night sky deepening overhead; the last
- * ember of sunset burning low on the horizon. Ember-coral is the signal
- * accent (interactive, alive, warm); twilight lavender is the secondary
- * (the sky itself, links, quiet highlights); star-gold stays reserved for
- * genuinely premium moments (Sanctuary Mode, starred items, fireflies) —
- * not a UI colour, a highlight.
+ * The palette is intentionally quiet: a near-black plum canvas, solid tonal
+ * surfaces, warm paper-like type and one ember signal colour. Decorative
+ * gradients and glow are available for rare moments, not used as hierarchy.
  */
-
 export const palette = {
-  /** Global app background — ink violet, a hair warmer than pure black. */
-  background: '#100B18',
-  /** Deepest background, behind ambient washes. */
-  void: '#09060F',
-  /** Cards, sheets and other raised containers — deep dusk plum. */
-  surface: '#1B1426',
-  /** A slightly brighter surface for pressed / highlighted states. */
-  surfaceBright: '#281E38',
-  /** Primary accent — ember coral, the last light of the sun. Interactive elements, progress, glow. */
-  primary: '#FF8A5C',
-  /** Secondary accent — twilight lavender. Secondary highlights, links. */
-  secondary: '#B39DFF',
-  /** Rare premium accent — star gold. Sanctuary Mode, favourites, badges only. */
-  gold: '#E8C468',
-  /** Primary copy — moonlit lavender-white. */
-  textPrimary: '#F1EDF7',
-  /** Secondary copy on dark surfaces. */
-  textSecondary: '#AEA5C0',
-  /** De-emphasised copy: captions, metadata, placeholders. */
-  textMuted: '#746C86',
+  background: '#0F0B10',
+  void: '#080608',
+  surface: '#171218',
+  surfaceBright: '#211A22',
+  surfaceElevated: '#29212A',
+  border: '#332A34',
+  borderStrong: '#493C48',
 
-  success: '#5FBF8E',
-  danger: '#E8506E',
+  primary: '#F28B63',
+  primaryPressed: '#D97852',
+  secondary: '#B5A7BA',
+  gold: '#D9B76E',
+
+  textPrimary: '#F7F2F5',
+  textSecondary: '#C4B9C1',
+  textMuted: '#8C8089',
+  textInverse: '#1A0E0A',
+
+  success: '#72C69B',
+  warning: '#D9B76E',
+  danger: '#EF7888',
 } as const;
 
 export const gradients = {
-  /** Signature accent sweep: ember coral into twilight lavender. Used sparingly. */
-  accent: [palette.primary, palette.secondary] as const,
-  /** Full sweep incl. gold — reserved for Sanctuary Mode and one hero moment. */
-  aurora: [palette.primary, palette.secondary, palette.gold] as const,
-  /** Subtle card wash — barely-lifted dusk plum, no loud colour. */
-  heroCard: ['#1B1426', '#221A30', '#1B1426'] as const,
-  /** Ambient screen background at rest — deep night overhead sinking into a
-   * violet mid-sky, warming into the ember afterglow at the horizon, so the
-   * sky has visible depth instead of reading as one flat near-black. */
-  screenIdle: ['#09060F', '#150D22', '#2A1526'] as const,
-  /** Ambient screen background while the mic is hot — ember drift. */
-  screenListening: ['#2A1220', '#1D1128', '#100B18'] as const,
-  /** Placeholder cover art wash. */
-  coverFallback: ['#221A30', '#1B1426'] as const,
-  /** Bottom-of-cover scrim so titles can sit on artwork. */
-  coverScrim: ['rgba(9,6,15,0)', 'rgba(9,6,15,0.55)', 'rgba(9,6,15,0.92)'] as const,
-
-  /** Ripple/aurora washes — soft, low-opacity light drifting behind content. */
-  rippleSignal: ['rgba(255,138,92,0.15)', 'rgba(255,138,92,0)'] as const,
-  rippleWave: ['rgba(179,157,255,0.14)', 'rgba(179,157,255,0)'] as const,
+  /** A restrained, single-family accent reserved for primary hero moments. */
+  accent: [palette.primary, '#E49A79'] as const,
+  /** Kept for compatibility; intentionally low-chroma rather than rainbow. */
+  aurora: [palette.textPrimary, '#DECED6', palette.primary] as const,
+  heroCard: [palette.surfaceBright, palette.surface] as const,
+  screenIdle: [palette.void, palette.background, '#130D14'] as const,
+  screenListening: ['#211218', '#160E14', palette.background] as const,
+  coverFallback: ['#251B23', '#141015'] as const,
+  coverScrim: ['rgba(8,6,8,0)', 'rgba(8,6,8,0.52)', 'rgba(8,6,8,0.94)'] as const,
+  rippleSignal: ['rgba(242,139,99,0.10)', 'rgba(242,139,99,0)'] as const,
+  rippleWave: ['rgba(181,167,186,0.07)', 'rgba(181,167,186,0)'] as const,
 } as const;
 
 export const layout = {
-  /** Generous padding for main screen containers. */
   screenPadding: 20,
-  /** Cards and sheets — soft, modern, unmistakably rounder than before. */
-  radius: 20,
-  /** Buttons and inputs — slightly tighter than cards. */
-  radiusControl: 14,
-  /** Cover art thumbnails — sharper than controls, archival rather than "app icon" round. */
+  radius: 18,
+  radiusControl: 13,
   radiusCover: 10,
 
-  /** Floating glass dock (custom tab bar) geometry. */
   dockHeight: 64,
   dockBottomGap: 12,
-  /** How far the raised center scan button pokes above the dock pill. */
   dockScanOverhang: 26,
-  /** Vertical space the dock occupies above the safe-area inset. */
-  dockClearance: 64 + 12 + 26,
-
-  /** Clearance scroll content needs so it can float up from behind the glass dock + mini player. */
+  dockClearance: 102,
   tabBarClearance: 200,
-
-  /** Sidebar rail width on desktop. */
   sidebarWidth: 248,
 } as const;
 
 export const typeScale = {
-  /** Oversized editorial headline. */
   mega: {
     fontFamily: 'Sora_700Bold',
-    fontSize: 40,
-    lineHeight: 46,
-    letterSpacing: -1.5,
+    fontSize: 38,
+    lineHeight: 44,
+    letterSpacing: -1.35,
   },
-  /** Large screen headers: big, bold, tracked slightly tight. */
   hero: {
     fontFamily: 'Sora_700Bold',
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 32,
+    lineHeight: 39,
     letterSpacing: -1,
   },
   heading: {
-    fontFamily: 'Sora_700Bold',
-    fontSize: 24,
+    fontFamily: 'Sora_600SemiBold',
+    fontSize: 23,
     lineHeight: 30,
-    letterSpacing: -0.5,
+    letterSpacing: -0.45,
   },
-  /** Tiny letterspaced all-caps eyebrow label. */
   eyebrow: {
     fontFamily: 'Sora_600SemiBold',
-    fontSize: 12,
+    fontSize: 11,
     lineHeight: 16,
-    letterSpacing: 2.5,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase' as const,
   },
 } as const;
 
 export const shadows = {
-  /** Soft ambient card shadow — depth without hard lines. */
+  /** Low, tight elevation. Borders do most of the separation work. */
   card: {
     shadowColor: '#000000',
-    shadowOpacity: 0.4,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 8,
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
-  /** Restrained ember glow — reserved for the single active/primary control. */
   glowPrimary: {
     shadowColor: palette.primary,
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
   },
-  /** Rare gold glow — Sanctuary Mode, favourites, premium badges only. */
   glowGold: {
     shadowColor: palette.gold,
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
+    shadowOpacity: 0.2,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
   },
 } as const;
 
-/** Shared motion timing — every animation should reach for one of these. */
 export const motion = {
   duration: {
+    instant: 80,
     fast: 120,
     base: 200,
-    slow: 360,
+    slow: 320,
   },
   easing: {
-    standard: [0.4, 0, 0.2, 1] as const,
-    decelerate: [0, 0, 0.2, 1] as const,
+    standard: [0.2, 0, 0, 1] as const,
+    decelerate: [0, 0, 0, 1] as const,
     accelerate: [0.4, 0, 1, 1] as const,
   },
 } as const;

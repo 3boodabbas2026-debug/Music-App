@@ -5,157 +5,183 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { navigationRef } from '../../navigation/navigationRef';
+import type { MainTabParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useUiStore } from '../../store/uiStore';
 import { colors, radii, spacing, typography } from '../../theme/tokens';
+import { displayTitle } from '../../utils/mediaDisplay';
 import { BrandMark } from './BrandMark';
-import type { MainTabParamList } from '../../navigation/types';
+
+type DestinationBase = {
+  icon: keyof typeof Ionicons.glyphMap;
+  activeIcon?: keyof typeof Ionicons.glyphMap;
+  label: string;
+};
 
 type NavDestination =
-  | { kind: 'tab'; tab: keyof MainTabParamList; icon: keyof typeof Ionicons.glyphMap; label: string; params?: MainTabParamList[keyof MainTabParamList] }
-  | { kind: 'stack'; route: 'Jobs' | 'Telegram' | 'Settings' | 'Player' | 'Admin'; icon: keyof typeof Ionicons.glyphMap; label: string };
+  | (DestinationBase & {
+      kind: 'tab';
+      tab: keyof MainTabParamList;
+      params?: MainTabParamList[keyof MainTabParamList];
+    })
+  | (DestinationBase & {
+      kind: 'stack';
+      route: 'Telegram' | 'Settings' | 'Replay' | 'Player' | 'Admin';
+    });
 
-const BASE_NAV_ITEMS: NavDestination[] = [
-  { kind: 'tab', tab: 'Home', icon: 'compass-outline', label: 'Dashboard' },
-  { kind: 'tab', tab: 'Library', icon: 'albums-outline', label: 'Library', params: { tab: 'all' } },
-  // A dedicated shortcut — playlists otherwise live one tap deeper as a tab
-  // chip inside Library, easy to miss entirely on first use.
+const PRIMARY_NAV_ITEMS: NavDestination[] = [
+  { kind: 'tab', tab: 'Home', icon: 'home-outline', activeIcon: 'home', label: 'Today' },
+  { kind: 'tab', tab: 'Library', icon: 'albums-outline', activeIcon: 'albums', label: 'Library', params: { tab: 'all' } },
+  { kind: 'tab', tab: 'Recognize', icon: 'mic-outline', activeIcon: 'mic', label: 'Identify' },
+  { kind: 'tab', tab: 'Activity', icon: 'pulse-outline', activeIcon: 'pulse', label: 'Activity' },
+];
+
+const SECONDARY_NAV_ITEMS: NavDestination[] = [
   { kind: 'tab', tab: 'Library', icon: 'list-outline', label: 'Playlists', params: { tab: 'playlists' } },
-  { kind: 'tab', tab: 'Recognize', icon: 'mic-outline', label: 'Scan a song' },
-  { kind: 'stack', route: 'Jobs', icon: 'download-outline', label: 'Downloads' },
   { kind: 'stack', route: 'Telegram', icon: 'paper-plane-outline', label: 'Telegram' },
+  { kind: 'stack', route: 'Replay', icon: 'sparkles-outline', label: 'Replay' },
   { kind: 'stack', route: 'Settings', icon: 'settings-outline', label: 'Settings' },
 ];
 
-// Only ever present for the one account whose email matches the backend's
-// configured admin email — every /admin/* call is independently rejected
-// server-side regardless, this just keeps the entry itself out of sight.
-const ADMIN_NAV_ITEM: NavDestination = { kind: 'stack', route: 'Admin', icon: 'shield-checkmark-outline', label: 'Admin' };
+const ADMIN_NAV_ITEM: NavDestination = {
+  kind: 'stack',
+  route: 'Admin',
+  icon: 'shield-checkmark-outline',
+  label: 'Admin',
+};
 
-function destKey(dest: NavDestination): string {
-  return dest.kind === 'tab' ? `${dest.tab}:${dest.label}` : dest.route;
+function destinationKey(destination: NavDestination): string {
+  return destination.kind === 'tab' ? `${destination.tab}:${destination.label}` : destination.route;
 }
 
-/**
- * THE single sidebar — its content is identical whether it's presented as the
- * persistent desktop rail or the mobile slide-in drawer. Nothing here opens a
- * second, differently-organised nav surface: the account row opens a small
- * compact popover on desktop (Settings shortcut + sign out), and on mobile
- * the drawer itself already carries an explicit sign-out row, since it's the
- * one and only "open the menu" surface there.
- */
 export function AppSidebar({
   variant,
   activeTab,
   onNavigate,
 }: {
   variant: 'rail' | 'drawer';
-  /** Only meaningful for tab destinations — passed down from the tab bar's own state. */
   activeTab?: keyof MainTabParamList;
-  /** Called after every navigation (drawer variant closes itself; rail variant ignores it). */
   onNavigate?: () => void;
 }) {
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
-  const currentMedia = usePlayerStore((s) => s.currentMedia);
-  const items = useLibraryStore((s) => s.items);
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
+  const currentMedia = usePlayerStore((state) => state.currentMedia);
+  const libraryItems = useLibraryStore((state) => state.items);
   const { backendOnline, networkOnline } = useOnlineStatus();
-  const accountMenuOpen = useUiStore((s) => s.accountMenuOpen);
-  const toggleAccountMenu = useUiStore((s) => s.toggleAccountMenu);
+  const accountMenuOpen = useUiStore((state) => state.accountMenuOpen);
+  const toggleAccountMenu = useUiStore((state) => state.toggleAccountMenu);
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 
   const isRail = variant === 'rail';
   const offline = !networkOnline || backendOnline === false;
   const initial = (user?.display_name?.trim()?.[0] ?? user?.email?.[0] ?? '♪').toUpperCase();
-  const navItems = user?.is_admin ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS;
+  const currentRoute = navigationRef.getCurrentRoute()?.name;
+  const resolvedActiveTab = activeTab ?? (currentRoute && currentRoute in TAB_ROUTE_NAMES ? (currentRoute as keyof MainTabParamList) : undefined);
+  const secondaryItems = user?.is_admin ? [...SECONDARY_NAV_ITEMS, ADMIN_NAV_ITEM] : SECONDARY_NAV_ITEMS;
 
-  function go(dest: NavDestination) {
+  function go(destination: NavDestination) {
     if (!navigationRef.isReady()) return;
-    if (dest.kind === 'tab') {
-      navigationRef.navigate('Main', { screen: dest.tab, params: dest.params } as never);
+    if (destination.kind === 'tab') {
+      navigationRef.navigate('Main', { screen: destination.tab, params: destination.params } as never);
     } else {
-      navigationRef.navigate(dest.route);
+      navigationRef.navigate(destination.route);
     }
     onNavigate?.();
   }
 
-  function goPlayer() {
-    if (navigationRef.isReady()) navigationRef.navigate('Player');
-    onNavigate?.();
+  function renderDestination(destination: NavDestination) {
+    const key = destinationKey(destination);
+    const focused =
+      destination.kind === 'tab' &&
+      destination.tab === resolvedActiveTab &&
+      destination.label !== 'Playlists';
+    const hovered = hoveredKey === key;
+
+    return (
+      <Pressable
+        key={key}
+        onPress={() => go(destination)}
+        onHoverIn={() => setHoveredKey(key)}
+        onHoverOut={() => setHoveredKey((value) => (value === key ? null : value))}
+        accessibilityRole="button"
+        accessibilityLabel={destination.label}
+        accessibilityState={{ selected: focused }}
+        style={({ pressed }) => [
+          styles.navRow,
+          (hovered || pressed) && styles.navRowHovered,
+          focused && styles.navRowActive,
+        ]}
+      >
+        <View style={[styles.navAccent, focused && styles.navAccentActive]} />
+        <Ionicons
+          name={focused && destination.activeIcon ? destination.activeIcon : destination.icon}
+          size={20}
+          color={focused ? colors.cyan : hovered ? colors.textSecondary : colors.textMuted}
+        />
+        <Text style={[styles.navLabel, (hovered || focused) && styles.navLabelHovered, focused && styles.navLabelActive]}>
+          {destination.label}
+        </Text>
+      </Pressable>
+    );
   }
 
   return (
     <View style={styles.root}>
-      <View style={styles.brandRow}>
+      <View style={styles.brandRow} accessibilityRole="header">
         <View style={styles.brandMark}>
           <BrandMark size={22} />
         </View>
         <View>
           <Text style={styles.brand}>DUSKGLEN</Text>
-          <Text style={styles.brandSub}>A hollow after dark</Text>
+          <Text style={styles.brandSub}>Your music after dark</Text>
         </View>
       </View>
 
-      <View style={styles.navList}>
-        {navItems.map((dest) => {
-          const key = destKey(dest);
-          // The Playlists shortcut shares the Library tab route but isn't
-          // itself a distinct nav state we can detect from here — only the
-          // plain Library entry reflects the tab bar's active state.
-          const focused = dest.kind === 'tab' && dest.tab === activeTab && dest.label !== 'Playlists';
-          const hovered = hoveredKey === key;
-          return (
-            <Pressable
-              key={key}
-              onPress={() => go(dest)}
-              onHoverIn={() => setHoveredKey(key)}
-              onHoverOut={() => setHoveredKey((k) => (k === key ? null : k))}
-              style={[styles.navRow, hovered && styles.navRowHovered, focused && styles.navRowActive]}
-            >
-              <View style={[styles.navAccent, focused && styles.navAccentActive]} />
-              <Ionicons
-                name={dest.icon}
-                size={19}
-                color={focused ? colors.cyan : hovered ? colors.textSecondary : colors.textMuted}
-              />
-              <Text style={[styles.navLabel, (hovered || focused) && styles.navLabelHovered, focused && styles.navLabelActive]}>
-                {dest.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <Text style={styles.sectionLabel}>LISTEN</Text>
+      <View style={styles.navList}>{PRIMARY_NAV_ITEMS.map(renderDestination)}</View>
 
+      <Text style={[styles.sectionLabel, styles.secondarySection]}>MORE</Text>
+      <View style={styles.navList}>{secondaryItems.map(renderDestination)}</View>
+
+      {currentMedia ? (
         <Pressable
-          onPress={goPlayer}
+          onPress={() => go({ kind: 'stack', route: 'Player', icon: 'musical-notes-outline', label: 'Player' })}
           onHoverIn={() => setHoveredKey('Player')}
-          onHoverOut={() => setHoveredKey((k) => (k === 'Player' ? null : k))}
-          style={[styles.navRow, hoveredKey === 'Player' && styles.navRowHovered, currentMedia && styles.nowPlayingRow]}
+          onHoverOut={() => setHoveredKey((value) => (value === 'Player' ? null : value))}
+          accessibilityRole="button"
+          accessibilityLabel={`Now playing, ${displayTitle(currentMedia)}`}
+          style={({ pressed }) => [styles.nowPlayingRow, (pressed || hoveredKey === 'Player') && styles.navRowHovered]}
         >
-          <View style={styles.navAccent} />
-          <Ionicons name="musical-notes-outline" size={19} color={currentMedia ? colors.cyan : colors.textMuted} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.navLabel, hoveredKey === 'Player' && styles.navLabelHovered]} numberOfLines={1}>
-              {currentMedia ? currentMedia.title ?? currentMedia.recognized_title ?? 'Player' : 'Player'}
-            </Text>
-            {currentMedia && <Text style={styles.nowPlayingSub}>Now playing</Text>}
+          <View style={styles.nowPlayingIcon}>
+            <Ionicons name="musical-notes" size={17} color={colors.cyan} />
           </View>
+          <View style={styles.nowPlayingText}>
+            <Text style={styles.nowPlayingEyebrow}>NOW PLAYING</Text>
+            <Text numberOfLines={1} style={styles.nowPlayingTitle}>
+              {displayTitle(currentMedia)}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </Pressable>
-      </View>
+      ) : null}
 
       <View style={styles.spacer} />
 
-      <View style={styles.statusRow}>
+      <View style={styles.statusRow} accessibilityLabel={offline ? 'Offline, cached data available' : 'Online'}>
         <View style={[styles.statusDot, offline && styles.statusDotOffline]} />
         <Text style={styles.statusLabel}>
           {backendOnline === null ? 'Checking…' : offline ? 'Offline · cached data' : 'Online'}
         </Text>
-        <Text style={styles.libraryChip}>{items.length} in library</Text>
+        <Text style={styles.libraryChip}>{libraryItems.length} tracks</Text>
       </View>
 
       <Pressable
-        onPress={() => isRail && toggleAccountMenu()}
+        onPress={isRail ? toggleAccountMenu : undefined}
+        accessibilityRole={isRail ? 'button' : undefined}
+        accessibilityLabel={isRail ? 'Open account menu' : undefined}
+        accessibilityState={isRail ? { expanded: accountMenuOpen } : undefined}
         style={[styles.accountRow, isRail && accountMenuOpen && styles.accountRowActive]}
       >
         <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.avatar}>
@@ -163,30 +189,39 @@ export function AppSidebar({
         </LinearGradient>
         <View style={styles.accountText}>
           <Text numberOfLines={1} style={styles.accountName}>
-            {user?.display_name ?? 'Explorer'}
+            {user?.display_name ?? 'Listener'}
           </Text>
           <Text numberOfLines={1} style={styles.accountEmail}>
             {user?.email ?? ''}
           </Text>
         </View>
-        {isRail && <Ionicons name="ellipsis-horizontal" size={16} color={colors.textMuted} />}
+        {isRail ? <Ionicons name="ellipsis-horizontal" size={17} color={colors.textMuted} /> : null}
       </Pressable>
 
-      {!isRail && (
+      {!isRail ? (
         <Pressable
           onPress={() => {
             onNavigate?.();
-            logout();
+            void logout();
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
           style={({ pressed }) => [styles.signOutRow, pressed && styles.navRowHovered]}
         >
           <Ionicons name="log-out-outline" size={19} color={colors.danger} />
-          <Text style={[styles.navLabel, { color: colors.danger }]}>Sign out</Text>
+          <Text style={[styles.navLabel, styles.signOutLabel]}>Sign out</Text>
         </Pressable>
-      )}
+      ) : null}
     </View>
   );
 }
+
+const TAB_ROUTE_NAMES: Record<keyof MainTabParamList, true> = {
+  Home: true,
+  Library: true,
+  Recognize: true,
+  Activity: true,
+};
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -194,11 +229,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm + 2,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
   },
   brandMark: {
-    width: 30,
-    height: 30,
+    width: 32,
+    height: 32,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
@@ -206,50 +241,81 @@ const styles = StyleSheet.create({
   },
   brand: { ...typography.eyebrow, fontSize: 13, letterSpacing: 3, color: colors.textPrimary },
   brandSub: { ...typography.caption, fontSize: 11, color: colors.textMuted },
-
-  navList: { gap: 3 },
+  sectionLabel: {
+    ...typography.eyebrow,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 2,
+    color: colors.textMuted,
+    marginBottom: spacing.xs,
+    paddingLeft: spacing.sm,
+  },
+  secondarySection: { marginTop: spacing.md },
+  navList: { gap: 2 },
   navRow: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md - 2,
-    paddingVertical: spacing.md - 4,
+    paddingVertical: spacing.sm,
     paddingLeft: spacing.md - 4,
     paddingRight: spacing.sm,
     borderRadius: radii.md - 4,
   },
   navRowHovered: { backgroundColor: 'rgba(174,165,192,0.08)' },
-  navRowActive: { backgroundColor: 'rgba(255,138,92,0.10)' },
-  nowPlayingRow: { backgroundColor: 'rgba(255,138,92,0.08)' },
+  navRowActive: { backgroundColor: 'rgba(255,138,92,0.11)' },
   navAccent: {
     position: 'absolute',
     left: 0,
-    top: '22%',
-    bottom: '22%',
+    top: 11,
+    bottom: 11,
     width: 3,
     borderRadius: radii.pill,
     backgroundColor: 'transparent',
   },
   navAccentActive: { backgroundColor: colors.cyan },
-  navLabel: { ...typography.subtitle, fontSize: 15, color: colors.textMuted, flex: 1 },
+  navLabel: { ...typography.subtitle, fontSize: 14, color: colors.textMuted, flex: 1 },
   navLabelHovered: { color: colors.textSecondary },
   navLabelActive: { color: colors.textPrimary },
-  nowPlayingSub: { ...typography.caption, fontSize: 11, color: colors.cyan },
-
-  spacer: { flex: 1, minHeight: spacing.lg },
-
-  statusRow: {
+  nowPlayingRow: {
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingHorizontal: spacing.md - 4,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(255,138,92,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,138,92,0.14)',
+  },
+  nowPlayingIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,138,92,0.12)',
+  },
+  nowPlayingText: { flex: 1 },
+  nowPlayingEyebrow: { ...typography.eyebrow, fontSize: 8, lineHeight: 11, letterSpacing: 1.6, color: colors.cyan },
+  nowPlayingTitle: { ...typography.caption, fontFamily: 'Sora_500Medium', color: colors.textPrimary },
+  spacer: { flex: 1, minHeight: spacing.md },
+  statusRow: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,
   },
   statusDot: { width: 6, height: 6, borderRadius: radii.pill, backgroundColor: colors.success },
   statusDotOffline: { backgroundColor: colors.danger },
   statusLabel: { ...typography.caption, fontSize: 11, color: colors.textMuted, flex: 1 },
   libraryChip: { ...typography.caption, fontSize: 11, color: colors.textMuted },
-
   accountRow: {
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm + 2,
@@ -259,24 +325,20 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(174,165,192,0.12)',
     backgroundColor: 'rgba(27,20,38,0.45)',
   },
-  accountRowActive: {
-    backgroundColor: 'rgba(27,20,38,0.85)',
-    borderColor: 'rgba(255,138,92,0.35)',
-  },
+  accountRowActive: { backgroundColor: 'rgba(27,20,38,0.85)', borderColor: 'rgba(255,138,92,0.35)' },
   avatar: { width: 36, height: 36, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
   avatarInitial: { ...typography.title, fontSize: 16, color: '#100B18' },
   accountText: { flex: 1 },
   accountName: { ...typography.subtitle, fontSize: 14, lineHeight: 18, color: colors.textPrimary },
   accountEmail: { ...typography.caption, fontSize: 11, color: colors.textMuted },
-
   signOutRow: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    paddingVertical: spacing.md - 4,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
-    marginTop: spacing.sm,
-    backgroundColor: 'rgba(232,80,110,0.08)',
+    marginTop: spacing.xs,
   },
+  signOutLabel: { color: colors.danger },
 });

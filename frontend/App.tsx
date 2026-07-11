@@ -1,10 +1,14 @@
 import 'react-native-gesture-handler';
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { useFonts, Sora_500Medium, Sora_600SemiBold, Sora_700Bold } from '@expo-google-fonts/sora';
+import { useFonts } from 'expo-font';
+import { Sora_400Regular } from '@expo-google-fonts/sora/400Regular';
+import { Sora_500Medium } from '@expo-google-fonts/sora/500Medium';
+import { Sora_600SemiBold } from '@expo-google-fonts/sora/600SemiBold';
+import { Sora_700Bold } from '@expo-google-fonts/sora/700Bold';
 
 import { BrandMark } from './src/components/ui/BrandMark';
 import { Toaster } from './src/components/ui/Toaster';
@@ -15,14 +19,14 @@ if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getEle
   const style = document.createElement('style');
   style.id = 'duskglen-web-css';
   style.textContent = `
-    html, body { background: #100B18; }
+    html, body { background: #0F0B10; }
     * { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-    ::selection { background: rgba(255,138,92,0.35); }
-    * { scrollbar-width: thin; scrollbar-color: rgba(174,165,192,0.28) transparent; }
+    ::selection { background: rgba(242,139,99,0.32); }
+    * { scrollbar-width: thin; scrollbar-color: rgba(196,185,193,0.24) transparent; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: rgba(174,165,192,0.28); border-radius: 99px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(174,165,192,0.45); }
+    ::-webkit-scrollbar-thumb { background: rgba(196,185,193,0.24); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(196,185,193,0.38); }
     input, textarea { outline: none; }
     /* Ease hover/press colour changes everywhere — transform/opacity stay
        untouched so RN Animated-driven motion isn't slowed down. */
@@ -30,14 +34,21 @@ if (Platform.OS === 'web' && typeof document !== 'undefined' && !document.getEle
       transition: background-color 160ms ease, border-color 160ms ease, box-shadow 220ms ease;
     }
     input, textarea { transition: border-color 160ms ease, box-shadow 220ms ease; }
-    :focus-visible { outline: 2px solid rgba(255,138,92,0.55); outline-offset: 2px; }
+    :focus-visible { outline: 2px solid #F28B63; outline-offset: 3px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+    }
   `;
   document.head.appendChild(style);
 }
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { configureAudioSession } from './src/services/audio/PlayerService';
 import { useAuthStore } from './src/store/authStore';
-import { useDashboardStore } from './src/store/dashboardStore';
 import { useFavoritesStore } from './src/store/favoritesStore';
 import { useLibraryStore } from './src/store/libraryStore';
 import { usePinStore } from './src/store/pinStore';
@@ -46,35 +57,15 @@ import { usePlayHistoryStore } from './src/store/playHistoryStore';
 import { useScanHistoryStore } from './src/store/scanHistoryStore';
 import { colors } from './src/theme/tokens';
 
-/** Branded boot: a breathing gradient core under the wordmark while fonts/auth/audio warm up. */
+/** Quiet branded boot while fonts, auth and audio settle. */
 function BootScreen() {
-  const pulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 1100, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
-
   return (
     <View style={bootStyles.root}>
-      <Animated.View
-        style={{
-          opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
-          transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.04] }) }],
-        }}
-      >
-        <View style={bootStyles.core}>
-          <BrandMark size={56} />
-        </View>
-      </Animated.View>
+      <View style={bootStyles.core}>
+        <BrandMark size={56} />
+      </View>
       <Text style={bootStyles.wordmark}>DUSKGLEN</Text>
-      <Text style={bootStyles.tagline}>settling into the hollow…</Text>
+      <Text style={bootStyles.tagline}>Preparing your library…</Text>
     </View>
   );
 }
@@ -82,7 +73,7 @@ function BootScreen() {
 const bootStyles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#100B18',
+    backgroundColor: '#0F0B10',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 18,
@@ -92,11 +83,10 @@ const bootStyles = StyleSheet.create({
     height: 72,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#FF8A5C',
-    shadowOpacity: 0.4,
-    shadowRadius: 30,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 16,
+    borderRadius: 20,
+    backgroundColor: '#171218',
+    borderWidth: 1,
+    borderColor: '#332A34',
   },
   wordmark: {
     fontFamily: 'Sora_600SemiBold',
@@ -105,7 +95,7 @@ const bootStyles = StyleSheet.create({
     color: colors.textPrimary,
   },
   tagline: {
-    fontFamily: 'System',
+    fontFamily: 'Sora_400Regular',
     fontSize: 12,
     color: colors.textMuted,
     marginTop: -10,
@@ -155,16 +145,15 @@ function useKeyboardShortcuts() {
 }
 
 export default function App() {
-  const [fontsLoaded] = useFonts({ Sora_500Medium, Sora_600SemiBold, Sora_700Bold });
+  const [fontsLoaded] = useFonts({ Sora_400Regular, Sora_500Medium, Sora_600SemiBold, Sora_700Bold });
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const isBootstrapping = useAuthStore((s) => s.isBootstrapping);
   const hydrateFavorites = useFavoritesStore((s) => s.hydrate);
   const hydrateScans = useScanHistoryStore((s) => s.hydrate);
   const [audioReady, setAudioReady] = useState(false);
-  // Font files are fetched over the network and aren't guaranteed to be cached
-  // (especially offline, or on a flaky connection) — never let a stalled font
-  // fetch hold the whole app hostage on the boot screen. Worst case it opens
-  // with the system font and swaps in Sora if/when it lands.
+  // Font initialization should never hold the whole app hostage. If a device
+  // cannot load the bundled assets, open with the system fallback after a
+  // short grace period rather than leaving the user at boot indefinitely.
   const [fontTimedOut, setFontTimedOut] = useState(false);
 
   useKeyboardShortcuts();
@@ -186,7 +175,6 @@ export default function App() {
     // to show the instant it opens offline, before (or instead of) any network
     // refresh resolves.
     useLibraryStore.getState().hydrate();
-    useDashboardStore.getState().hydrate();
     usePinStore.getState().hydrate();
     usePlayHistoryStore.getState().hydrate();
     hydrateFavorites();

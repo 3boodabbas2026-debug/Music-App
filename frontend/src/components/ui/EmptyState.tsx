@@ -1,55 +1,68 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, radii, spacing, typography } from '../../theme/tokens';
+import { Button } from './Button';
 
 type Props = {
   title: string;
   subtitle?: string;
   icon?: keyof typeof Ionicons.glyphMap;
+  actionLabel?: string;
+  onAction?: () => void;
+  compact?: boolean;
 };
 
-export function EmptyState({ title, subtitle, icon = 'planet-outline' }: Props) {
+export function EmptyState({
+  title,
+  subtitle,
+  icon = 'musical-notes-outline',
+  actionLabel,
+  onAction,
+  compact = false,
+}: Props) {
   return (
-    <View style={styles.wrap}>
-      <LinearGradient
-        colors={['rgba(255,138,92,0.16)', 'rgba(179,157,255,0.10)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.ring}
-      >
-        <View style={styles.ringInner}>
-          <Ionicons name={icon} size={26} color={colors.cyan} />
-        </View>
-      </LinearGradient>
-      <Text style={styles.title}>{title}</Text>
-      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+    <View style={[styles.wrap, compact && styles.compact]}>
+      <View style={[styles.iconWell, compact && styles.compactIcon]}>
+        <Ionicons name={icon} size={compact ? 22 : 26} color={colors.cyan} />
+      </View>
+      <View style={styles.copy}>
+        <Text style={styles.title}>{title}</Text>
+        {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+      </View>
+      {actionLabel && onAction ? <Button label={actionLabel} onPress={onAction} variant="secondary" style={styles.action} /> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
-  ring: {
-    width: 72,
-    height: 72,
-    borderRadius: radii.pill,
-    padding: 2,
-    marginBottom: spacing.xs,
+  wrap: {
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.lg,
   },
-  ringInner: {
-    flex: 1,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(9,6,15,0.85)',
+  compact: { paddingVertical: spacing.lg },
+  iconWell: {
+    width: 64,
+    height: 64,
+    borderRadius: radii.lg,
+    backgroundColor: 'rgba(242,139,99,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(242,139,99,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { ...typography.subtitle, color: colors.textSecondary, textAlign: 'center' },
+  compactIcon: { width: 52, height: 52, borderRadius: radii.md },
+  copy: { alignItems: 'center', gap: spacing.xs },
+  title: { ...typography.subtitle, color: colors.textPrimary, textAlign: 'center' },
   subtitle: {
-    ...typography.caption,
+    ...typography.body,
+    fontSize: 13,
+    lineHeight: 20,
     color: colors.textMuted,
     textAlign: 'center',
-    maxWidth: 260,
+    maxWidth: 320,
   },
+  action: { minWidth: 160, marginTop: spacing.xs },
 });

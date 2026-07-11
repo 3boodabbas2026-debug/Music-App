@@ -1,166 +1,131 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AppSidebar } from '../components/ui/AppSidebar';
+import { useResponsive, RAIL_WIDTH } from '../hooks/useResponsive';
 import { HomeScreen } from '../screens/HomeScreen';
+import { JobsScreen } from '../screens/JobsScreen';
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { RecognitionScreen } from '../screens/RecognitionScreen';
-import { AppSidebar } from '../components/ui/AppSidebar';
-import { PressableScale } from '../components/ui/PressableScale';
-import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
-import { colors, layout, radii, shadows, spacing } from '../theme/tokens';
+import { colors, layout, radii, shadows, spacing, typography } from '../theme/tokens';
 import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const SCAN_SIZE = 64;
+type TabPresentation = {
+  active: keyof typeof Ionicons.glyphMap;
+  inactive: keyof typeof Ionicons.glyphMap;
+  label: string;
+};
 
-type SideIcon = { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap; label: string };
-
-const SIDE_ICONS: Partial<Record<keyof MainTabParamList, SideIcon>> = {
-  Home: { active: 'compass', inactive: 'compass-outline', label: 'Dashboard' },
+const TAB_PRESENTATION: Record<keyof MainTabParamList, TabPresentation> = {
+  Home: { active: 'home', inactive: 'home-outline', label: 'Today' },
   Library: { active: 'albums', inactive: 'albums-outline', label: 'Library' },
+  Recognize: { active: 'mic', inactive: 'mic-outline', label: 'Identify' },
+  Activity: { active: 'pulse', inactive: 'pulse-outline', label: 'Activity' },
 };
 
 function DockItem({
-  icon,
+  presentation,
   focused,
   onPress,
+  onLongPress,
 }: {
-  icon: SideIcon;
+  presentation: TabPresentation;
   focused: boolean;
   onPress: () => void;
+  onLongPress: () => void;
 }) {
-  const pop = useRef(new Animated.Value(focused ? 1 : 0)).current;
+  const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.spring(pop, { toValue: focused ? 1 : 0, useNativeDriver: true, speed: 24, bounciness: 8 }).start();
-  }, [focused, pop]);
+    Animated.spring(focus, {
+      toValue: focused ? 1 : 0,
+      useNativeDriver: true,
+      speed: 26,
+      bounciness: 4,
+    }).start();
+  }, [focus, focused]);
 
   return (
     <Pressable
       onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={icon.label}
+      onLongPress={onLongPress}
+      accessibilityRole="tab"
+      accessibilityLabel={presentation.label}
       accessibilityState={{ selected: focused }}
-      style={styles.dockItem}
+      style={({ pressed }) => [styles.dockItem, pressed && styles.dockItemPressed]}
     >
       <Animated.View
-        style={{
-          alignItems: 'center',
-          gap: 3,
-          transform: [{ translateY: pop.interpolate({ inputRange: [0, 1], outputRange: [0, -2] }) }],
-        }}
+        pointerEvents="none"
+        style={[
+          styles.activePill,
+          {
+            opacity: focus,
+            transform: [{ scale: focus.interpolate({ inputRange: [0, 1], outputRange: [0.78, 1] }) }],
+          },
+        ]}
+      />
+      <Animated.View
+        style={[
+          styles.dockItemContent,
+          {
+            transform: [{ translateY: focus.interpolate({ inputRange: [0, 1], outputRange: [0, -1] }) }],
+          },
+        ]}
       >
         <Ionicons
-          name={focused ? icon.active : icon.inactive}
-          size={22}
+          name={focused ? presentation.active : presentation.inactive}
+          size={21}
           color={focused ? colors.cyan : colors.textMuted}
         />
-        <Animated.Text style={[styles.dockLabel, focused && styles.dockLabelActive]}>{icon.label}</Animated.Text>
-        <Animated.View style={[styles.dockDot, { opacity: pop }]} />
+        <Text style={[styles.dockLabel, focused && styles.dockLabelActive]}>{presentation.label}</Text>
       </Animated.View>
     </Pressable>
   );
 }
 
-function GlassDock({ state, navigation }: BottomTabBarProps) {
+function CompactDock({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const scanPulse = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.delay(1600),
-        Animated.timing(scanPulse, { toValue: 1, duration: 1800, useNativeDriver: true }),
-        Animated.timing(scanPulse, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [scanPulse]);
-
-  const pressRoute = (index: number) => {
+  function pressRoute(index: number) {
     const route = state.routes[index];
     const focused = state.index === index;
     const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-    if (!focused && !event.defaultPrevented) {
-      navigation.navigate(route.name as never);
-    }
-  };
+    if (!focused && !event.defaultPrevented) navigation.navigate(route.name as never);
+  }
 
-  const scanIndex = state.routes.findIndex((route) => route.name === 'Recognize');
-  const scanFocused = state.index === scanIndex;
+  function longPressRoute(index: number) {
+    navigation.emit({ type: 'tabLongPress', target: state.routes[index].key });
+  }
 
   return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.dockWrap, { paddingBottom: insets.bottom + layout.dockBottomGap }]}
-    >
-      <View pointerEvents="box-none" style={styles.dockFrame}>
-        <View style={styles.pill}>
-          {/* No real blur here — see GlassPanel for why (WebView backdrop-filter
-              cost). A slightly deeper tint + gradient lift reads the same. */}
-          <View style={styles.pillOverlay} />
-          <LinearGradient
-            colors={['rgba(241,237,247,0.06)', 'rgba(241,237,247,0)']}
-            style={StyleSheet.absoluteFill}
-            pointerEvents="none"
+    <View pointerEvents="box-none" style={[styles.dockWrap, { paddingBottom: insets.bottom + layout.dockBottomGap }]}>
+      <View style={styles.dockSurface}>
+        <View pointerEvents="none" style={styles.dockHighlight} />
+        {state.routes.map((route, index) => (
+          <DockItem
+            key={route.key}
+            presentation={TAB_PRESENTATION[route.name as keyof MainTabParamList]}
+            focused={state.index === index}
+            onPress={() => pressRoute(index)}
+            onLongPress={() => longPressRoute(index)}
           />
-          <View style={styles.pillRow}>
-            {state.routes.map((route, index) => {
-              const icon = SIDE_ICONS[route.name as keyof MainTabParamList];
-              if (!icon) return <View key={route.key} style={styles.scanGap} />;
-              return (
-                <DockItem
-                  key={route.key}
-                  icon={icon}
-                  focused={state.index === index}
-                  onPress={() => pressRoute(index)}
-                />
-              );
-            })}
-          </View>
-        </View>
-
-        <View pointerEvents="box-none" style={styles.scanHolder}>
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              styles.scanPulseRing,
-              {
-                opacity: scanPulse.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.45, 0] }),
-                transform: [{ scale: scanPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.7] }) }],
-              },
-            ]}
-          />
-          <PressableScale onPress={() => pressRoute(scanIndex)} accessibilityLabel="Recognize a song" scaleTo={0.9}>
-            <View style={[styles.scanShadow, scanFocused && styles.scanShadowActive]}>
-              <LinearGradient
-                colors={colors.gradientPrimary}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.scanButton}
-              >
-                <Ionicons name="mic" size={26} color="#100B18" />
-              </LinearGradient>
-            </View>
-          </PressableScale>
-        </View>
+        ))}
       </View>
     </View>
   );
 }
 
-/**
- * Desktop shell: the one shared sidebar, pinned persistently to the left
- * edge. It is not a bespoke rail layout — it's <AppSidebar variant="rail" />,
- * the exact same content the mobile drawer shows, just never hidden.
- */
-function NavRail({ state, navigation }: BottomTabBarProps) {
+/** The tab-hosted Activity screen has shell chrome; the legacy root Jobs route stays header-backed. */
+function ActivityTabScreen() {
+  return <JobsScreen embedded />;
+}
+
+function NavRail({ state }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const activeTab = state.routes[state.index]?.name as keyof MainTabParamList | undefined;
 
@@ -177,18 +142,17 @@ export function MainTabs() {
 
   return (
     <Tab.Navigator
-      tabBar={(props) => (isDesktop ? <NavRail {...props} /> : <GlassDock {...props} />)}
+      tabBar={(props) => (isDesktop ? <NavRail {...props} /> : <CompactDock {...props} />)}
       screenOptions={{
         headerShown: false,
-        // Cross-fade between tab scenes — tab switches feel composed instead
-        // of the default hard cut.
         animation: 'fade',
         sceneStyle: isDesktop ? { paddingLeft: RAIL_WIDTH } : undefined,
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Recognize" component={RecognitionScreen} />
+      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Today' }} />
       <Tab.Screen name="Library" component={LibraryScreen} />
+      <Tab.Screen name="Recognize" component={RecognitionScreen} options={{ title: 'Identify' }} />
+      <Tab.Screen name="Activity" component={ActivityTabScreen} />
     </Tab.Navigator>
   );
 }
@@ -196,99 +160,56 @@ export function MainTabs() {
 const styles = StyleSheet.create({
   dockWrap: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: spacing.md,
+    right: spacing.md,
     bottom: 0,
     alignItems: 'center',
   },
-  dockFrame: {
-    width: '88%',
-    maxWidth: 420,
-  },
-  pill: {
-    height: layout.dockHeight,
-    borderRadius: layout.dockHeight / 2,
+  dockSurface: {
+    width: '100%',
+    maxWidth: 440,
+    height: 68,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    padding: 5,
+    borderRadius: radii.lg,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(174,165,192,0.14)',
+    borderColor: 'rgba(174,165,192,0.16)',
+    backgroundColor: 'rgba(16,11,24,0.96)',
     ...shadows.card,
   },
-  pillOverlay: {
+  dockHighlight: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    // Deeper than the old blur-era 0.6 — with no blur behind it, the tint
-    // alone has to keep dock labels legible over busy content.
-    backgroundColor: 'rgba(16,11,24,0.85)',
-  },
-  pillRow: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    left: spacing.md,
+    right: spacing.md,
+    height: 1,
+    backgroundColor: 'rgba(241,237,247,0.12)',
   },
   dockItem: {
     flex: 1,
+    minWidth: 44,
+    minHeight: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    height: '100%',
+    borderRadius: radii.md,
   },
+  dockItemPressed: { opacity: 0.72 },
+  activePill: {
+    ...(StyleSheet.absoluteFill as object),
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(255,138,92,0.12)',
+  },
+  dockItemContent: { alignItems: 'center', justifyContent: 'center', gap: 3 },
   dockLabel: {
+    ...typography.caption,
     fontFamily: 'Sora_500Medium',
     fontSize: 10,
-    letterSpacing: 0.4,
+    lineHeight: 13,
     color: colors.textMuted,
   },
-  dockLabelActive: {
-    color: colors.cyan,
-  },
-  dockDot: {
-    width: 3,
-    height: 3,
-    borderRadius: radii.pill,
-    backgroundColor: colors.cyan,
-  },
-  scanGap: {
-    width: SCAN_SIZE + spacing.lg,
-  },
-  scanHolder: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: -layout.dockScanOverhang,
-    alignItems: 'center',
-  },
-  scanPulseRing: {
-    position: 'absolute',
-    top: 0,
-    width: SCAN_SIZE,
-    height: SCAN_SIZE,
-    borderRadius: SCAN_SIZE / 2,
-    borderWidth: 1.5,
-    borderColor: colors.cyan,
-  },
-  scanShadow: {
-    borderRadius: SCAN_SIZE / 2,
-    shadowColor: colors.cyan,
-    shadowOpacity: 0.4,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 12,
-  },
-  scanShadowActive: {
-    shadowOpacity: 0.7,
-    shadowRadius: 26,
-  },
-  scanButton: {
-    width: SCAN_SIZE,
-    height: SCAN_SIZE,
-    borderRadius: SCAN_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // ----- Desktop rail -----
+  dockLabelActive: { color: colors.textPrimary },
   rail: {
     position: 'absolute',
     left: 0,
@@ -302,6 +223,6 @@ const styles = StyleSheet.create({
   },
   railOverlay: {
     ...(StyleSheet.absoluteFill as object),
-    backgroundColor: 'rgba(9,6,15,0.88)',
+    backgroundColor: 'rgba(9,6,15,0.9)',
   },
 });

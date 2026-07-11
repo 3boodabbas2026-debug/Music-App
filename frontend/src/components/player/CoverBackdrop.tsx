@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Image, StyleSheet, View } from 'react-native';
+import { Animated, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 
 import { palette } from '../../theme/theme';
 
@@ -9,8 +10,8 @@ type Props = {
    * smaller host (the Home hero card) can pass something lower so the art
    * reads as a hint of color rather than the whole scene. */
   opacity?: number;
-  /** Blur strength in pixels — RN's built-in `Image` prop, no extra
-   * dependency, works on iOS/Android/web alike. */
+  /** Blur strength in pixels — expo-image keeps the effect while reusing its
+   * memory/disk cache across track changes. */
   blurRadius?: number;
   /** Darkness of the scrim over the art — the Player needs a strong one so
    * controls stay legible; a small card can use a lighter touch so the art
@@ -37,8 +38,25 @@ export function CoverBackdrop({ uri, opacity = 1, blurRadius = 50, scrimOpacity 
   if (!uri) return null;
 
   return (
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.clip, { opacity: Animated.multiply(fade, opacity) }]}>
-      <Image source={{ uri }} blurRadius={blurRadius} resizeMode="cover" style={styles.art} />
+    <Animated.View
+      pointerEvents="none"
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+      style={[StyleSheet.absoluteFill, styles.clip, { opacity: Animated.multiply(fade, opacity) }]}
+    >
+      <Image
+        source={{ uri }}
+        blurRadius={blurRadius}
+        contentFit="cover"
+        cachePolicy="memory-disk"
+        priority="high"
+        loading="eager"
+        recyclingKey={uri}
+        transition={180}
+        accessible={false}
+        alt=""
+        style={styles.art}
+      />
       <View style={[styles.scrim, { opacity: scrimOpacity }]} />
     </Animated.View>
   );

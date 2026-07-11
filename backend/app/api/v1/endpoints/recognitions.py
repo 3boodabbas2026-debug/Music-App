@@ -1,6 +1,8 @@
 import asyncio
+import uuid
 from pathlib import Path
 
+import aiofiles
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,7 +20,39 @@ from app.workers import job_engine
 router = APIRouter(prefix="/recognitions", tags=["recognitions"])
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # a mic/clip sample, not a full song library
+UPLOAD_CHUNK_BYTES = 1024 * 1024
 MAX_BATCH_TRACKS = 25  # cap one batch pass; the client can call again for the rest
+
+
+async def _stage_recognition_upload(file: UploadFile) -> Path:
+    """Copy an upload to a bounded temporary file without buffering it all.
+
+    Starlette may spool multipart bodies to disk, but calling ``read()`` with
+    no limit still materializes the whole clip in process memory.  Fixed-size
+    reads keep memory bounded and let us reject oversized input before a Job
+    row exists.
+    """
+    suffix = Path(file.filename or "clip.m4a").suffix.lower()
+    if not (1 < len(suffix) <= 10 and suffix[1:].isalnum()):
+        suffix = ".m4a"
+
+    upload_dir = settings.media_storage_dir / "_tmp"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = upload_dir / f"recognize_upload_{uuid.uuid4()}{suffix}"
+    total_bytes = 0
+
+    try:
+        async with aiofiles.open(audio_path, "wb") as destination:
+            while chunk := await file.read(UPLOAD_CHUNK_BYTES):
+                total_bytes += len(chunk)
+                if total_bytes > MAX_UPLOAD_BYTES:
+                    raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, "Clip too large")
+                await destination.write(chunk)
+    except BaseException:
+        audio_path.unlink(missing_ok=True)
+        raise
+
+    return audio_path
 
 
 @router.post("", response_model=JobOut, status_code=status.HTTP_200_OK)
@@ -31,27 +65,30 @@ async def recognize(
     if (file is None) == (media_id is None):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Provide exactly one of: file, media_id")
 
-    job = Job(user_id=current_user.id, job_type=JobType.RECOGNIZE)
-    db.add(job)
-    await db.commit()
-    await db.refresh(job)
-    job_id = job.id
-
-    cleanup = True
     if media_id is not None:
-        media = await db.get(Media, media_id)
-        if media is None or media.user_id != current_user.id:
+        media = await db.scalar(select(Media).where(Media.id == media_id, Media.user_id == current_user.id))
+        if media is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
         audio_path = Path(media.file_path)
         cleanup = False  # this is the permanent library file, don't delete it
     else:
-        suffix = Path(file.filename or "clip.m4a").suffix or ".m4a"
-        audio_path = settings.media_storage_dir / "_tmp" / f"recognize_{job_id}{suffix}"
-        audio_path.parent.mkdir(parents=True, exist_ok=True)
-        body = await file.read()
-        if len(body) > MAX_UPLOAD_BYTES:
-            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "Clip too large")
-        audio_path.write_bytes(body)
+        # The exactly-one check above proves this to the type checker as well
+        # as at runtime, while keeping the FastAPI signature optional.
+        assert file is not None
+        audio_path = await _stage_recognition_upload(file)
+        cleanup = True
+
+    job = Job(user_id=current_user.id, job_type=JobType.RECOGNIZE)
+    db.add(job)
+    try:
+        await db.commit()
+        await db.refresh(job)
+    except BaseException:
+        if cleanup:
+            audio_path.unlink(missing_ok=True)
+        await db.rollback()
+        raise
+    job_id = job.id
 
     try:
         await asyncio.wait_for(
@@ -64,6 +101,12 @@ async def recognize(
         job.status = JobStatus.FAILED
         job.error_message = "Recognition timed out"
         await db.commit()
+    finally:
+        # run_recognition_job already removes ad-hoc clips in its own finally;
+        # this idempotent fallback covers cancellation before its body starts
+        # and keeps alternate/test workers from leaking staged files.
+        if cleanup:
+            audio_path.unlink(missing_ok=True)
 
     # run_recognition_job persisted its updates through its own DB session, so
     # this session's identity-mapped copy of `job` is stale — force a reload.

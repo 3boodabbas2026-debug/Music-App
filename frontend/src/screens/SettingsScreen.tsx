@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Platform, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
@@ -8,7 +7,11 @@ import * as Clipboard from 'expo-clipboard';
 import { BrandMark } from '../components/ui/BrandMark';
 import { Button } from '../components/ui/Button';
 import { GlassPanel } from '../components/ui/GlassPanel';
+import { IconButton } from '../components/ui/IconButton';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
+import { TextField } from '../components/ui/TextField';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import * as feedbackApi from '../services/api/feedback';
 import * as recognitionsApi from '../services/api/recognitions';
@@ -44,10 +47,12 @@ function SettingSwitch({
         <Text style={styles.hint}>{hint}</Text>
       </View>
       <Switch
+        accessibilityLabel={label}
+        accessibilityHint={hint}
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: 'rgba(174,165,192,0.2)', true: 'rgba(255,138,92,0.5)' }}
-        thumbColor={value ? colors.cyan : '#AEA5C0'}
+        trackColor={{ false: colors.surfaceBorderStrong, true: colors.cyan }}
+        thumbColor={value ? colors.textInverse : colors.textSecondary}
       />
     </View>
   );
@@ -91,10 +96,6 @@ function StatusRow({
       </Text>
     </View>
   );
-}
-
-function SectionTitle({ children }: { children: string }) {
-  return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
 const STORAGE_OPTIONS: Array<{ value: 'auto' | 'local' | 'cloud'; label: string; hint: string }> = [
@@ -239,6 +240,8 @@ export function SettingsScreen() {
       await offlineMedia.clearAll();
       setOfflineEntries([]);
       toast('Offline downloads cleared', 'success');
+    } catch (err) {
+      toast(apiErrorMessage(err, "Couldn't clear offline downloads."), 'error');
     } finally {
       setClearing(false);
     }
@@ -252,14 +255,16 @@ export function SettingsScreen() {
       <ScreenContainer maxWidth={720}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           <View style={styles.headerRow}>
-            <Pressable onPress={() => navigation.goBack()} accessibilityLabel="Go back" hitSlop={12} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-            </Pressable>
-            <Text style={styles.title}>Settings</Text>
-            <View style={{ width: 22 }} />
+            <IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" />
+            <SectionHeader
+              eyebrow="Preferences"
+              title="Settings"
+              subtitle="Shape playback, storage, and the way Duskglen works for you."
+              style={styles.screenHeading}
+            />
           </View>
 
-          <SectionTitle>CONNECTION</SectionTitle>
+          <SectionHeader title="Connection" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
             <View style={styles.panelBody}>
               <StatusRow label="Network" ok={networkOnline} />
@@ -273,14 +278,14 @@ export function SettingsScreen() {
               />
               <Button
                 label={telegramStatus?.authorized ? 'Manage Telegram import' : 'Connect Telegram'}
-                variant="ghost"
+                variant="secondary"
                 onPress={() => navigation.navigate('Telegram')}
                 style={styles.inlineButton}
               />
             </View>
           </GlassPanel>
 
-          <SectionTitle>ACCOUNT</SectionTitle>
+          <SectionHeader title="Account" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
             <View style={styles.panelBody}>
               <View style={styles.fieldRow}>
@@ -294,7 +299,7 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
-          <SectionTitle>PLAYBACK</SectionTitle>
+          <SectionHeader title="Playback" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
             <View style={styles.panelBody}>
               <SettingSwitch
@@ -312,7 +317,7 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
-          <SectionTitle>LIBRARY &amp; STORAGE</SectionTitle>
+          <SectionHeader title="Library & storage" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
             <View style={styles.panelBody}>
               <View style={styles.fieldRow}>
@@ -324,23 +329,15 @@ export function SettingsScreen() {
 
               <View style={{ gap: spacing.xs }}>
                 <Text style={styles.fieldLabel}>Where new downloads are stored</Text>
-                <View style={styles.segmentRow}>
-                  {STORAGE_OPTIONS.filter((opt) => opt.value !== 'cloud' || user?.cloud_storage_available).map(
-                    (opt) => {
-                      const active = (user?.storage_preference ?? 'auto') === opt.value;
-                      return (
-                        <Pressable
-                          key={opt.value}
-                          onPress={() => handleStoragePreference(opt.value)}
-                          disabled={savingStoragePref}
-                          style={[styles.segment, active && styles.segmentActive]}
-                        >
-                          <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>{opt.label}</Text>
-                        </Pressable>
-                      );
-                    },
-                  )}
-                </View>
+                <SegmentedControl
+                  accessibilityLabel="Where new downloads are stored"
+                  value={user?.storage_preference ?? 'auto'}
+                  onValueChange={handleStoragePreference}
+                  options={STORAGE_OPTIONS.filter(
+                    (option) => option.value !== 'cloud' || user?.cloud_storage_available,
+                  ).map((option) => ({ ...option, disabled: savingStoragePref }))}
+                  style={savingStoragePref ? styles.controlBusy : undefined}
+                />
                 <Text style={styles.hint}>
                   {STORAGE_OPTIONS.find((o) => o.value === (user?.storage_preference ?? 'auto'))?.hint}
                   {' '}Only affects new imports/downloads — your existing library stays where it already is.
@@ -378,39 +375,36 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
-          <SectionTitle>LIBRARY TOOLS</SectionTitle>
+          <SectionHeader title="Library tools" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
             <View style={styles.panelBody}>
-              <Pressable
-                onPress={nameLibrary}
+              <Button
+                label={naming ? 'Naming your tracks…' : 'Name untitled tracks'}
+                icon="sparkles-outline"
+                variant="secondary"
                 disabled={naming}
-                style={({ pressed }) => [styles.toolRow, pressed && styles.toolRowPressed, naming && styles.toolRowBusy]}
-              >
-                <Ionicons name="sparkles-outline" size={18} color={colors.cyan} />
-                <Text style={styles.toolLabel}>{naming ? 'Naming your tracks…' : 'Name untitled tracks'}</Text>
-              </Pressable>
-              <Pressable onPress={exportLibrary} style={({ pressed }) => [styles.toolRow, pressed && styles.toolRowPressed]}>
-                <Ionicons name="download-outline" size={18} color={colors.textSecondary} />
-                <Text style={styles.toolLabel}>Export library as JSON</Text>
-              </Pressable>
+                loading={naming}
+                onPress={nameLibrary}
+              />
+              <Button label="Export library as JSON" icon="download-outline" variant="ghost" onPress={exportLibrary} />
             </View>
           </GlassPanel>
 
-          <SectionTitle>FEEDBACK</SectionTitle>
+          <SectionHeader title="Feedback" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
             <View style={styles.panelBody}>
               <Text style={styles.hint}>Found a bug, or want something changed? Tell us directly.</Text>
-              <TextInput
+              <TextField
+                label="Message"
                 value={feedbackMessage}
                 onChangeText={setFeedbackMessage}
                 placeholder="What's on your mind?"
-                placeholderTextColor={colors.textMuted}
                 multiline
                 style={styles.feedbackInput}
               />
               <Button
                 label={sendingFeedback ? 'Sending…' : 'Send feedback'}
-                variant="ghost"
+                variant="secondary"
                 loading={sendingFeedback}
                 disabled={!feedbackMessage.trim()}
                 onPress={handleSendFeedback}
@@ -419,7 +413,7 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
-          <SectionTitle>ABOUT</SectionTitle>
+          <SectionHeader title="About" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
             <View style={[styles.panelBody, styles.aboutRow]}>
               <BrandMark size={28} />
@@ -443,31 +437,20 @@ export function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#09060F' },
+  root: { flex: 1, backgroundColor: colors.bg },
   scroll: { paddingBottom: spacing.xxl },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    marginBottom: spacing.xl,
   },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
-  title: { ...typography.title, fontSize: 20, color: colors.textPrimary },
-  sectionTitle: {
-    ...typography.eyebrow,
-    fontSize: 11,
-    letterSpacing: 2,
-    color: colors.textMuted,
+  screenHeading: { flex: 1 },
+  sectionHeader: {
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
+  sectionHeading: { ...typography.title, fontSize: 17, lineHeight: 23, color: colors.textPrimary },
   panel: { borderRadius: radii.lg },
   panelBody: { padding: spacing.lg, gap: spacing.md },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -481,37 +464,13 @@ const styles = StyleSheet.create({
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   fieldLabel: { ...typography.body, color: colors.textMuted },
-  segmentRow: { flexDirection: 'row', gap: spacing.xs },
-  segment: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  segmentActive: { backgroundColor: 'rgba(255,138,92,0.16)' },
-  segmentLabel: { ...typography.caption, color: colors.textMuted },
-  segmentLabelActive: { color: colors.cyan, fontFamily: 'Sora_500Medium' },
+  controlBusy: { opacity: 0.5 },
   feedbackInput: {
-    ...typography.body,
-    color: colors.textPrimary,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderRadius: radii.md,
-    padding: spacing.sm,
-    minHeight: 72,
+    minHeight: 96,
     textAlignVertical: 'top',
   },
   fieldValue: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', flexShrink: 1 },
   hint: { ...typography.caption, color: colors.textMuted, lineHeight: 18 },
   aboutRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   signOutButton: { marginTop: spacing.xl },
-  toolRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm + 2,
-    paddingVertical: spacing.xs,
-  },
-  toolRowPressed: { opacity: 0.7 },
-  toolRowBusy: { opacity: 0.6 },
-  toolLabel: { ...typography.body, fontSize: 15, color: colors.textPrimary },
 });

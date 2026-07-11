@@ -1,75 +1,133 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
-import { useResponsive } from '../hooks/useResponsive';
-import { DashboardCustomizer } from '../components/dashboard/DashboardCustomizer';
-import {
-  ContinueListeningWidget,
-  FavoritesWidget,
-  OfflineWidget,
-  OnRepeatWidget,
-  PinnedWidget,
-  QueueWidget,
-  QuickActionsWidget,
-  RecentDownloadsWidget,
-  StatsWidget,
-  TelegramWidget,
-} from '../components/dashboard/widgets';
+import { Artwork } from '../components/ui/Artwork';
+import { Button } from '../components/ui/Button';
 import { GlassPanel } from '../components/ui/GlassPanel';
+import { ProgressBar } from '../components/ui/ProgressBar';
 import { Reveal } from '../components/ui/Reveal';
-import { GradientText } from '../components/ui/GradientText';
-import { PressableScale } from '../components/ui/PressableScale';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
+import { useResponsive } from '../hooks/useResponsive';
+import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 import * as downloadsApi from '../services/api/downloads';
 import { watchJob } from '../services/api/jobSocket';
 import type { Job, Media } from '../services/api/types';
-import { useDashboardStore } from '../store/dashboardStore';
+import { useAuthStore } from '../store/authStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
-import { useVideoPlayerStore } from '../store/videoPlayerStore';
 import { toast } from '../store/toastStore';
-import { apiErrorMessage, friendlyJobError } from '../utils/apiError';
+import { useVideoPlayerStore } from '../store/videoPlayerStore';
 import { colors, layout, radii, spacing, typography } from '../theme/tokens';
-import type { RootStackParamList } from '../navigation/types';
+import { apiErrorMessage, friendlyJobStage } from '../utils/apiError';
+import { displayArtist, displayTitle } from '../utils/mediaDisplay';
 
 type MediaKind = 'audio' | 'video';
 
 const AUDIO_FORMATS: { key: downloadsApi.AudioFormat; label: string }[] = [
-  { key: 'mp3-192', label: 'MP3 192' },
-  { key: 'mp3-320', label: 'MP3 320' },
+  { key: 'mp3-192', label: 'MP3 · 192' },
+  { key: 'mp3-320', label: 'MP3 · 320' },
   { key: 'm4a', label: 'M4A' },
-  { key: 'source', label: 'Source' },
+  { key: 'source', label: 'Original' },
 ];
 
 const VIDEO_QUALITIES: { key: downloadsApi.VideoQuality; label: string }[] = [
   { key: '1080p', label: '1080p' },
   { key: '720p', label: '720p' },
   { key: '2160p', label: '4K' },
-  { key: 'source', label: 'Source' },
+  { key: 'source', label: 'Original' },
 ];
 
-const RECENTS_LIMIT = 12;
-const COVER_SIZE = 152;
+const MEDIA_KINDS = [
+  { value: 'audio', label: 'Audio', icon: 'musical-notes' },
+  { value: 'video', label: 'Video', icon: 'videocam' },
+] as const;
 
-function greeting(): string {
+function dayGreeting(): string {
   const hour = new Date().getHours();
-  if (hour < 5) return 'Up late.';
-  if (hour < 12) return 'Good morning.';
-  if (hour < 18) return 'Good afternoon.';
-  return 'Good evening.';
+  if (hour < 5) return 'Still awake';
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function ActiveJobRow({ job, onCancel }: { job: Job; onCancel: () => void }) {
+  const label = job.result_media ? displayTitle(job.result_media) : job.match_title ?? 'Adding to your library';
+  const stage = friendlyJobStage(job.stage_label, job.status === 'pending' ? 'Waiting to start' : 'Preparing media');
+  const progress = Math.max(0, Math.min(100, job.progress_pct));
+
+  return (
+    <View style={styles.activeJobRow} accessibilityLabel={`${label}, ${stage}, ${Math.round(progress)} percent`}>
+      <View style={styles.jobIcon}>
+        <Ionicons name={job.job_type === 'recognize' ? 'sparkles' : 'arrow-down'} size={17} color={colors.cyan} />
+      </View>
+      <View style={styles.jobBody}>
+        <View style={styles.jobTitleRow}>
+          <Text numberOfLines={1} style={styles.jobTitle}>{label}</Text>
+          <Text style={styles.jobPercent}>{Math.round(progress)}%</Text>
+        </View>
+        <Text numberOfLines={1} style={styles.jobStage}>{stage}</Text>
+        <ProgressBar progress={progress / 100} />
+      </View>
+      <Pressable
+        onPress={onCancel}
+        accessibilityRole="button"
+        accessibilityLabel={`Cancel ${label}`}
+        hitSlop={4}
+        style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+      >
+        <Ionicons name="close" size={18} color={colors.textSecondary} />
+      </Pressable>
+    </View>
+  );
+}
+
+function RecentCard({ media, size, onPress }: { media: Media; size: number; onPress: () => void }) {
+  const artist = displayArtist(media);
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Play ${displayTitle(media)}${artist ? ` by ${artist}` : ''}`}
+      style={({ pressed }) => [styles.recentCard, { width: size }, pressed && styles.cardPressed]}
+    >
+      <Artwork media={media} size={size} style={styles.artwork} />
+      <Text numberOfLines={1} style={styles.recentTitle}>{displayTitle(media)}</Text>
+      <Text numberOfLines={1} style={styles.recentArtist}>{artist ?? (media.media_type === 'video' ? 'Video' : 'Unknown artist')}</Text>
+    </Pressable>
+  );
 }
 
 export function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const isFocused = useIsFocused();
   const { isDesktop } = useResponsive();
-  const coverSize = isDesktop ? 188 : COVER_SIZE;
+  const user = useAuthStore((state) => state.user);
+  const libraryItems = useLibraryStore((state) => state.items);
+  const libraryHydrated = useLibraryStore((state) => state.hydrated);
+  const libraryLoading = useLibraryStore((state) => state.isLoading);
+  const refreshLibrary = useLibraryStore((state) => state.refresh);
+  const upsertMedia = useLibraryStore((state) => state.upsert);
+  const playQueue = usePlayerStore((state) => state.playQueue);
+  const currentMedia = usePlayerStore((state) => state.currentMedia);
+  const playing = usePlayerStore((state) => state.playing);
+  const togglePlayback = usePlayerStore((state) => state.toggle);
+
   const [url, setUrl] = useState('');
   const [mediaKind, setMediaKind] = useState<MediaKind>('audio');
   const [audioFormat, setAudioFormat] = useState<downloadsApi.AudioFormat>('mp3-192');
@@ -77,59 +135,72 @@ export function HomeScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [customizerOpen, setCustomizerOpen] = useState(false);
-  const unsubscribers = useRef<Map<string, () => void>>(new Map());
-  const upsertMedia = useLibraryStore((s) => s.upsert);
-  const libraryItems = useLibraryStore((s) => s.items);
-  const refreshLibrary = useLibraryStore((s) => s.refresh);
-  const playQueue = usePlayerStore((s) => s.playQueue);
 
-  const widgetOrder = useDashboardStore((s) => s.order);
-  const density = useDashboardStore((s) => s.density);
-  const accentStyle = useDashboardStore((s) => s.accentStyle);
-  const accentColor = accentStyle === 'cosmic' ? colors.violet : colors.cyan;
-
-  useEffect(() => {
-    refreshLibrary();
-  }, [refreshLibrary]);
+  const firstName = user?.display_name?.trim().split(/\s+/)[0];
+  const recentItems = useMemo(
+    () => [...libraryItems].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 10),
+    [libraryItems],
+  );
+  const activeJobs = useMemo(
+    () => jobs.filter((job) => job.status === 'pending' || job.status === 'in_progress'),
+    [jobs],
+  );
+  const activeJobIds = activeJobs.map((job) => job.id).join('|');
 
   const updateJob = useCallback((job: Job) => {
-    setJobs((prev) => {
-      const index = prev.findIndex((j) => j.id === job.id);
-      if (index === -1) return [job, ...prev];
-      const next = [...prev];
-      next[index] = job;
-      return next;
+    setJobs((current) => {
+      const exists = current.some((item) => item.id === job.id);
+      const next = exists ? current.map((item) => (item.id === job.id ? job : item)) : [job, ...current];
+      return next.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
     });
-    if (job.status === 'complete' && job.result_media) {
-      upsertMedia(job.result_media);
-    }
+    if (job.status === 'complete' && job.result_media) upsertMedia(job.result_media);
   }, [upsertMedia]);
 
-  async function startJob(sourceUrl: string) {
-    const job = await downloadsApi.createDownload(sourceUrl, mediaKind, { audioFormat, videoQuality });
-    setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
-    const unsubscribe = watchJob(job.id, (update) => {
-      updateJob(update);
-      if (update.status === 'complete') toast('Added to your library', 'success');
-      if (update.status === 'failed') toast(friendlyJobError(update.error_message), 'error');
-      if (update.status === 'complete' || update.status === 'failed' || update.status === 'cancelled') {
-        unsubscribers.current.get(job.id)?.();
-        unsubscribers.current.delete(job.id);
-      }
-    });
-    unsubscribers.current.set(job.id, unsubscribe);
+  useEffect(() => {
+    void refreshLibrary();
+  }, [refreshLibrary]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void downloadsApi
+        .listDownloads()
+        .then((items) => {
+          if (active) setJobs([...items].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+        })
+        .catch(() => {
+          // Today remains useful offline; Activity owns the explicit retry state.
+        });
+      return () => {
+        active = false;
+      };
+    }, []),
+  );
+
+  useEffect(() => {
+    if (!isFocused || !activeJobIds) return undefined;
+    const unsubscribers = activeJobs.map((job) => watchJob(job.id, updateJob));
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
+    // The stable id signature changes only when a job enters or leaves the active set.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeJobIds, isFocused, updateJob]);
+
+  function openTab(screen: keyof MainTabParamList) {
+    navigation.navigate('Main', { screen });
   }
 
   async function handleSubmit() {
-    if (!url.trim()) return;
-    setError(null);
+    const sourceUrl = url.trim();
+    if (!sourceUrl || submitting) return;
     setSubmitting(true);
+    setError(null);
     try {
-      await startJob(url.trim());
+      const job = await downloadsApi.createDownload(sourceUrl, mediaKind, { audioFormat, videoQuality });
+      updateJob(job);
       setUrl('');
-    } catch (err: any) {
-      setError(apiErrorMessage(err, 'Could not start that download.'));
+      toast('Import started.', 'success');
+    } catch (caught) {
+      setError(apiErrorMessage(caught, "Couldn't start this import."));
     } finally {
       setSubmitting(false);
     }
@@ -137,208 +208,260 @@ export function HomeScreen() {
 
   async function handlePaste() {
     try {
-      const text = await Clipboard.getStringAsync();
-      if (text?.trim()) setUrl(text.trim());
-      else toast('Clipboard is empty', 'info');
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't read the clipboard."), 'error');
+      const text = (await Clipboard.getStringAsync()).trim();
+      if (!text) {
+        toast('Your clipboard is empty.', 'info');
+        return;
+      }
+      setUrl(text);
+      setError(null);
+    } catch (caught) {
+      toast(apiErrorMessage(caught, "Couldn't read your clipboard."), 'error');
     }
   }
 
-  async function handleCancelJob(job: Job) {
+  async function handleCancel(job: Job) {
     try {
-      const updated = await downloadsApi.cancelDownload(job.id);
-      updateJob(updated);
-      toast('Download cancelled', 'info');
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't cancel that download."), 'error');
+      updateJob(await downloadsApi.cancelDownload(job.id));
+      toast('Import cancelled.', 'info');
+    } catch (caught) {
+      toast(apiErrorMessage(caught, "Couldn't cancel this import."), 'error');
     }
   }
 
-  async function handleRetryJob(job: Job) {
-    if (!job.source_url) return;
-    setJobs((prev) => prev.filter((j) => j.id !== job.id));
-    try {
-      await startJob(job.source_url);
-    } catch (err) {
-      toast(apiErrorMessage(err, "Couldn't restart that download."), 'error');
-    }
-  }
-
-  function clearFinishedJobs() {
-    setJobs((prev) => prev.filter((j) => j.status === 'pending' || j.status === 'in_progress'));
-  }
-
-  const recents = libraryItems.slice(0, RECENTS_LIMIT);
-
-  async function handlePlayRecent(media: Media) {
+  async function playRecent(media: Media) {
     if (media.media_type === 'video') {
       useVideoPlayerStore.getState().openExpanded(media.id);
       return;
     }
-    // Queue the whole shelf so next/prev keeps flowing from this tap.
-    const audioRecents = recents.filter((m) => m.media_type !== 'video');
-    const index = audioRecents.findIndex((m) => m.id === media.id);
-    await playQueue(audioRecents, Math.max(0, index));
-    navigation.navigate('Player');
+    const audioItems = recentItems.filter((item) => item.media_type === 'audio');
+    const index = audioItems.findIndex((item) => item.id === media.id);
+    try {
+      await playQueue(audioItems, Math.max(0, index));
+      navigation.navigate('Player');
+    } catch (caught) {
+      toast(apiErrorMessage(caught, "Couldn't play this track."), 'error');
+    }
   }
+
+  const choices = mediaKind === 'audio' ? AUDIO_FORMATS : VIDEO_QUALITIES;
+  const cardSize = isDesktop ? 164 : 132;
+  const showFirstUse = libraryHydrated && !libraryLoading && recentItems.length === 0 && activeJobs.length === 0 && !currentMedia;
 
   return (
     <View style={styles.root}>
-      <ScreenContainer maxWidth={1020}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScreenContainer maxWidth={1040}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scroll}
+        >
           <Reveal>
             <View style={styles.headerRow}>
-              <View style={styles.headerText}>
-                <Text style={styles.eyebrow}>DUSKGLEN</Text>
-                <GradientText style={styles.megaTitle}>{greeting()}</GradientText>
-                <Text style={styles.tagline}>Bring something in — paste any link.</Text>
+              <View style={styles.headerCopy}>
+                <Text style={styles.eyebrow}>TODAY</Text>
+                <Text style={styles.title}>{dayGreeting()}{firstName ? `, ${firstName}` : ''}.</Text>
+                <Text style={styles.subtitle}>Keep what you find. Play it your way.</Text>
               </View>
-              <View style={styles.headerActions}>
-                <Pressable onPress={() => setCustomizerOpen(true)} accessibilityLabel="Customize dashboard" hitSlop={8} style={styles.customizeButton}>
-                  <Ionicons name="options-outline" size={18} color={colors.textSecondary} />
-                </Pressable>
-                <SidebarTrigger />
-              </View>
+              <SidebarTrigger size={40} />
             </View>
           </Reveal>
 
-          <Reveal delay={80}>
-          <GlassPanel style={styles.heroPanel}>
-            <View style={styles.heroContent}>
-              <View style={styles.inputCapsule}>
-                <Ionicons name="link" size={18} color={colors.textMuted} />
-                <TextInput
-                  value={url}
-                  onChangeText={setUrl}
-                  placeholder="https:// TikTok · YouTube · anything"
-                  placeholderTextColor={colors.textMuted}
-                  selectionColor={colors.cyan}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  returnKeyType="go"
-                  onSubmitEditing={handleSubmit}
-                  style={styles.input}
-                />
-                <Pressable onPress={handlePaste} accessibilityLabel="Paste link" hitSlop={8} style={styles.pasteButton}>
-                  <Ionicons name="clipboard-outline" size={17} color={colors.textMuted} />
-                </Pressable>
-                <PressableScale
-                  onPress={handleSubmit}
-                  disabled={!url.trim() || submitting}
-                  accessibilityLabel={submitting ? 'Starting download' : 'Start download'}
-                  accessibilityHint={!url.trim() ? 'Paste or enter a media link first' : undefined}
-                  scaleTo={0.88}
-                >
-                  <LinearGradient
-                    colors={colors.gradientPrimary}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={styles.goButton}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator size="small" color="#100B18" />
-                    ) : (
-                      <Ionicons name="arrow-forward" size={20} color="#100B18" />
-                    )}
-                  </LinearGradient>
-                </PressableScale>
-              </View>
+          <Reveal delay={60}>
+            <GlassPanel style={styles.importPanel} edgeColor="rgba(255,138,92,0.24)">
+              <View style={styles.importContent}>
+                <View style={styles.importHeading}>
+                  <View style={styles.importIcon}>
+                    <Ionicons name="link" size={18} color={colors.cyan} />
+                  </View>
+                  <View style={styles.importHeadingCopy}>
+                    <Text style={styles.importEyebrow}>IMPORT A LINK</Text>
+                    <Text style={styles.importTitle}>Bring a track home.</Text>
+                  </View>
+                </View>
 
-              <View style={styles.chipRow}>
-                {(['audio', 'video'] as MediaKind[]).map((kind) => (
+                <View style={styles.inputRow}>
+                  <TextInput
+                    value={url}
+                    onChangeText={(value) => {
+                      setUrl(value);
+                      if (error) setError(null);
+                    }}
+                    onSubmitEditing={() => void handleSubmit()}
+                    accessibilityLabel="Media link"
+                    placeholder="Paste a media link"
+                    placeholderTextColor={colors.textMuted}
+                    selectionColor={colors.cyan}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="go"
+                    style={styles.input}
+                  />
                   <Pressable
-                    key={kind}
-                    onPress={() => setMediaKind(kind)}
-                    style={[styles.chip, mediaKind === kind && styles.chipActive]}
+                    onPress={() => void handlePaste()}
+                    accessibilityRole="button"
+                    accessibilityLabel="Paste link"
+                    style={({ pressed }) => [styles.pasteButton, pressed && styles.pressed]}
                   >
-                    <Ionicons
-                      name={kind === 'audio' ? 'musical-notes' : 'videocam'}
-                      size={13}
-                      color={mediaKind === kind ? colors.cyan : colors.textMuted}
-                    />
-                    <Text style={[styles.chipLabel, mediaKind === kind && styles.chipLabelActive]}>
-                      {kind === 'audio' ? 'Audio' : 'Video'}
-                    </Text>
+                    <Ionicons name="clipboard-outline" size={16} color={colors.textSecondary} />
+                    <Text style={styles.pasteLabel}>Paste</Text>
                   </Pressable>
-                ))}
+                </View>
+
+                <SegmentedControl
+                  options={MEDIA_KINDS}
+                  value={mediaKind}
+                  onChange={setMediaKind}
+                  accessibilityLabel="Import type"
+                />
+
+                <View>
+                  <Text style={styles.formatLabel}>QUALITY</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.formatRow}>
+                    {choices.map((choice) => {
+                      const selected = mediaKind === 'audio' ? audioFormat === choice.key : videoQuality === choice.key;
+                      return (
+                        <Pressable
+                          key={choice.key}
+                          onPress={() => {
+                            if (mediaKind === 'audio') setAudioFormat(choice.key as downloadsApi.AudioFormat);
+                            else setVideoQuality(choice.key as downloadsApi.VideoQuality);
+                          }}
+                          accessibilityRole="radio"
+                          accessibilityLabel={`${choice.label} quality`}
+                          accessibilityState={{ checked: selected }}
+                          style={({ pressed }) => [styles.formatChip, selected && styles.formatChipSelected, pressed && styles.pressed]}
+                        >
+                          <Text style={[styles.formatChipLabel, selected && styles.formatChipLabelSelected]}>{choice.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                {error ? (
+                  <View style={styles.errorRow} accessibilityRole="alert">
+                    <Ionicons name="alert-circle" size={16} color={colors.danger} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
+                ) : null}
+
+                <Button
+                  label="Add to library"
+                  onPress={() => void handleSubmit()}
+                  disabled={!url.trim()}
+                  loading={submitting}
+                  style={styles.importButton}
+                />
+                <Text style={styles.helperText}>
+                  {url.trim()
+                    ? `${mediaKind === 'audio' ? 'Audio' : 'Video'} · ${mediaKind === 'audio' ? AUDIO_FORMATS.find((item) => item.key === audioFormat)?.label : VIDEO_QUALITIES.find((item) => item.key === videoQuality)?.label}`
+                    : 'Paste a link to continue.'}
+                </Text>
               </View>
-              <View style={styles.qualityRow}>
-                {(mediaKind === 'audio' ? AUDIO_FORMATS : VIDEO_QUALITIES).map((option) => {
-                  const active = mediaKind === 'audio' ? audioFormat === option.key : videoQuality === option.key;
-                  return (
-                    <Pressable
-                      key={option.key}
-                      onPress={() =>
-                        mediaKind === 'audio'
-                          ? setAudioFormat(option.key as downloadsApi.AudioFormat)
-                          : setVideoQuality(option.key as downloadsApi.VideoQuality)
-                      }
-                      style={[styles.qualityChip, active && styles.chipActive]}
-                    >
-                      <Text style={[styles.qualityLabel, active && styles.chipLabelActive]}>{option.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-            </View>
-          </GlassPanel>
+            </GlassPanel>
           </Reveal>
 
-          <Reveal delay={120}>
-            <View>
-              {widgetOrder
-                .filter((w) => w.visible)
-                .map((w) => {
-                  switch (w.id) {
-                    case 'continueListening':
-                      return <ContinueListeningWidget key={w.id} density={density} accentColor={accentColor} />;
-                    case 'pinned':
-                      return <PinnedWidget key={w.id} density={density} coverSize={coverSize} onPlay={handlePlayRecent} />;
-                    case 'onRepeat':
-                      return <OnRepeatWidget key={w.id} density={density} coverSize={coverSize} onPlay={handlePlayRecent} />;
-                    case 'queue':
-                      return (
-                        <QueueWidget
-                          key={w.id}
-                          density={density}
-                          jobs={jobs}
-                          onCancel={handleCancelJob}
-                          onRetry={handleRetryJob}
-                          onClearFinished={clearFinishedJobs}
-                        />
-                      );
-                    case 'recent':
-                      return (
-                        <RecentDownloadsWidget
-                          key={w.id}
-                          density={density}
-                          items={recents}
-                          coverSize={coverSize}
-                          onPlay={handlePlayRecent}
-                        />
-                      );
-                    case 'favorites':
-                      return <FavoritesWidget key={w.id} density={density} coverSize={coverSize} onPlay={handlePlayRecent} />;
-                    case 'stats':
-                      return <StatsWidget key={w.id} density={density} accentColor={accentColor} />;
-                    case 'telegram':
-                      return <TelegramWidget key={w.id} density={density} />;
-                    case 'offline':
-                      return <OfflineWidget key={w.id} density={density} />;
-                    case 'quickActions':
-                      return <QuickActionsWidget key={w.id} density={density} accentColor={accentColor} />;
-                    default:
-                      return null;
-                  }
-                })}
+          {activeJobs.length > 0 ? (
+            <Reveal delay={100} style={styles.section}>
+              <SectionHeader title="In progress" actionLabel="See all" onAction={() => openTab('Activity')} style={styles.sectionHeader} />
+              <GlassPanel style={styles.activityPanel}>
+                {activeJobs.slice(0, 2).map((job, index) => (
+                  <View key={job.id}>
+                    {index > 0 ? <View style={styles.divider} /> : null}
+                    <ActiveJobRow job={job} onCancel={() => void handleCancel(job)} />
+                  </View>
+                ))}
+              </GlassPanel>
+            </Reveal>
+          ) : null}
+
+          {currentMedia && !playing ? (
+            <Reveal delay={120} style={styles.section}>
+              <SectionHeader title="Continue listening" style={styles.sectionHeader} />
+              <GlassPanel style={styles.continuePanel}>
+                <View style={styles.continueContent}>
+                  <Artwork media={currentMedia} size={64} priority />
+                  <Pressable
+                    onPress={() => navigation.navigate('Player')}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open player for ${displayTitle(currentMedia)}`}
+                    style={({ pressed }) => [styles.continueCopy, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.continueEyebrow}>READY WHEN YOU ARE</Text>
+                    <Text numberOfLines={1} style={styles.continueTitle}>{displayTitle(currentMedia)}</Text>
+                    <Text numberOfLines={1} style={styles.continueArtist}>{displayArtist(currentMedia) ?? 'Unknown artist'}</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={togglePlayback}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Resume ${displayTitle(currentMedia)}`}
+                    style={({ pressed }) => [styles.resumeButton, pressed && styles.cardPressed]}
+                  >
+                    <Ionicons name="play" size={21} color="#100B18" style={{ marginLeft: 2 }} />
+                  </Pressable>
+                </View>
+              </GlassPanel>
+            </Reveal>
+          ) : null}
+
+          {recentItems.length > 0 ? (
+            <Reveal delay={140} style={styles.section}>
+              <SectionHeader title="Recently added" actionLabel="Library" onAction={() => openTab('Library')} style={styles.sectionHeader} />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.recentRow}
+                snapToInterval={cardSize + spacing.md}
+                decelerationRate="fast"
+              >
+                {recentItems.map((media) => (
+                  <RecentCard key={media.id} media={media} size={cardSize} onPress={() => void playRecent(media)} />
+                ))}
+              </ScrollView>
+            </Reveal>
+          ) : null}
+
+          {showFirstUse ? (
+            <Reveal delay={120} style={styles.section}>
+              <SectionHeader title="Start here" style={styles.sectionHeader} />
+              <View style={styles.firstUseRow}>
+                <Pressable
+                  onPress={() => openTab('Recognize')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Identify music playing nearby"
+                  style={({ pressed }) => [styles.firstUseCard, pressed && styles.cardPressed]}
+                >
+                  <View style={styles.firstUseIcon}><Ionicons name="mic" size={21} color={colors.cyan} /></View>
+                  <Text style={styles.firstUseTitle}>Identify music</Text>
+                  <Text style={styles.firstUseBody}>Hear something? Name it in seconds.</Text>
+                  <Ionicons name="arrow-forward" size={17} color={colors.textMuted} />
+                </Pressable>
+                <Pressable
+                  onPress={() => navigation.navigate('Telegram')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Import from Telegram"
+                  style={({ pressed }) => [styles.firstUseCard, pressed && styles.cardPressed]}
+                >
+                  <View style={styles.firstUseIcon}><Ionicons name="paper-plane" size={21} color={colors.violet} /></View>
+                  <Text style={styles.firstUseTitle}>Telegram</Text>
+                  <Text style={styles.firstUseBody}>Bring saved audio into your library.</Text>
+                  <Ionicons name="arrow-forward" size={17} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            </Reveal>
+          ) : null}
+
+          {libraryLoading && recentItems.length === 0 ? (
+            <View style={styles.libraryLoading} accessibilityLabel="Loading your library">
+              <ActivityIndicator color={colors.cyan} />
+              <Text style={styles.libraryLoadingText}>Loading your library…</Text>
             </View>
-          </Reveal>
+          ) : null}
         </ScrollView>
       </ScreenContainer>
       <MiniPlayerBar />
-      <DashboardCustomizer visible={customizerOpen} onClose={() => setCustomizerOpen(false)} />
     </View>
   );
 }
@@ -346,74 +469,135 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#09060F' },
   scroll: { paddingBottom: layout.tabBarClearance },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  headerText: { flex: 1, paddingRight: spacing.md },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  customizeButton: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.pill,
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
+  headerCopy: { flex: 1 },
+  eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.xs },
+  title: { ...typography.mega, color: colors.textPrimary },
+  subtitle: { ...typography.body, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.lg },
+  importPanel: { marginBottom: spacing.sm },
+  importContent: { padding: spacing.lg, gap: spacing.md },
+  importHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  importIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: 'rgba(255,138,92,0.12)',
+  },
+  importHeadingCopy: { flex: 1 },
+  importEyebrow: { ...typography.eyebrow, fontSize: 9, lineHeight: 12, letterSpacing: 2, color: colors.cyan },
+  importTitle: { ...typography.title, fontSize: 22, lineHeight: 28, color: colors.textPrimary },
+  inputRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: spacing.md,
+    paddingRight: 5,
+    gap: spacing.sm,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(9,6,15,0.62)',
     borderWidth: 1,
     borderColor: 'rgba(174,165,192,0.12)',
   },
-  eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.xs },
-  megaTitle: { ...typography.mega },
-  tagline: { ...typography.body, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.lg },
-  heroPanel: { marginBottom: spacing.lg },
-  heroContent: { padding: spacing.lg, gap: spacing.md },
-  inputCapsule: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: 'rgba(9,6,15,0.6)',
-    borderRadius: radii.pill,
-    paddingLeft: spacing.md,
-    paddingRight: 6,
-    height: 56,
-  },
-  input: {
-    ...typography.body,
-    flex: 1,
-    color: colors.textPrimary,
-    paddingVertical: 0,
-  },
+  input: { ...typography.body, flex: 1, minWidth: 0, color: colors.textPrimary, paddingVertical: 0 },
   pasteButton: {
-    width: 34,
-    height: 34,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  goButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipRow: { flexDirection: 'row', gap: spacing.sm },
-  chip: {
+    minWidth: 72,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    gap: 5,
+    borderRadius: radii.md - 3,
+    backgroundColor: 'rgba(174,165,192,0.08)',
+  },
+  pasteLabel: { ...typography.caption, fontFamily: 'Sora_500Medium', color: colors.textSecondary },
+  formatLabel: { ...typography.eyebrow, fontSize: 9, lineHeight: 12, letterSpacing: 1.8, color: colors.textMuted, marginBottom: spacing.sm },
+  formatRow: { gap: spacing.sm, paddingRight: spacing.sm },
+  formatChip: {
+    minHeight: 38,
+    justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
     backgroundColor: 'rgba(9,6,15,0.5)',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  chipActive: { backgroundColor: 'rgba(255,138,92,0.16)' },
-  chipLabel: { ...typography.caption, color: colors.textMuted },
-  chipLabelActive: { color: colors.cyan, fontFamily: 'Sora_500Medium' },
-  qualityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: -spacing.sm },
-  qualityChip: {
-    paddingVertical: 6,
-    paddingHorizontal: spacing.sm + 4,
+  formatChipSelected: { backgroundColor: 'rgba(179,157,255,0.11)', borderColor: 'rgba(179,157,255,0.22)' },
+  formatChipLabel: { ...typography.caption, color: colors.textMuted },
+  formatChipLabelSelected: { color: colors.textSecondary, fontFamily: 'Sora_500Medium' },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    padding: spacing.sm + 2,
+    borderRadius: radii.md,
+    backgroundColor: 'rgba(232,80,110,0.09)',
+  },
+  errorText: { ...typography.caption, flex: 1, color: colors.danger },
+  importButton: { width: '100%' },
+  helperText: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: -spacing.sm },
+  section: { marginTop: spacing.xl },
+  sectionHeader: { marginBottom: spacing.sm },
+  activityPanel: { paddingHorizontal: spacing.md },
+  activeJobRow: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
+  jobIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,138,92,0.11)',
+  },
+  jobBody: { flex: 1, gap: 5 },
+  jobTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  jobTitle: { ...typography.subtitle, flex: 1, fontSize: 14, color: colors.textPrimary },
+  jobPercent: { ...typography.caption, fontFamily: 'Sora_600SemiBold', fontSize: 11, color: colors.cyan },
+  jobStage: { ...typography.caption, fontSize: 12, color: colors.textMuted },
+  cancelButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  divider: { height: 1, backgroundColor: 'rgba(174,165,192,0.09)' },
+  continuePanel: { padding: spacing.md },
+  continueContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  continueCopy: { flex: 1, minHeight: 48, justifyContent: 'center' },
+  continueEyebrow: { ...typography.eyebrow, fontSize: 8, lineHeight: 11, letterSpacing: 1.7, color: colors.cyan },
+  continueTitle: { ...typography.subtitle, color: colors.textPrimary },
+  continueArtist: { ...typography.caption, color: colors.textMuted },
+  resumeButton: {
+    width: 48,
+    height: 48,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(9,6,15,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.cyan,
   },
-  qualityLabel: { ...typography.caption, fontSize: 11, color: colors.textMuted },
-  error: { ...typography.caption, color: colors.danger },
+  recentRow: { gap: spacing.md, paddingRight: spacing.lg, paddingBottom: spacing.sm },
+  recentCard: { gap: 4 },
+  artwork: { marginBottom: spacing.xs },
+  recentTitle: { ...typography.subtitle, fontSize: 14, lineHeight: 19, color: colors.textPrimary },
+  recentArtist: { ...typography.caption, fontSize: 12, color: colors.textMuted },
+  firstUseRow: { flexDirection: 'row', gap: spacing.sm },
+  firstUseCard: {
+    flex: 1,
+    minHeight: 174,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: 'rgba(27,20,38,0.74)',
+    borderWidth: 1,
+    borderColor: 'rgba(174,165,192,0.1)',
+  },
+  firstUseIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,138,92,0.1)',
+  },
+  firstUseTitle: { ...typography.subtitle, fontSize: 14, color: colors.textPrimary },
+  firstUseBody: { ...typography.caption, flex: 1, fontSize: 12, color: colors.textMuted },
+  libraryLoading: { minHeight: 84, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  libraryLoadingText: { ...typography.caption, color: colors.textMuted },
+  pressed: { opacity: 0.68 },
+  cardPressed: { opacity: 0.72, transform: [{ scale: 0.98 }] },
 });

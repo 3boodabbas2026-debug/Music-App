@@ -1,417 +1,360 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, Animated, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
-import { useIsFocused, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Moonlight } from '../components/three/Moonlight';
-import { RippleField } from '../components/ui/RippleField';
-import { GlassPanel } from '../components/ui/GlassPanel';
-import { GradientText } from '../components/ui/GradientText';
-import { PressableScale } from '../components/ui/PressableScale';
+import { Artwork } from '../components/ui/Artwork';
 import { CoverBackdrop } from '../components/player/CoverBackdrop';
 import { LyricsView } from '../components/player/LyricsView';
 import { QueueList } from '../components/player/QueueList';
 import { WaveformScrubber } from '../components/player/WaveformScrubber';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTrackAccent } from '../hooks/useTrackAccent';
+import { useFavoritesStore } from '../store/favoritesStore';
+import { usePinStore } from '../store/pinStore';
 import { usePlayerStore } from '../store/playerStore';
 import { displayArtist, displayTitle, thumbnailUri } from '../utils/mediaDisplay';
 import { colors, radii, spacing, typography } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
 
-const PLAY_SIZE = 78;
-const SIDE_SIZE = 48;
-const SIDE_PANEL_WIDTH = 380;
-
-type PanelTab = 'queue' | 'lyrics';
+type Sheet = 'queue' | 'lyrics' | 'options' | null;
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes}:${remainder.toString().padStart(2, '0')}`;
 }
 
-function PanelTabs({ tab, onChange }: { tab: PanelTab; onChange: (tab: PanelTab) => void }) {
+function ModeButton({
+  label,
+  icon,
+  active,
+  onPress,
+  badge,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  active?: boolean;
+  onPress: () => void;
+  badge?: string;
+}) {
   return (
-    <View style={styles.panelTabs}>
-      {(
-        [
-          { key: 'queue', label: 'Up next', icon: 'list' },
-          { key: 'lyrics', label: 'Lyrics', icon: 'text' },
-        ] as const
-      ).map((item) => (
-        <Pressable
-          key={item.key}
-          onPress={() => onChange(item.key)}
-          style={[styles.panelTab, tab === item.key && styles.panelTabActive]}
-        >
-          <Ionicons name={item.icon} size={14} color={tab === item.key ? colors.cyan : colors.textMuted} />
-          <Text style={[styles.panelTabLabel, tab === item.key && styles.panelTabLabelActive]}>{item.label}</Text>
-        </Pressable>
-      ))}
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: !!active }}
+      style={({ pressed }) => [styles.modeButton, active && styles.modeButtonActive, pressed && styles.pressed]}
+    >
+      <Ionicons name={icon} size={20} color={active ? colors.cyan : colors.textSecondary} />
+      {badge ? <Text style={[styles.modeBadge, active && styles.modeBadgeActive]}>{badge}</Text> : null}
+    </Pressable>
+  );
+}
+
+function SheetTabs({ active, onChange }: { active: 'queue' | 'lyrics'; onChange: (next: 'queue' | 'lyrics') => void }) {
+  return (
+    <View style={styles.sheetTabs} accessibilityRole="tablist">
+      {(['queue', 'lyrics'] as const).map((item) => {
+        const selected = active === item;
+        return (
+          <Pressable
+            key={item}
+            onPress={() => onChange(item)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            style={[styles.sheetTab, selected && styles.sheetTabActive]}
+          >
+            <Text style={[styles.sheetTabLabel, selected && styles.sheetTabLabelActive]}>
+              {item === 'queue' ? 'Up next' : 'Lyrics'}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
 
 export function PlayerScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  // Skips the 3D canvas + ambient background entirely when something else is
-  // stacked on top of this modal — invisible either way, but stops paying
-  // for a WebGL canvas the user can't currently see.
-  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
-  const { isDesktop } = useResponsive();
-  const [panelTab, setPanelTab] = useState<PanelTab>('queue');
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const [sanctuaryMode, setSanctuaryMode] = useState(false);
-  const [chromeVisible, setChromeVisible] = useState(true);
-  const chromeOpacity = useRef(new Animated.Value(1)).current;
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Per-field selectors, not a whole-store destructure — currentTime/amplitude
-  // tick on every sub-second playback update, and a single unselectored
-  // destructure would re-render this entire screen (3D canvas, ambient
-  // background, lyrics/queue panel included) on every one of those ticks.
-  const currentMedia = usePlayerStore((s) => s.currentMedia);
-  const playing = usePlayerStore((s) => s.playing);
-  const currentTime = usePlayerStore((s) => s.currentTime);
-  const duration = usePlayerStore((s) => s.duration);
-  const isBuffering = usePlayerStore((s) => s.isBuffering);
-  const amplitude = usePlayerStore((s) => s.amplitude);
-  const queue = usePlayerStore((s) => s.queue);
-  const queueIndex = usePlayerStore((s) => s.queueIndex);
-  const repeat = usePlayerStore((s) => s.repeat);
-  const shuffle = usePlayerStore((s) => s.shuffle);
-  const rate = usePlayerStore((s) => s.rate);
-  const volume = usePlayerStore((s) => s.volume);
-  const muted = usePlayerStore((s) => s.muted);
-  const sleepAt = usePlayerStore((s) => s.sleepAt);
-  const toggle = usePlayerStore((s) => s.toggle);
-  const seek = usePlayerStore((s) => s.seek);
-  const playNext = usePlayerStore((s) => s.playNext);
-  const playPrev = usePlayerStore((s) => s.playPrev);
-  const toggleRepeat = usePlayerStore((s) => s.toggleRepeat);
-  const toggleShuffle = usePlayerStore((s) => s.toggleShuffle);
-  const cycleRate = usePlayerStore((s) => s.cycleRate);
-  const setVolume = usePlayerStore((s) => s.setVolume);
-  const toggleMute = usePlayerStore((s) => s.toggleMute);
-  const cycleSleepTimer = usePlayerStore((s) => s.cycleSleepTimer);
+  const { width, height, isDesktop } = useResponsive();
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const [sheetTab, setSheetTab] = useState<'queue' | 'lyrics'>('queue');
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const artworkEntrance = useRef(new Animated.Value(0)).current;
+
+  const currentMedia = usePlayerStore((state) => state.currentMedia);
+  const playing = usePlayerStore((state) => state.playing);
+  const currentTime = usePlayerStore((state) => state.currentTime);
+  const duration = usePlayerStore((state) => state.duration);
+  const isBuffering = usePlayerStore((state) => state.isBuffering);
+  const crossfading = usePlayerStore((state) => state.crossfading);
+  const queue = usePlayerStore((state) => state.queue);
+  const queueIndex = usePlayerStore((state) => state.queueIndex);
+  const repeat = usePlayerStore((state) => state.repeat);
+  const shuffle = usePlayerStore((state) => state.shuffle);
+  const rate = usePlayerStore((state) => state.rate);
+  const volume = usePlayerStore((state) => state.volume);
+  const muted = usePlayerStore((state) => state.muted);
+  const sleepAt = usePlayerStore((state) => state.sleepAt);
+  const toggle = usePlayerStore((state) => state.toggle);
+  const seek = usePlayerStore((state) => state.seek);
+  const playNext = usePlayerStore((state) => state.playNext);
+  const playPrev = usePlayerStore((state) => state.playPrev);
+  const toggleRepeat = usePlayerStore((state) => state.toggleRepeat);
+  const toggleShuffle = usePlayerStore((state) => state.toggleShuffle);
+  const cycleRate = usePlayerStore((state) => state.cycleRate);
+  const cycleSleepTimer = usePlayerStore((state) => state.cycleSleepTimer);
+  const setVolume = usePlayerStore((state) => state.setVolume);
+  const toggleMute = usePlayerStore((state) => state.toggleMute);
+
+  const favoriteIds = useFavoritesStore((state) => state.ids);
+  const toggleFavorite = useFavoritesStore((state) => state.toggle);
+  const pinnedIds = usePinStore((state) => state.ids);
+  const togglePin = usePinStore((state) => state.toggle);
+
   const coverUri = currentMedia ? thumbnailUri(currentMedia) : null;
-  const accentColor = useTrackAccent(coverUri);
+  const accent = useTrackAccent(coverUri) ?? colors.cyan;
+  const artworkSize = Math.min(isDesktop ? 440 : width - spacing.lg * 2, isDesktop ? height * 0.58 : height * 0.39, 440);
 
   useEffect(() => {
-    if (!sanctuaryMode) {
-      setChromeVisible(true);
-      chromeOpacity.setValue(1);
-      if (hideTimer.current) clearTimeout(hideTimer.current);
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReduceMotion(enabled));
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentMedia) {
+      navigation.goBack();
       return;
     }
-    wakeChrome();
-    return () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sanctuaryMode]);
+    artworkEntrance.setValue(0);
+    if (reduceMotion) {
+      artworkEntrance.setValue(1);
+      return;
+    }
+    Animated.spring(artworkEntrance, {
+      toValue: 1,
+      speed: 18,
+      bounciness: 3,
+      useNativeDriver: true,
+    }).start();
+  }, [artworkEntrance, currentMedia?.id, navigation, reduceMotion]);
 
-  function wakeChrome() {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    setChromeVisible(true);
-    Animated.timing(chromeOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
-    hideTimer.current = setTimeout(() => {
-      Animated.timing(chromeOpacity, { toValue: 0, duration: 500, useNativeDriver: true }).start(({ finished }) => {
-        if (finished) setChromeVisible(false);
-      });
-    }, 3000);
-  }
+  const nextTrack = useMemo(() => {
+    if (queue.length < 2) return null;
+    return queue[queueIndex + 1] ?? (repeat === 'all' ? queue[0] : null);
+  }, [queue, queueIndex, repeat]);
 
-  if (!currentMedia) {
-    navigation.goBack();
-    return null;
-  }
+  if (!currentMedia) return null;
 
-  // The 3D stage owns the top ~55% of the vertical space; the glass dock floats below.
-  const stageWidth = isDesktop ? width - SIDE_PANEL_WIDTH - spacing.xl * 2 : width;
-  const stageHeight = height * (isDesktop ? 0.5 : 0.52);
-  const orbSize = Math.min(stageWidth * 0.9, stageHeight * 0.86, 460);
-
-  const sleepMinutesLeft = sleepAt ? Math.max(1, Math.ceil((sleepAt - Date.now()) / 60000)) : null;
-  const hasQueue = queue.length > 1;
-  const nextTrack = !shuffle && hasQueue
-    ? queue[queueIndex + 1] ?? (repeat === 'all' ? queue[0] : undefined)
-    : undefined;
-  const trackMetadata = [
+  const isFavorite = !!favoriteIds[currentMedia.id];
+  const isPinned = pinnedIds.includes(currentMedia.id);
+  const sleepMinutes = sleepAt ? Math.max(1, Math.ceil((sleepAt - Date.now()) / 60000)) : null;
+  const metadata = [
+    currentMedia.album,
     currentMedia.genre,
     currentMedia.release_year ? String(currentMedia.release_year) : null,
     currentMedia.is_remix ? 'Remix' : null,
   ].filter(Boolean).join(' · ');
 
-  const transport = (
-    <GlassPanel style={styles.dock} overlayColor="rgba(16,11,24,0.82)" edgeColor={accentColor ? `${accentColor}3d` : undefined}>
-      <View style={styles.dockContent}>
-        <GradientText numberOfLines={1} style={styles.title}>
-          {displayTitle(currentMedia)}
-        </GradientText>
-        <Text numberOfLines={1} style={styles.artist}>
-          {displayArtist(currentMedia) ?? 'Unknown artist'}
-        </Text>
-        {!!trackMetadata && <Text numberOfLines={1} style={styles.trackMetadata}>{trackMetadata}</Text>}
+  const openPanel = (panel: 'queue' | 'lyrics') => {
+    setSheetTab(panel);
+    setSheet(panel);
+  };
 
+  const artwork = (
+    <Animated.View
+      style={[
+        styles.artworkShadow,
+        {
+          width: artworkSize,
+          height: artworkSize,
+          shadowColor: accent,
+          opacity: artworkEntrance,
+          transform: [{ scale: artworkEntrance.interpolate({ inputRange: [0, 1], outputRange: [0.965, 1] }) }],
+        },
+      ]}
+    >
+      <Artwork media={currentMedia} size="100%" priority borderRadius={radii.lg} />
+    </Animated.View>
+  );
+
+  const detailsAndControls = (
+    <View style={[styles.controlColumn, isDesktop && styles.controlColumnDesktop]}>
+      <View style={styles.identityRow}>
+        <View style={styles.identityText}>
+          <Text numberOfLines={2} style={styles.title}>{displayTitle(currentMedia)}</Text>
+          <Text numberOfLines={1} style={styles.artist}>{displayArtist(currentMedia) ?? 'Unknown artist'}</Text>
+          {!!metadata && <Text numberOfLines={1} style={styles.metadata}>{metadata}</Text>}
+        </View>
+        <Pressable
+          onPress={() => toggleFavorite(currentMedia.id)}
+          accessibilityRole="button"
+          accessibilityLabel={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+          accessibilityState={{ selected: isFavorite }}
+          hitSlop={10}
+          style={styles.favoriteButton}
+        >
+          <Ionicons name={isFavorite ? 'heart' : 'heart-outline'} size={24} color={isFavorite ? colors.coral : colors.textSecondary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.scrubberBlock}>
         <WaveformScrubber
           seedKey={currentMedia.id}
           progress={duration ? currentTime / duration : 0}
           onSeekRatio={(ratio) => seek(ratio * duration)}
-          activeColor={accentColor ?? undefined}
+          activeColor={accent}
         />
         <View style={styles.timeRow}>
           <Text style={styles.time}>{formatTime(currentTime)}</Text>
           <Text style={styles.time}>{formatTime(duration)}</Text>
         </View>
+      </View>
 
-        <View style={styles.transportRow}>
-          <Pressable onPress={toggleShuffle} accessibilityLabel={shuffle ? 'Turn shuffle off' : 'Turn shuffle on'} hitSlop={10} style={styles.modeButton}>
-            <Ionicons name="shuffle" size={20} color={shuffle ? accentColor ?? colors.cyan : colors.textMuted} />
-          </Pressable>
-
-          <PressableScale onPress={() => playPrev()} accessibilityLabel="Previous track" scaleTo={0.88}>
-            <View style={styles.sideButton}>
-              <Ionicons name="play-skip-back" size={22} color={colors.textSecondary} />
-            </View>
-          </PressableScale>
-
-          <PressableScale onPress={toggle} accessibilityLabel={playing ? 'Pause' : 'Play'} scaleTo={0.92}>
-            <View style={styles.playShadow}>
-              <LinearGradient
-                colors={colors.gradientPrimary}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.playButton}
-              >
-                <Ionicons
-                  name={playing ? 'pause' : 'play'}
-                  size={32}
-                  color="#100B18"
-                  style={playing ? undefined : styles.playGlyphNudge}
-                />
-              </LinearGradient>
-            </View>
-          </PressableScale>
-
-          <PressableScale onPress={() => playNext()} accessibilityLabel="Next track" scaleTo={0.88}>
-            <View style={styles.sideButton}>
-              <Ionicons name="play-skip-forward" size={22} color={colors.textSecondary} />
-            </View>
-          </PressableScale>
-
-          <Pressable onPress={toggleRepeat} accessibilityLabel={`Repeat mode: ${repeat}`} hitSlop={10} style={styles.modeButton}>
-            <Ionicons name="repeat" size={20} color={repeat !== 'off' ? accentColor ?? colors.cyan : colors.textMuted} />
-            {repeat === 'one' && <Text style={[styles.repeatOne, accentColor && { color: accentColor }]}>1</Text>}
-          </Pressable>
-        </View>
-
-        <View style={styles.chipRow}>
-          <Pressable onPress={() => seek(Math.max(0, currentTime - 10))} accessibilityLabel="Go back 10 seconds" style={styles.chip}>
-            <MaterialIcons name="replay-10" size={17} color={colors.textSecondary} />
-          </Pressable>
-          <Pressable onPress={cycleRate} style={[styles.chip, rate !== 1 && styles.chipActive, rate !== 1 && accentColor && { backgroundColor: `${accentColor}29` }]}>
-            <Text style={[styles.chipLabel, rate !== 1 && styles.chipLabelActive, rate !== 1 && accentColor && { color: accentColor }]}>{rate}×</Text>
-          </Pressable>
-          {!isDesktop && (
-            <>
-              <Pressable
-                onPress={() => {
-                  setPanelTab('queue');
-                  setSheetOpen(true);
-                }}
-                accessibilityLabel="Open queue"
-                style={styles.chip}
-              >
-                <Ionicons name="list" size={15} color={colors.textSecondary} />
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setPanelTab('lyrics');
-                  setSheetOpen(true);
-                }}
-                accessibilityLabel="Open lyrics"
-                style={styles.chip}
-              >
-                <Ionicons name="text" size={14} color={colors.textSecondary} />
-              </Pressable>
-            </>
+      <View style={styles.transportRow}>
+        <ModeButton label={shuffle ? 'Turn shuffle off' : 'Turn shuffle on'} icon="shuffle" active={shuffle} onPress={toggleShuffle} />
+        <Pressable onPress={() => void playPrev()} accessibilityRole="button" accessibilityLabel="Previous track" style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}>
+          <Ionicons name="play-skip-back" size={29} color={colors.textPrimary} />
+        </Pressable>
+        <Pressable
+          onPress={toggle}
+          accessibilityRole="button"
+          accessibilityLabel={playing ? 'Pause' : 'Play'}
+          style={({ pressed }) => [styles.playButton, { backgroundColor: accent }, pressed && styles.playButtonPressed]}
+        >
+          {isBuffering ? (
+            <ActivityIndicator color={colors.bg} />
+          ) : (
+            <Ionicons name={playing ? 'pause' : 'play'} size={34} color={colors.bg} style={playing ? undefined : styles.playNudge} />
           )}
-          <Pressable onPress={cycleSleepTimer} style={[styles.chip, sleepMinutesLeft !== null && styles.chipActive, sleepMinutesLeft !== null && accentColor && { backgroundColor: `${accentColor}29` }]}>
-            <Ionicons name="moon" size={14} color={sleepMinutesLeft !== null ? accentColor ?? colors.cyan : colors.textSecondary} />
-            {sleepMinutesLeft !== null && (
-              <Text style={[styles.chipLabelActive, accentColor && { color: accentColor }]}> {sleepMinutesLeft}m</Text>
-            )}
-          </Pressable>
-          <Pressable onPress={() => seek(Math.min(duration, currentTime + 10))} accessibilityLabel="Go forward 10 seconds" style={styles.chip}>
-            <MaterialIcons name="forward-10" size={17} color={colors.textSecondary} />
-          </Pressable>
-        </View>
+        </Pressable>
+        <Pressable onPress={() => void playNext()} accessibilityRole="button" accessibilityLabel="Next track" style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}>
+          <Ionicons name="play-skip-forward" size={29} color={colors.textPrimary} />
+        </Pressable>
+        <ModeButton label={`Repeat mode: ${repeat}`} icon="repeat" active={repeat !== 'off'} badge={repeat === 'one' ? '1' : undefined} onPress={toggleRepeat} />
+      </View>
 
-        {nextTrack && !isDesktop && (
-          <Pressable onPress={() => playNext()} style={styles.upNextRow}>
-            <Ionicons name="chevron-forward-circle-outline" size={14} color={colors.textMuted} />
-            <Text numberOfLines={1} style={styles.upNextText}>
-              Up next · {displayTitle(nextTrack)}
-            </Text>
-          </Pressable>
-        )}
+      <View style={styles.secondaryRow}>
+        <Pressable onPress={() => openPanel('queue')} accessibilityRole="button" accessibilityLabel="Open queue" style={styles.secondaryAction}>
+          <Ionicons name="list" size={19} color={colors.textSecondary} />
+          <Text style={styles.secondaryLabel}>Up next</Text>
+        </Pressable>
+        <Pressable onPress={() => openPanel('lyrics')} accessibilityRole="button" accessibilityLabel="Open lyrics" style={styles.secondaryAction}>
+          <Ionicons name="text" size={18} color={colors.textSecondary} />
+          <Text style={styles.secondaryLabel}>Lyrics</Text>
+        </Pressable>
+        <Pressable onPress={() => setSheet('options')} accessibilityRole="button" accessibilityLabel="Playback options" style={styles.secondaryAction}>
+          <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+          <Text style={styles.secondaryLabel}>More</Text>
+        </Pressable>
+      </View>
 
+      {nextTrack ? (
+        <Pressable onPress={() => void playNext()} accessibilityRole="button" accessibilityLabel={`Play next: ${displayTitle(nextTrack)}`} style={styles.nextRow}>
+          <Artwork media={nextTrack} size={42} borderRadius={radii.sm} />
+          <View style={styles.nextText}>
+            <Text style={styles.nextEyebrow}>UP NEXT</Text>
+            <Text numberOfLines={1} style={styles.nextTitle}>{displayTitle(nextTrack)}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
+
+      {isDesktop ? (
         <View style={styles.volumeRow}>
-          <Pressable onPress={toggleMute} accessibilityLabel={muted ? 'Unmute' : 'Mute'} hitSlop={10}>
-            <Ionicons
-              name={muted || volume === 0 ? 'volume-mute' : volume < 0.5 ? 'volume-low' : 'volume-high'}
-              size={18}
-              color={muted ? colors.danger : colors.textMuted}
-            />
+          <Pressable onPress={toggleMute} accessibilityRole="button" accessibilityLabel={muted ? 'Unmute' : 'Mute'} style={styles.volumeIcon}>
+            <Ionicons name={muted || volume === 0 ? 'volume-mute' : volume < 0.5 ? 'volume-low' : 'volume-high'} size={18} color={colors.textSecondary} />
           </Pressable>
           <Slider
             style={styles.volumeSlider}
             value={muted ? 0 : volume}
-            onValueChange={(v) => setVolume(v)}
-            minimumTrackTintColor={accentColor ?? colors.cyan}
-            maximumTrackTintColor="rgba(174,165,192,0.25)"
-            thumbTintColor={accentColor ?? colors.cyan}
+            onValueChange={setVolume}
+            minimumTrackTintColor={accent}
+            maximumTrackTintColor={colors.surfaceBright}
+            thumbTintColor={accent}
           />
         </View>
-      </View>
-    </GlassPanel>
-  );
-
-  const topBar = (
-    <View pointerEvents="box-none" style={[styles.topBar, { top: insets.top + spacing.sm }]}>
-      <Pressable onPress={() => navigation.goBack()} accessibilityLabel="Close player" hitSlop={12} style={styles.closeButton}>
-        <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
-      </Pressable>
-      <View style={styles.nowPlayingChip}>
-        <View style={[styles.liveDot, isBuffering && styles.liveDotBuffering]} />
-        <Text style={styles.nowPlayingLabel}>
-          {isBuffering ? 'BUFFERING' : hasQueue ? `TRACK ${queueIndex + 1} OF ${queue.length}` : 'NOW PLAYING'}
-        </Text>
-      </View>
-      <Pressable onPress={() => setSanctuaryMode(true)} accessibilityLabel="Enter sanctuary mode" hitSlop={12} style={styles.closeButton}>
-        <Ionicons name="leaf-outline" size={18} color={colors.textSecondary} />
-      </Pressable>
+      ) : null}
     </View>
   );
 
-  if (sanctuaryMode) {
-    const sanctuarySize = Math.min(width, height) * 0.72;
-    return (
-      <Pressable style={styles.root} onPress={wakeChrome}>
-        {isFocused && <CoverBackdrop uri={coverUri} />}
-        {isFocused && <RippleField dimmed accentColor={accentColor} />}
-        <View style={styles.sanctuaryStage}>
-          {isFocused && (
-            <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={sanctuarySize} accentColor={accentColor ?? undefined} />
-          )}
-        </View>
-
-        <Animated.View pointerEvents={chromeVisible ? 'auto' : 'none'} style={[styles.sanctuaryChrome, { opacity: chromeOpacity, paddingBottom: insets.bottom + spacing.xl, paddingTop: insets.top + spacing.md }]}>
-          <Pressable onPress={() => setSanctuaryMode(false)} accessibilityLabel="Exit sanctuary mode" hitSlop={12} style={styles.closeButton}>
-            <Ionicons name="contract-outline" size={18} color={colors.textSecondary} />
-          </Pressable>
-
-          <View style={styles.sanctuaryMeta}>
-            <GradientText numberOfLines={1} style={styles.title}>
-              {displayTitle(currentMedia)}
-            </GradientText>
-            <Text numberOfLines={1} style={styles.artist}>
-              {displayArtist(currentMedia) ?? 'Unknown artist'}
-            </Text>
-            {!!trackMetadata && <Text numberOfLines={1} style={styles.trackMetadata}>{trackMetadata}</Text>}
-
-            <View style={styles.sanctuaryProgress}>
-              <View
-                style={[
-                  styles.sanctuaryProgressFill,
-                  { width: `${duration ? (currentTime / duration) * 100 : 0}%` },
-                  accentColor && { backgroundColor: accentColor },
-                ]}
-              />
-            </View>
-
-            <View style={styles.sanctuaryControls}>
-              <PressableScale onPress={() => playPrev()} accessibilityLabel="Previous track" scaleTo={0.88}>
-                <View style={styles.sideButton}>
-                  <Ionicons name="play-skip-back" size={20} color={colors.textSecondary} />
-                </View>
-              </PressableScale>
-              <PressableScale onPress={toggle} accessibilityLabel={playing ? 'Pause' : 'Play'} scaleTo={0.92}>
-                <View style={styles.playShadow}>
-                  <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.playButton}>
-                    <Ionicons name={playing ? 'pause' : 'play'} size={30} color="#100B18" style={playing ? undefined : styles.playGlyphNudge} />
-                  </LinearGradient>
-                </View>
-              </PressableScale>
-              <PressableScale onPress={() => playNext()} accessibilityLabel="Next track" scaleTo={0.88}>
-                <View style={styles.sideButton}>
-                  <Ionicons name="play-skip-forward" size={20} color={colors.textSecondary} />
-                </View>
-              </PressableScale>
-            </View>
-          </View>
-        </Animated.View>
-      </Pressable>
-    );
-  }
-
-  if (isDesktop) {
-    return (
-      <View style={styles.root}>
-        {isFocused && <CoverBackdrop uri={coverUri} />}
-        {isFocused && <RippleField dimmed accentColor={accentColor} />}
-        <View style={[styles.desktopRow, { paddingTop: insets.top + spacing.xl + 40, paddingBottom: insets.bottom + spacing.lg }]}>
-          <View style={styles.desktopStageCol}>
-            <View style={styles.desktopStage}>
-              {isFocused && (
-                <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={orbSize} accentColor={accentColor ?? undefined} />
-              )}
-            </View>
-            <View style={styles.desktopDockWrap}>{transport}</View>
-          </View>
-
-          <GlassPanel style={styles.sidePanel} overlayColor="rgba(10,16,32,0.66)">
-            <View style={styles.sidePanelInner}>
-              <PanelTabs tab={panelTab} onChange={setPanelTab} />
-              {panelTab === 'queue' ? <QueueList /> : <LyricsView />}
-            </View>
-          </GlassPanel>
-        </View>
-        {topBar}
-      </View>
-    );
-  }
-
   return (
     <View style={styles.root}>
-      {isFocused && <CoverBackdrop uri={coverUri} />}
-      {isFocused && <RippleField dimmed accentColor={accentColor} />}
+      <CoverBackdrop uri={coverUri} blurRadius={54} />
+      <View style={styles.backdropVeil} />
 
-      <View style={[styles.stage, { height: stageHeight, paddingTop: insets.top }]}>
-        {isFocused && (
-          <Moonlight state={playing ? 'playing' : 'idle'} amplitude={playing ? amplitude : 0} size={orbSize} accentColor={accentColor ?? undefined} />
-        )}
+      <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
+        <Pressable onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Close player" style={styles.topButton}>
+          <Ionicons name="chevron-down" size={22} color={colors.textPrimary} />
+        </Pressable>
+        <View style={styles.playingState}>
+          <View style={[styles.stateDot, { backgroundColor: crossfading ? colors.violet : accent }]} />
+          <Text style={styles.playingStateLabel}>{crossfading ? 'AUTOMIX' : isBuffering ? 'BUFFERING' : 'NOW PLAYING'}</Text>
+        </View>
+        <Pressable onPress={() => setSheet('options')} accessibilityRole="button" accessibilityLabel="Playback options" style={styles.topButton}>
+          <Ionicons name="ellipsis-horizontal" size={22} color={colors.textPrimary} />
+        </Pressable>
       </View>
 
-      {topBar}
+      {isDesktop ? (
+        <View style={[styles.desktopLayout, { paddingTop: insets.top + 88, paddingBottom: insets.bottom + spacing.xl }]}>
+          <View style={styles.desktopArtworkColumn}>{artwork}</View>
+          {detailsAndControls}
+        </View>
+      ) : (
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.mobileContent, { paddingTop: insets.top + 70, paddingBottom: insets.bottom + spacing.lg }]}
+        >
+          {artwork}
+          {detailsAndControls}
+        </ScrollView>
+      )}
 
-      <View style={[styles.dockWrap, { paddingBottom: insets.bottom + spacing.md }]}>{transport}</View>
-
-      <Modal visible={sheetOpen} transparent animationType="slide" onRequestClose={() => setSheetOpen(false)}>
+      <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
         <View style={styles.sheetRoot}>
-          <Pressable style={styles.sheetBackdrop} onPress={() => setSheetOpen(false)} />
+          <Pressable style={styles.sheetBackdrop} onPress={() => setSheet(null)} accessibilityLabel="Close playback panel" />
           <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
             <View style={styles.sheetHandle} />
-            <PanelTabs tab={panelTab} onChange={setPanelTab} />
-            <View style={styles.sheetBody}>{panelTab === 'queue' ? <QueueList /> : <LyricsView />}</View>
+            {sheet === 'options' ? (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.optionsContent}>
+                <Text style={styles.sheetTitle}>Playback</Text>
+                <Pressable onPress={cycleRate} style={styles.optionRow} accessibilityRole="button" accessibilityLabel={`Playback speed ${rate} times`}>
+                  <View style={styles.optionIcon}><Ionicons name="speedometer-outline" size={19} color={colors.textSecondary} /></View>
+                  <View style={styles.optionText}><Text style={styles.optionTitle}>Playback speed</Text><Text style={styles.optionSubtitle}>Useful for long mixes and spoken audio</Text></View>
+                  <Text style={styles.optionValue}>{rate}×</Text>
+                </Pressable>
+                <Pressable onPress={cycleSleepTimer} style={styles.optionRow} accessibilityRole="button" accessibilityLabel="Cycle sleep timer">
+                  <View style={styles.optionIcon}><Ionicons name="moon-outline" size={19} color={colors.textSecondary} /></View>
+                  <View style={styles.optionText}><Text style={styles.optionTitle}>Sleep timer</Text><Text style={styles.optionSubtitle}>Pause automatically</Text></View>
+                  <Text style={styles.optionValue}>{sleepMinutes ? `${sleepMinutes} min` : 'Off'}</Text>
+                </Pressable>
+                <Pressable onPress={() => togglePin(currentMedia.id)} style={styles.optionRow} accessibilityRole="button" accessibilityState={{ selected: isPinned }}>
+                  <View style={styles.optionIcon}><Ionicons name={isPinned ? 'bookmark' : 'bookmark-outline'} size={19} color={isPinned ? colors.gold : colors.textSecondary} /></View>
+                  <View style={styles.optionText}><Text style={styles.optionTitle}>{isPinned ? 'Pinned to Today' : 'Pin to Today'}</Text><Text style={styles.optionSubtitle}>Keep this track close</Text></View>
+                </Pressable>
+                <Pressable onPress={() => toggleFavorite(currentMedia.id)} style={styles.optionRow} accessibilityRole="button" accessibilityState={{ selected: isFavorite }}>
+                  <View style={styles.optionIcon}><Ionicons name={isFavorite ? 'heart' : 'heart-outline'} size={19} color={isFavorite ? colors.coral : colors.textSecondary} /></View>
+                  <View style={styles.optionText}><Text style={styles.optionTitle}>{isFavorite ? 'Remove favorite' : 'Add to favorites'}</Text><Text style={styles.optionSubtitle}>Update your collection</Text></View>
+                </Pressable>
+              </ScrollView>
+            ) : (
+              <>
+                <SheetTabs active={sheetTab} onChange={setSheetTab} />
+                <View style={styles.sheetBody}>{sheetTab === 'queue' ? <QueueList /> : <LyricsView />}</View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -420,220 +363,64 @@ export function PlayerScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#09060F' },
-  stage: { alignItems: 'center', justifyContent: 'center' },
-  topBar: {
-    position: 'absolute',
-    left: spacing.lg,
-    right: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(27,20,38,0.72)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nowPlayingChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(27,20,38,0.6)',
-  },
-  liveDot: { width: 6, height: 6, borderRadius: radii.pill, backgroundColor: colors.success },
-  liveDotBuffering: { backgroundColor: colors.cyan },
-  nowPlayingLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textSecondary },
-  topSpacer: { width: 40 },
-  dockWrap: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    paddingHorizontal: spacing.lg,
-    width: '100%',
-    maxWidth: 680,
-    alignSelf: 'center',
-  },
-  dock: { borderRadius: radii.lg },
-  dockContent: { paddingHorizontal: spacing.lg, paddingVertical: spacing.md, alignItems: 'center' },
-  title: { ...typography.title, fontSize: 22, lineHeight: 28, textAlign: 'center' },
-  artist: { ...typography.body, color: colors.textMuted, textAlign: 'center', marginTop: 2 },
-  trackMetadata: { ...typography.caption, color: colors.cyan, textAlign: 'center', marginTop: 3 },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch' },
-  time: { ...typography.caption, color: colors.textMuted, fontVariant: ['tabular-nums'] },
-  transportRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginTop: spacing.sm,
-  },
-  modeButton: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  repeatOne: {
-    position: 'absolute',
-    top: 2,
-    right: 4,
-    fontSize: 9,
-    fontFamily: 'Sora_600SemiBold',
-    color: colors.cyan,
-  },
-  sideButton: {
-    width: SIDE_SIZE,
-    height: SIDE_SIZE,
-    borderRadius: SIDE_SIZE / 2,
-    backgroundColor: 'rgba(27,20,38,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playShadow: {
-    borderRadius: PLAY_SIZE / 2,
-    shadowColor: colors.cyan,
-    shadowOpacity: 0.45,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 14,
-  },
-  playButton: {
-    width: PLAY_SIZE,
-    height: PLAY_SIZE,
-    borderRadius: PLAY_SIZE / 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playGlyphNudge: { marginLeft: 4 },
-  chipRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minWidth: 52,
-    justifyContent: 'center',
-    paddingVertical: 7,
-    paddingHorizontal: spacing.sm + 2,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(27,20,38,0.6)',
-  },
-  chipActive: { backgroundColor: 'rgba(255,138,92,0.16)' },
-  chipLabel: { ...typography.caption, fontSize: 12, color: colors.textSecondary },
-  chipLabelActive: { ...typography.caption, fontSize: 12, color: colors.cyan, fontFamily: 'Sora_500Medium' },
-  upNextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: spacing.sm,
-    maxWidth: '90%',
-  },
-  upNextText: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textMuted,
-    flexShrink: 1,
-  },
-  volumeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    alignSelf: 'stretch',
-    marginTop: spacing.sm,
-  },
-  volumeSlider: { flex: 1, height: 32 },
-
-  // ----- Desktop split -----
-  desktopRow: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: spacing.xl,
-    paddingHorizontal: spacing.xl,
-    width: '100%',
-    maxWidth: 1280,
-    alignSelf: 'center',
-  },
-  desktopStageCol: { flex: 1, minWidth: 0 },
-  desktopStage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  desktopDockWrap: { width: '100%', maxWidth: 640, alignSelf: 'center' },
-  sidePanel: {
-    width: SIDE_PANEL_WIDTH,
-    borderRadius: radii.lg,
-  },
-  sidePanelInner: { flex: 1, paddingTop: spacing.sm },
-  panelTabs: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  panelTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 7,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(27,20,38,0.55)',
-  },
-  panelTabActive: { backgroundColor: 'rgba(255,138,92,0.16)' },
-  panelTabLabel: { ...typography.caption, fontSize: 12, color: colors.textMuted },
-  panelTabLabelActive: { color: colors.cyan, fontFamily: 'Sora_500Medium' },
-
-  // ----- Mobile sheet -----
+  root: { flex: 1, backgroundColor: colors.bg },
+  backdropVeil: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(11,8,14,0.76)' },
+  topBar: { position: 'absolute', zIndex: 10, top: 0, left: spacing.lg, right: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  topButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(17,13,22,0.68)', borderWidth: 1, borderColor: colors.surfaceBorder },
+  playingState: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: 'rgba(17,13,22,0.52)' },
+  stateDot: { width: 6, height: 6, borderRadius: 3 },
+  playingStateLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 1.8, color: colors.textSecondary },
+  mobileContent: { alignItems: 'center', paddingHorizontal: spacing.lg, gap: spacing.lg },
+  desktopLayout: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxl, paddingHorizontal: spacing.xxl },
+  desktopArtworkColumn: { flex: 1, alignItems: 'flex-end' },
+  artworkShadow: { borderRadius: radii.lg, shadowOpacity: 0.3, shadowRadius: 38, shadowOffset: { width: 0, height: 20 }, elevation: 16 },
+  controlColumn: { width: '100%', maxWidth: 520, gap: spacing.md },
+  controlColumnDesktop: { flex: 1, paddingRight: spacing.xl },
+  identityRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  identityText: { flex: 1 },
+  title: { ...typography.title, fontSize: 24, lineHeight: 30, color: colors.textPrimary },
+  artist: { ...typography.subtitle, color: colors.textSecondary, marginTop: 3 },
+  metadata: { ...typography.caption, color: colors.textMuted, marginTop: 4 },
+  favoriteButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  scrubberBlock: { marginTop: spacing.xs },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
+  time: { ...typography.caption, fontSize: 11, color: colors.textMuted, fontVariant: ['tabular-nums'] },
+  transportRow: { minHeight: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modeButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  modeButtonActive: { backgroundColor: 'rgba(255,117,93,0.12)' },
+  modeBadge: { position: 'absolute', fontSize: 8, color: colors.textMuted, fontFamily: 'Sora_700Bold' },
+  modeBadgeActive: { color: colors.cyan },
+  skipButton: { width: 50, height: 50, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  playButton: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
+  playButtonPressed: { opacity: 0.86, transform: [{ scale: 0.96 }] },
+  playNudge: { marginLeft: 4 },
+  pressed: { opacity: 0.65 },
+  secondaryRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
+  secondaryAction: { minWidth: 86, minHeight: 46, borderRadius: radii.pill, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: 'rgba(21,17,27,0.72)', borderWidth: 1, borderColor: colors.surfaceBorder },
+  secondaryLabel: { ...typography.caption, color: colors.textSecondary },
+  nextRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.surfaceBorder, marginTop: spacing.xs, paddingTop: spacing.md },
+  nextText: { flex: 1 },
+  nextEyebrow: { ...typography.eyebrow, fontSize: 9, letterSpacing: 1.6, color: colors.textMuted },
+  nextTitle: { ...typography.caption, color: colors.textPrimary, marginTop: 2 },
+  volumeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  volumeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  volumeSlider: { flex: 1, height: 36 },
   sheetRoot: { flex: 1, justifyContent: 'flex-end' },
-  sheetBackdrop: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(3,5,3,0.65)' },
-  sheet: {
-    height: '72%',
-    backgroundColor: '#1B1426',
-    borderTopLeftRadius: radii.lg + 8,
-    borderTopRightRadius: radii.lg + 8,
-    paddingTop: spacing.sm,
-  },
-  sheetHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: radii.pill,
-    backgroundColor: 'rgba(174,165,192,0.3)',
-    marginBottom: spacing.sm,
-  },
-  sheetBody: { flex: 1 },
-
-  // ----- Sanctuary Mode -----
-  sanctuaryStage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  sanctuaryChrome: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-  },
-  sanctuaryMeta: { alignItems: 'center', width: '100%', maxWidth: 420, gap: spacing.sm },
-  sanctuaryProgress: {
-    width: '100%',
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: 'rgba(174,165,192,0.2)',
-    overflow: 'hidden',
-    marginTop: spacing.sm,
-  },
-  sanctuaryProgressFill: { height: '100%', backgroundColor: colors.cyan },
-  sanctuaryControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.lg,
-    marginTop: spacing.md,
-  },
+  sheetBackdrop: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(4,3,6,0.62)' },
+  sheet: { height: '76%', borderTopLeftRadius: radii.lg + 6, borderTopRightRadius: radii.lg + 6, backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.surfaceBorder, overflow: 'hidden' },
+  sheetHandle: { width: 40, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: spacing.sm, marginBottom: spacing.sm, backgroundColor: colors.surfaceBright },
+  sheetTabs: { flexDirection: 'row', marginHorizontal: spacing.lg, padding: 4, borderRadius: radii.pill, backgroundColor: colors.bg },
+  sheetTab: { flex: 1, minHeight: 42, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  sheetTabActive: { backgroundColor: colors.surfaceBright },
+  sheetTabLabel: { ...typography.caption, color: colors.textMuted },
+  sheetTabLabelActive: { color: colors.textPrimary, fontFamily: 'Sora_600SemiBold' },
+  sheetBody: { flex: 1, paddingTop: spacing.sm },
+  optionsContent: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
+  sheetTitle: { ...typography.title, color: colors.textPrimary, marginBottom: spacing.md },
+  optionRow: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderBottomWidth: 1, borderBottomColor: colors.surfaceBorder },
+  optionIcon: { width: 40, height: 40, borderRadius: radii.md, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  optionText: { flex: 1 },
+  optionTitle: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary },
+  optionSubtitle: { ...typography.caption, fontSize: 11, color: colors.textMuted, marginTop: 2 },
+  optionValue: { ...typography.caption, color: colors.cyan },
 });

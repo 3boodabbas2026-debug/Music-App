@@ -1,26 +1,29 @@
 import { StyleSheet, Text } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { PressableScale } from './PressableScale';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useAuthStore } from '../../store/authStore';
 import { useUiStore } from '../../store/uiStore';
 import { colors, radii, typography } from '../../theme/tokens';
+import { PressableScale } from './PressableScale';
 
-/**
- * Gradient avatar button that opens the sidebar — one per main screen header.
- * Hidden on desktop, where the persistent nav rail owns the profile entry point.
- */
+/** Compact account avatar that opens the mobile navigation drawer. */
 export function SidebarTrigger({ size = 42 }: { size?: number }) {
   const { isDesktop } = useResponsive();
-  const openSidebar = useUiStore((s) => s.openSidebar);
-  const user = useAuthStore((s) => s.user);
+  const openSidebar = useUiStore((state) => state.openSidebar);
+  const user = useAuthStore((state) => state.user);
   const initial = (user?.display_name?.trim()?.[0] ?? user?.email?.[0] ?? '♪').toUpperCase();
 
   if (isDesktop) return null;
 
   return (
-    <PressableScale onPress={openSidebar} scaleTo={0.9} hitSlop={8}>
+    <PressableScale
+      onPress={openSidebar}
+      scaleTo={0.9}
+      hitSlop={8}
+      accessibilityLabel="Open navigation"
+      accessibilityHint="Opens your account and more destinations"
+    >
       <LinearGradient
         colors={colors.gradientPrimary}
         start={{ x: 0, y: 0 }}
@@ -44,8 +47,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 8,
   },
-  initial: {
-    ...typography.title,
-    color: '#100B18',
-  },
+  initial: { ...typography.title, color: '#100B18' },
 });

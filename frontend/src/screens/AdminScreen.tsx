@@ -6,9 +6,13 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import * as adminApi from '../services/api/admin';
 import type { AdminEvent, AdminFeedback, AdminJob, AdminStats, AdminUser, Announcement } from '../services/api/admin';
+import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { GlassPanel } from '../components/ui/GlassPanel';
+import { IconButton } from '../components/ui/IconButton';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
+import { SectionHeader } from '../components/ui/SectionHeader';
+import { TextField } from '../components/ui/TextField';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage, friendlyJobError } from '../utils/apiError';
 import { useAuthStore } from '../store/authStore';
@@ -133,7 +137,7 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
         <StatTile label="Open feedback" value={String(stats.open_feedback_count)} />
       </View>
 
-      <Text style={styles.sectionTitle}>LIBRARY BREAKDOWN</Text>
+      <SectionHeader title="Library breakdown" style={styles.sectionHeader} titleStyle={styles.sectionTitle} />
       <GlassPanel style={styles.panel}>
         <View style={styles.panelBody}>
           <View style={styles.fieldRow}>
@@ -153,14 +157,14 @@ function OverviewTab({ stats }: { stats: AdminStats }) {
         </View>
       </GlassPanel>
 
-      <Text style={styles.sectionTitle}>JOBS BY STATUS</Text>
+      <SectionHeader title="Jobs by status" style={styles.sectionHeader} titleStyle={styles.sectionTitle} />
       <GlassPanel style={styles.panel}>
         <View style={styles.panelBody}>
           <JobsBarChart jobsByStatus={stats.jobs_by_status} />
         </View>
       </GlassPanel>
 
-      <Text style={styles.sectionTitle}>SIGNUPS · LAST 30 DAYS</Text>
+      <SectionHeader title="Signups · last 30 days" style={styles.sectionHeader} titleStyle={styles.sectionTitle} />
       <GlassPanel style={styles.panel}>
         <View style={styles.panelBody}>
           <SignupSparkline days={stats.signups_last_30_days} />
@@ -226,6 +230,7 @@ function UsersTab({ users, onChanged }: { users: AdminUser[]; onChanged: (user: 
               </View>
               {editingEmailFor === user.id ? (
                 <TextInput
+                  accessibilityLabel={`Email for ${user.display_name}`}
                   value={emailDraft}
                   onChangeText={setEmailDraft}
                   onBlur={() => saveEmail(user)}
@@ -236,10 +241,13 @@ function UsersTab({ users, onChanged }: { users: AdminUser[]; onChanged: (user: 
                 />
               ) : (
                 <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit email for ${user.display_name}`}
                   onPress={() => {
                     setEditingEmailFor(user.id);
                     setEmailDraft(user.email);
                   }}
+                  style={styles.emailEditButton}
                 >
                   <Text numberOfLines={1} style={styles.subtitle}>
                     {user.email} <Ionicons name="pencil-outline" size={11} color={colors.textMuted} />
@@ -257,6 +265,9 @@ function UsersTab({ users, onChanged }: { users: AdminUser[]; onChanged: (user: 
             <Pressable
               onPress={() => toggleRole(user)}
               disabled={busyId === user.id}
+              accessibilityRole="button"
+              accessibilityLabel={user.is_admin ? `Revoke admin from ${user.display_name}` : `Make ${user.display_name} an admin`}
+              accessibilityState={{ disabled: busyId === user.id }}
               style={[styles.roleButton, user.is_admin && styles.roleButtonActive]}
             >
               {busyId === user.id ? (
@@ -286,7 +297,7 @@ function JobsTab({ jobs }: { jobs: AdminJob[] }) {
             <View
               style={[
                 styles.badge,
-                { backgroundColor: job.status === 'failed' ? 'rgba(232,80,110,0.14)' : 'rgba(95,191,142,0.14)' },
+                job.status === 'failed' && styles.badgeFailed,
               ]}
             >
               <Ionicons
@@ -388,7 +399,7 @@ function FeedbackTab({ items, onChanged }: { items: AdminFeedback[]; onChanged: 
         <GlassPanel key={item.id} style={styles.row}>
           <View style={[styles.rowContent, { flexDirection: 'column', alignItems: 'stretch', gap: spacing.sm }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-              <View style={[styles.badge, { backgroundColor: item.status === 'open' ? 'rgba(255,138,92,0.14)' : 'rgba(174,165,192,0.14)' }]}>
+              <View style={[styles.badge, item.status === 'open' && styles.badgeOpen]}>
                 <Ionicons
                   name={item.status === 'open' ? 'ellipse' : 'checkmark-circle'}
                   size={16}
@@ -401,7 +412,14 @@ function FeedbackTab({ items, onChanged }: { items: AdminFeedback[]; onChanged: 
                 </Text>
                 <Text style={styles.mutedLine}>{timeAgo(item.created_at)}</Text>
               </View>
-              <Pressable onPress={() => toggleStatus(item)} disabled={busyId === item.id} style={styles.roleButton}>
+              <Pressable
+                onPress={() => toggleStatus(item)}
+                disabled={busyId === item.id}
+                accessibilityRole="button"
+                accessibilityLabel={item.status === 'open' ? 'Mark feedback resolved' : 'Reopen feedback'}
+                accessibilityState={{ disabled: busyId === item.id }}
+                style={styles.roleButton}
+              >
                 {busyId === item.id ? (
                   <ActivityIndicator size="small" color={colors.textSecondary} />
                 ) : (
@@ -415,15 +433,21 @@ function FeedbackTab({ items, onChanged }: { items: AdminFeedback[]; onChanged: 
             ) : (
               <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                 <TextInput
+                  accessibilityLabel={`Reply to ${item.user_email}`}
                   value={replyDrafts[item.id] ?? ''}
                   onChangeText={(text) => setReplyDrafts((prev) => ({ ...prev, [item.id]: text }))}
                   placeholder="Reply (optional)"
                   placeholderTextColor={colors.textMuted}
                   style={[styles.emailInput, { flex: 1 }]}
                 />
-                <Pressable onPress={() => sendReply(item)} style={styles.roleButton}>
-                  <Text style={styles.roleButtonLabel}>Send</Text>
-                </Pressable>
+                <Button
+                  label="Send reply"
+                  variant="secondary"
+                  disabled={!(replyDrafts[item.id] ?? '').trim() || busyId === item.id}
+                  loading={busyId === item.id}
+                  onPress={() => sendReply(item)}
+                  style={styles.replyButton}
+                />
               </View>
             )}
           </View>
@@ -475,33 +499,32 @@ function AnnouncementsTab({
     <View>
       <GlassPanel style={styles.panel}>
         <View style={styles.panelBody}>
-          <Text style={styles.fieldLabel}>New announcement</Text>
-          <TextInput
+          <SectionHeader title="New announcement" titleStyle={styles.inlineSectionTitle} />
+          <TextField
+            label="Title"
             value={title}
             onChangeText={setTitle}
             placeholder="Title"
-            placeholderTextColor={colors.textMuted}
-            style={styles.emailInput}
           />
-          <TextInput
+          <TextField
+            label="Message"
             value={body}
             onChangeText={setBody}
             placeholder="What do you want users to see?"
-            placeholderTextColor={colors.textMuted}
             multiline
-            style={[styles.emailInput, { minHeight: 72, textAlignVertical: 'top' }]}
+            style={styles.announcementBody}
           />
-          <Pressable
+          <Button
+            label={!title.trim() || !body.trim() ? 'Add a title and message' : 'Post announcement'}
             onPress={post}
             disabled={posting || !title.trim() || !body.trim()}
-            style={[styles.roleButton, styles.roleButtonActive, { alignSelf: 'flex-start' }]}
-          >
-            {posting ? <ActivityIndicator size="small" color={colors.cyan} /> : <Text style={styles.roleButtonLabelActive}>Post</Text>}
-          </Pressable>
+            loading={posting}
+            style={styles.postButton}
+          />
         </View>
       </GlassPanel>
 
-      <Text style={styles.sectionTitle}>POSTED</Text>
+      <SectionHeader title="Posted" style={styles.sectionHeader} titleStyle={styles.sectionTitle} />
       {items.length === 0 ? (
         <Text style={styles.mutedLine}>No announcements yet.</Text>
       ) : (
@@ -514,9 +537,12 @@ function AnnouncementsTab({
                   <Text style={styles.mutedLine}>{item.body}</Text>
                   <Text style={styles.mutedLine}>{timeAgo(item.created_at)}</Text>
                 </View>
-                <Pressable onPress={() => remove(item.id)} accessibilityLabel={`Remove announcement ${item.title}`} hitSlop={8}>
-                  <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                </Pressable>
+                <IconButton
+                  icon="trash-outline"
+                  accessibilityLabel={`Remove announcement ${item.title}`}
+                  onPress={() => remove(item.id)}
+                  variant="danger"
+                />
               </View>
             </GlassPanel>
           ))}
@@ -531,6 +557,7 @@ export function AdminScreen() {
   const isAdmin = useAuthStore((s) => s.user?.is_admin ?? false);
   const [tab, setTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [jobs, setJobs] = useState<AdminJob[]>([]);
@@ -540,6 +567,7 @@ export function AdminScreen() {
 
   const load = useCallback(() => {
     setLoading(true);
+    setLoadError(null);
     Promise.all([
       adminApi.getStats(),
       adminApi.getUsers(),
@@ -556,6 +584,7 @@ export function AdminScreen() {
         setFeedback(feedbackRes.items);
         setAnnouncements(announcementsRes);
       })
+      .catch((err) => setLoadError(apiErrorMessage(err, "Couldn't load admin data.")))
       .finally(() => setLoading(false));
   }, []);
 
@@ -572,11 +601,8 @@ export function AdminScreen() {
       <View style={styles.root}>
         <ScreenContainer maxWidth={800}>
           <View style={styles.headerRow}>
-            <Pressable onPress={() => navigation.goBack()} accessibilityLabel="Go back" hitSlop={12} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-            </Pressable>
-            <Text style={styles.headerTitle}>Admin</Text>
-            <View style={{ width: 36 }} />
+            <IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" />
+            <SectionHeader eyebrow="Restricted" title="Admin" subtitle="Operational controls are limited to the admin account." style={styles.screenHeading} />
           </View>
           <EmptyState title="Not available" subtitle="This area is only visible to the app's admin account." icon="lock-closed-outline" />
         </ScreenContainer>
@@ -589,30 +615,47 @@ export function AdminScreen() {
       <ScreenContainer maxWidth={800}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           <View style={styles.headerRow}>
-            <Pressable onPress={() => navigation.goBack()} accessibilityLabel="Go back" hitSlop={12} style={styles.backButton}>
-              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-            </Pressable>
-            <Text style={styles.headerTitle}>Admin</Text>
-            <Pressable onPress={load} accessibilityLabel="Refresh admin data" hitSlop={12} style={styles.backButton}>
-              <Ionicons name="refresh" size={18} color={colors.textPrimary} />
-            </Pressable>
+            <IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" />
+            <SectionHeader eyebrow="Operations" title="Admin console" subtitle="Accounts, activity, feedback, and system health." style={styles.screenHeading} />
+            <IconButton
+              icon={loading ? 'hourglass-outline' : 'refresh'}
+              accessibilityLabel={loading ? 'Refreshing admin data' : 'Refresh admin data'}
+              onPress={load}
+              disabled={loading}
+              variant="surface"
+            />
           </View>
 
-          <View style={styles.tabRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabRow}
+            style={styles.tabScroller}
+          >
             {TABS.map((t) => (
               <Pressable
                 key={t.key}
                 onPress={() => setTab(t.key)}
+                accessibilityRole="tab"
+                accessibilityLabel={t.label}
+                accessibilityState={{ selected: tab === t.key }}
                 style={[styles.tabChip, tab === t.key && styles.tabChipActive]}
               >
                 <Ionicons name={t.icon} size={14} color={tab === t.key ? colors.cyan : colors.textMuted} />
                 <Text style={[styles.tabLabel, tab === t.key && styles.tabLabelActive]}>{t.label}</Text>
               </Pressable>
             ))}
-          </View>
+          </ScrollView>
 
-          {loading || !stats ? (
-            <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.cyan} />
+          {loading ? (
+            <View accessibilityLiveRegion="polite" style={styles.loadingState}>
+              <ActivityIndicator color={colors.cyan} />
+              <Text style={styles.mutedLine}>Refreshing admin data…</Text>
+            </View>
+          ) : loadError ? (
+            <EmptyState icon="cloud-offline-outline" title="Admin data is unavailable" subtitle={loadError} actionLabel="Try again" onAction={load} />
+          ) : !stats ? (
+            <EmptyState icon="alert-circle-outline" title="No admin data" subtitle="Refresh to try loading the dashboard again." actionLabel="Refresh" onAction={load} />
           ) : (
             <>
               {tab === 'overview' && <OverviewTab stats={stats} />}
@@ -653,36 +696,35 @@ export function AdminScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#09060F' },
+  root: { flex: 1, backgroundColor: colors.bg },
   scroll: { paddingBottom: spacing.xxl },
-  headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-  },
-  headerTitle: { ...typography.title, fontSize: 20, color: colors.textPrimary },
-  tabRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.lg, flexWrap: 'wrap' },
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.xl },
+  screenHeading: { flex: 1 },
+  tabScroller: { marginBottom: spacing.lg },
+  tabRow: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.md },
   tabChip: {
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingVertical: 7,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(27,20,38,0.55)',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
   },
-  tabChipActive: { backgroundColor: 'rgba(255,138,92,0.16)' },
+  tabChipActive: { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorderStrong },
   tabLabel: { ...typography.caption, fontSize: 12, color: colors.textMuted },
   tabLabelActive: { color: colors.cyan, fontFamily: 'Sora_500Medium' },
   sectionTitle: {
-    ...typography.eyebrow,
-    fontSize: 11,
-    letterSpacing: 2,
-    color: colors.textMuted,
+    ...typography.title,
+    fontSize: 17,
+    lineHeight: 23,
+    color: colors.textPrimary,
+  },
+  sectionHeader: {
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
@@ -697,43 +739,69 @@ const styles = StyleSheet.create({
   fieldLabel: { ...typography.body, color: colors.textMuted },
   fieldValue: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
   mutedLine: { ...typography.caption, color: colors.textMuted },
+  loadingState: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   sparkRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3, height: 60 },
   sparkBarTrack: { flex: 1, height: '100%', justifyContent: 'flex-end' },
   sparkBar: { width: '100%', borderRadius: 2, backgroundColor: colors.cyan, minHeight: 4 },
   list: { gap: spacing.sm },
   row: { borderRadius: radii.lg },
   rowContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
-  badge: { width: 40, height: 40, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  badge: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  badgeFailed: { borderColor: colors.danger },
+  badgeOpen: { borderColor: colors.cyan },
   title: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textSecondary },
   barRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   barLabel: { ...typography.caption, color: colors.textMuted, width: 90 },
-  barTrack: { flex: 1, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
+  barTrack: { flex: 1, height: 10, borderRadius: 5, backgroundColor: colors.surfaceBright, overflow: 'hidden' },
   barFill: { height: '100%', borderRadius: 5, minWidth: 4 },
   barValue: { ...typography.caption, color: colors.textPrimary, width: 28, textAlign: 'right', fontVariant: ['tabular-nums'] },
   adminBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: radii.sm,
-    backgroundColor: 'rgba(255,138,92,0.16)',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorderStrong,
   },
   adminBadgeLabel: { ...typography.caption, fontSize: 9, letterSpacing: 1, color: colors.cyan },
   emailInput: {
     ...typography.body,
+    minHeight: 44,
     color: colors.textPrimary,
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: colors.surfaceBright,
     borderRadius: radii.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
+  emailEditButton: { minHeight: 44, justifyContent: 'center' },
   roleButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: colors.surfaceBright,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
   },
-  roleButtonActive: { backgroundColor: 'rgba(255,138,92,0.16)' },
+  roleButtonActive: { backgroundColor: colors.surfaceElevated, borderColor: colors.surfaceBorderStrong },
   roleButtonLabel: { ...typography.caption, color: colors.textSecondary },
   roleButtonLabelActive: { ...typography.caption, color: colors.cyan },
   feedbackMessage: { ...typography.body, color: colors.textPrimary },
+  replyButton: { minWidth: 112 },
+  inlineSectionTitle: { ...typography.subtitle, fontSize: 16, lineHeight: 22 },
+  announcementBody: { minHeight: 96, textAlignVertical: 'top' },
+  postButton: { marginTop: spacing.xs },
 });

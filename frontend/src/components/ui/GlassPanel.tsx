@@ -1,77 +1,49 @@
 import { PropsWithChildren } from 'react';
-import { StyleSheet, View, ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
-import { radii, shadows } from '../../theme/tokens';
+import { colors, radii, shadows } from '../../theme/tokens';
 
 type Props = PropsWithChildren<{
-  style?: ViewStyle | ViewStyle[];
-  /** Kept for call-site compatibility — the panel no longer blurs (see below). */
+  style?: StyleProp<ViewStyle>;
+  /** Retained for API compatibility. Solid tonal panels avoid blur cost. */
   intensity?: number;
-  /** Tint layered over the surface so content stays legible. */
   overlayColor?: string;
-  /** Color of the top edge-light — defaults to a neutral moonlight hair-line;
-   * PlayerScreen passes the current track's accent color where available. */
   edgeColor?: string;
 }>;
 
 /**
- * Raised stone-surface container: layered tint + a whisper of gradient depth
- * + soft shadow + a moonlit top edge.
- *
- * Deliberately NOT real blur. This app ships as a web build inside a
- * Capacitor WebView, where `backdrop-filter: blur` re-rasterizes everything
- * behind the panel every frame — with 6–10 of these panels stacked on the
- * dashboard it was the single biggest reason the app felt heavy on phones.
- * On this dark palette the overlays are already 0.55–0.72 opaque, so a
- * gradient-lifted tint reads nearly identically at a tiny fraction of the
- * cost. (`intensity` is accepted and ignored so call sites didn't need a
- * breaking sweep.)
+ * Duskglen's default raised surface. A solid fill and quiet border provide
+ * hierarchy without stacking blur, gradients and glow on every card.
  */
 export function GlassPanel({
   children,
   style,
   intensity: _intensity,
-  overlayColor = 'rgba(27,20,38,0.88)',
-  edgeColor = 'rgba(241,237,247,0.09)',
+  overlayColor = colors.surface,
+  edgeColor = 'rgba(247,242,245,0.06)',
 }: Props) {
   return (
-    <View style={[styles.shell, style]}>
-      <View style={[styles.overlay, { backgroundColor: overlayColor }]} />
-      {/* Faint vertical light falloff — the depth cue the blur used to give. */}
-      <LinearGradient
-        colors={['rgba(241,237,247,0.05)', 'rgba(241,237,247,0.0)', 'rgba(9,6,15,0.10)']}
-        style={styles.overlay}
-        pointerEvents="none"
-      />
-      {/* Moonlight catching the top edge — a hair of light that makes the
-          glass read as a surface instead of a flat tint. */}
-      <View style={[styles.edgeLight, { backgroundColor: edgeColor }]} />
+    <View style={[styles.panel, { backgroundColor: overlayColor }, style]}>
+      <View pointerEvents="none" style={[styles.edge, { backgroundColor: edgeColor }]} />
       {children}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  shell: {
+  panel: {
+    position: 'relative',
     borderRadius: radii.lg,
-    overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(174,165,192,0.08)',
+    borderColor: colors.surfaceBorder,
+    overflow: 'hidden',
     ...shadows.card,
   },
-  overlay: {
+  edge: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  edgeLight: {
-    position: 'absolute',
-    top: 0,
-    left: 12,
-    right: 12,
-    height: 1,
+    left: 16,
+    right: 16,
+    height: StyleSheet.hairlineWidth,
   },
 });

@@ -27,8 +27,8 @@ const navTheme = {
   ...DarkTheme,
   colors: {
     ...DarkTheme.colors,
-    background: '#09060F',
-    card: '#09060F',
+    background: colors.bg,
+    card: colors.bg,
     border: colors.surfaceBorder,
     primary: colors.cyan,
     text: colors.textPrimary,

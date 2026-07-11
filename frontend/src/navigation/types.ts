@@ -9,8 +9,9 @@ export type LibraryTab = 'all' | 'audio' | 'video' | 'favorites' | 'playlists';
 
 export type MainTabParamList = {
   Home: undefined;
-  Recognize: undefined;
   Library: { tab?: LibraryTab } | undefined;
+  Recognize: undefined;
+  Activity: undefined;
 };
 
 export type RootStackParamList = {

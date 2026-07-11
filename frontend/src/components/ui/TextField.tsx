@@ -7,14 +7,21 @@ import { colors, radii, spacing, typography } from '../../theme/tokens';
 type Props = TextInputProps & {
   label?: string;
   error?: string;
-  /** Muted helper line under the field — shown when there is no error. */
   hint?: string;
 };
 
-export function TextField({ label, error, hint, style, onFocus, onBlur, secureTextEntry, ...rest }: Props) {
+export function TextField({
+  label,
+  error,
+  hint,
+  style,
+  onFocus,
+  onBlur,
+  secureTextEntry,
+  accessibilityLabel,
+  ...rest
+}: Props) {
   const [focused, setFocused] = useState(false);
-  // Secure fields get a built-in show/hide toggle — typos in a masked field
-  // are the top cause of "wrong password" frustration on first sign-up.
   const [revealed, setRevealed] = useState(false);
   const isSecure = !!secureTextEntry;
 
@@ -23,43 +30,49 @@ export function TextField({ label, error, hint, style, onFocus, onBlur, secureTe
       {label ? <Text style={[styles.label, focused && styles.labelFocused]}>{label}</Text> : null}
       <View>
         <TextInput
+          {...rest}
+          accessibilityLabel={accessibilityLabel ?? label}
+          accessibilityState={{ disabled: rest.editable === false }}
           placeholderTextColor={colors.textMuted}
           selectionColor={colors.cyan}
           secureTextEntry={isSecure && !revealed}
-          onFocus={(e) => {
+          onFocus={(event) => {
             setFocused(true);
-            onFocus?.(e);
+            onFocus?.(event);
           }}
-          onBlur={(e) => {
+          onBlur={(event) => {
             setFocused(false);
-            onBlur?.(e);
+            onBlur?.(event);
           }}
           style={[
             styles.input,
             focused && styles.inputFocused,
-            error ? styles.inputError : null,
+            error && styles.inputError,
             isSecure && styles.inputSecure,
             style,
           ]}
-          {...rest}
         />
         {isSecure ? (
           <Pressable
-            onPress={() => setRevealed((v) => !v)}
-            hitSlop={10}
-            style={styles.eye}
+            onPress={() => setRevealed((value) => !value)}
+            hitSlop={4}
+            style={({ pressed }) => [styles.eye, pressed && styles.eyePressed]}
+            accessibilityRole="button"
             accessibilityLabel={revealed ? 'Hide password' : 'Show password'}
+            accessibilityState={{ expanded: revealed }}
           >
             <Ionicons
               name={revealed ? 'eye-off-outline' : 'eye-outline'}
-              size={18}
-              color={revealed ? colors.cyan : colors.textMuted}
+              size={20}
+              color={revealed ? colors.cyan : colors.textSecondary}
             />
           </Pressable>
         ) : null}
       </View>
       {error ? (
-        <Text style={styles.error}>{error}</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.error}>
+          {error}
+        </Text>
       ) : hint ? (
         <Text style={styles.hint}>{hint}</Text>
       ) : null}
@@ -69,33 +82,44 @@ export function TextField({ label, error, hint, style, onFocus, onBlur, secureTe
 
 const styles = StyleSheet.create({
   wrapper: { gap: spacing.xs },
-  label: { ...typography.caption, color: colors.textSecondary },
+  label: {
+    fontFamily: 'Sora_500Medium',
+    fontSize: 12,
+    lineHeight: 17,
+    color: colors.textSecondary,
+  },
   labelFocused: { color: colors.cyan },
   input: {
     ...typography.body,
+    minHeight: 52,
     color: colors.textPrimary,
-    backgroundColor: 'rgba(16,11,24,0.55)',
+    backgroundColor: colors.bgElevated,
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md - 2,
+    paddingVertical: 13,
     borderWidth: 1,
-    borderColor: 'rgba(174,165,192,0.12)',
+    borderColor: colors.surfaceBorder,
   },
   inputFocused: {
-    borderColor: 'rgba(255,138,92,0.55)',
-    backgroundColor: 'rgba(16,11,24,0.8)',
+    borderColor: colors.cyan,
+    backgroundColor: colors.surfaceBright,
   },
-  inputSecure: {
-    paddingRight: spacing.md + 26,
+  inputSecure: { paddingRight: 52 },
+  inputError: {
+    backgroundColor: 'rgba(239,120,136,0.07)',
+    borderColor: 'rgba(239,120,136,0.72)',
   },
-  inputError: { backgroundColor: 'rgba(232,80,110,0.10)', borderColor: 'rgba(232,80,110,0.4)' },
   eye: {
     position: 'absolute',
-    right: spacing.md,
-    top: 0,
-    bottom: 0,
+    right: 4,
+    top: 4,
+    bottom: 4,
+    width: 44,
+    borderRadius: radii.sm,
+    alignItems: 'center',
     justifyContent: 'center',
   },
+  eyePressed: { backgroundColor: colors.surfaceElevated },
   error: { ...typography.caption, color: colors.danger },
   hint: { ...typography.caption, color: colors.textMuted },
 });

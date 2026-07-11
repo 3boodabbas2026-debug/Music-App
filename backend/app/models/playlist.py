@@ -26,7 +26,11 @@ class PlaylistItem(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     playlist_id: Mapped[str] = mapped_column(ForeignKey("playlists.id"), index=True)
-    media_id: Mapped[str] = mapped_column(ForeignKey("media.id"), index=True)
+    # Playlist rows are links to media, not independent records.  New
+    # databases enforce the intended cleanup at the FK level; the media
+    # deletion endpoint also deletes links explicitly so existing databases
+    # (whose constraints are not rewritten by create_all) behave identically.
+    media_id: Mapped[str] = mapped_column(ForeignKey("media.id", ondelete="CASCADE"), index=True)
     position: Mapped[int] = mapped_column(default=0)
 
     playlist: Mapped["Playlist"] = relationship(back_populates="items")

@@ -17,7 +17,7 @@ const FEATURES: Feature[] = [
   { icon: 'cloud-download-outline', label: 'Save audio & video from any link' },
   { icon: 'mic-outline', label: 'Name any song playing around you' },
   { icon: 'paper-plane-outline', label: 'Import straight from Telegram' },
-  { icon: 'planet-outline', label: 'A private hollow that feels alive' },
+  { icon: 'shield-checkmark-outline', label: 'A private collection that stays yours' },
 ];
 
 type Props = PropsWithChildren<{
@@ -118,7 +118,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#09060F' },
+  root: { flex: 1, backgroundColor: colors.bg },
 
   // ----- Mobile -----
   mobileScroll: {

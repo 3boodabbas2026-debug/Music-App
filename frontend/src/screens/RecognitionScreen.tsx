@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -18,7 +18,7 @@ import { useResponsive } from '../hooks/useResponsive';
 import { RippleField } from '../components/ui/RippleField';
 import { Button } from '../components/ui/Button';
 import { GlassPanel } from '../components/ui/GlassPanel';
-import { GradientText } from '../components/ui/GradientText';
+import { Artwork } from '../components/ui/Artwork';
 import { PressableScale } from '../components/ui/PressableScale';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
@@ -34,7 +34,7 @@ import { colors, gradients, layout, radii, spacing, typography } from '../theme/
 
 const LISTEN_SECONDS = 8;
 
-const BUTTON_SIZE = 232;
+const BUTTON_SIZE = 208;
 const RING_SIZE = BUTTON_SIZE + 26;
 const RING_STROKE = 3.5;
 const PULSE_SIZE = BUTTON_SIZE + 26;
@@ -154,22 +154,27 @@ export function RecognitionScreen() {
     setError(null);
     setMatch(null);
     setDownloadJob(null);
-    const permission = await requestRecordingPermissionsAsync();
-    if (!permission.granted) {
-      setError('Microphone access is required to identify songs.');
-      return;
+    try {
+      const permission = await requestRecordingPermissionsAsync();
+      if (!permission.granted) {
+        setError('Microphone access is required to identify songs.');
+        return;
+      }
+
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setPhase('listening');
+      setCountdown(LISTEN_SECONDS);
+
+      tickTimer.current = setInterval(() => {
+        setCountdown((c) => Math.max(0, c - 1));
+      }, 1000);
+
+      stopTimer.current = setTimeout(stopAndRecognize, LISTEN_SECONDS * 1000);
+    } catch (err) {
+      setError(apiErrorMessage(err, "Couldn't start listening. Check microphone access and try again."));
+      setPhase('idle');
     }
-
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    setPhase('listening');
-    setCountdown(LISTEN_SECONDS);
-
-    tickTimer.current = setInterval(() => {
-      setCountdown((c) => Math.max(0, c - 1));
-    }, 1000);
-
-    stopTimer.current = setTimeout(stopAndRecognize, LISTEN_SECONDS * 1000);
   }
 
   async function stopAndRecognize() {
@@ -205,7 +210,7 @@ export function RecognitionScreen() {
 
   async function manualSearch() {
     const q = manualQuery.trim();
-    if (!q) return;
+    if (!q || downloadJob?.status === 'pending' || downloadJob?.status === 'in_progress') return;
     try {
       const job = await downloadsApi.createDownload(`ytsearch1:${q} official audio`, 'audio');
       setDownloadJob(job);
@@ -237,6 +242,7 @@ export function RecognitionScreen() {
   const orbState = phase === 'listening' ? 'listening' : phase === 'analyzing' ? 'listening' : 'idle';
   const amplitude = phase === 'listening' ? meteringToAmplitude(recorderState.metering) : phase === 'analyzing' ? 0.4 : 0;
   const micActive = phase === 'listening' || phase === 'analyzing';
+  const downloadBusy = downloadJob?.status === 'pending' || downloadJob?.status === 'in_progress';
 
   const ringRadius = (RING_SIZE - RING_STROKE) / 2;
   const ringCircumference = 2 * Math.PI * ringRadius;
@@ -278,8 +284,8 @@ export function RecognitionScreen() {
         ]}
       >
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>SONIC SEARCH</Text>
-          {phase === 'idle' && <GradientText style={styles.megaTitle}>Name that tune.</GradientText>}
+          <Text style={styles.eyebrow}>IDENTIFY MUSIC</Text>
+          {phase === 'idle' && <Text style={styles.megaTitle}>What’s playing?</Text>}
           {phase === 'listening' && <Text style={styles.megaSolid}>Listening…</Text>}
           {phase === 'analyzing' && <Text style={styles.megaSolid}>Analyzing…</Text>}
           {phase === 'result' && (
@@ -365,15 +371,15 @@ export function RecognitionScreen() {
             <>
               <Text style={styles.subtitle}>
                 {isDesktop
-                  ? 'Let the song reach your microphone, then click the orb.'
-                  : 'Hold your phone near the sound, then tap the orb.'}
+                  ? 'Play the song nearby, then click to listen.'
+                  : 'Hold your phone near the music, then tap to listen.'}
               </Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
               {scanHistory.length > 0 && (
                 <View style={styles.historyBlock}>
                   <View style={styles.historyHeader}>
                     <Text style={styles.historyTitle}>RECENT SCANS</Text>
-                    <Pressable onPress={clearScans} hitSlop={8}>
+                    <Pressable onPress={clearScans} accessibilityRole="button" accessibilityLabel="Clear recent identifications" hitSlop={8}>
                       <Text style={styles.historyClear}>Clear</Text>
                     </Pressable>
                   </View>
@@ -418,13 +424,17 @@ export function RecognitionScreen() {
                 <>
                   <GlassPanel style={styles.resultPanel}>
                     <View style={styles.resultContent}>
-                      {match.match_thumbnail_url ? (
-                        <Image source={{ uri: match.match_thumbnail_url }} style={styles.resultCover} />
-                      ) : (
-                        <LinearGradient colors={colors.gradientPrimary} style={styles.resultCover}>
-                          <Ionicons name="musical-notes" size={26} color="#100B18" />
-                        </LinearGradient>
-                      )}
+                      <Artwork
+                        media={{
+                          id: match.id,
+                          title: match.match_title,
+                          artist: match.match_artist,
+                          thumbnail_url: match.match_thumbnail_url,
+                        }}
+                        size={72}
+                        borderRadius={radii.md}
+                        priority
+                      />
                       <View style={styles.resultText}>
                         <Text numberOfLines={2} style={styles.resultTitle}>{match.match_title}</Text>
                         <Text numberOfLines={1} style={styles.resultArtist}>{match.match_artist}</Text>
@@ -451,7 +461,7 @@ export function RecognitionScreen() {
                       </View>
                     )}
                   </GlassPanel>
-                  {!downloadJob && <Button label="Find & download" onPress={findAndDownload} style={styles.wide} />}
+                  {!downloadJob && <Button label="Add to library" onPress={findAndDownload} style={styles.wide} />}
                 </>
               ) : (
                 <>
@@ -466,14 +476,14 @@ export function RecognitionScreen() {
                       style={styles.manualInput}
                       onSubmitEditing={manualSearch}
                     />
-                    <PressableScale onPress={manualSearch} disabled={!manualQuery.trim()} scaleTo={0.9}>
+                    <PressableScale onPress={manualSearch} disabled={!manualQuery.trim() || downloadBusy} accessibilityLabel={downloadBusy ? 'Searching for song' : 'Search and add song'} accessibilityHint={!manualQuery.trim() ? 'Enter a song title or artist first' : undefined} scaleTo={0.9}>
                       <LinearGradient
                         colors={colors.gradientPrimary}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
                         style={styles.manualGo}
                       >
-                        <Ionicons name="search" size={18} color="#100B18" />
+                        {downloadBusy ? <ActivityIndicator size="small" color={colors.bg} /> : <Ionicons name="search" size={18} color={colors.bg} />}
                       </LinearGradient>
                     </PressableScale>
                   </View>
@@ -516,7 +526,7 @@ export function RecognitionScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#09060F',
+    backgroundColor: colors.bg,
   },
   triggerHolder: {
     position: 'absolute',
@@ -538,7 +548,7 @@ const styles = StyleSheet.create({
     minHeight: 84,
   },
   eyebrow: { ...typography.eyebrow, color: colors.cyan },
-  megaTitle: { ...typography.mega, textAlign: 'center' },
+  megaTitle: { ...typography.mega, color: colors.textPrimary, textAlign: 'center' },
   megaSolid: { ...typography.mega, color: colors.textPrimary, textAlign: 'center' },
   buttonZone: {
     flex: 1,
