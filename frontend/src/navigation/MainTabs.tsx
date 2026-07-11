@@ -57,6 +57,7 @@ function DockItem({
       accessibilityRole="tab"
       accessibilityLabel={presentation.label}
       accessibilityState={{ selected: focused }}
+      aria-selected={focused}
       style={({ pressed }) => [styles.dockItem, pressed && styles.dockItemPressed]}
     >
       <Animated.View

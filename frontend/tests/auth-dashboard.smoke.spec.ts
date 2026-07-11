@@ -39,8 +39,8 @@ async function mockApi(page: import('@playwright/test').Page, library: unknown[]
 async function login(page: import('@playwright/test').Page) {
   await page.goto('/');
   await expect(page.getByText('Welcome back', { exact: true })).toBeVisible();
-  await page.getByLabel('Email').fill(user.email);
-  await page.getByLabel('Password').fill('correct-horse-battery-staple');
+  await page.getByLabel('Email', { exact: true }).fill(user.email);
+  await page.getByLabel('Password', { exact: true }).fill('correct-horse-battery-staple');
   await page.getByRole('button', { name: 'Log in' }).click();
 }
 
