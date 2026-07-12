@@ -17,6 +17,7 @@ import { DashboardCustomizer } from '../components/dashboard/DashboardCustomizer
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
 import { Artwork } from '../components/ui/Artwork';
 import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { IconButton } from '../components/ui/IconButton';
 import { ProgressBar } from '../components/ui/ProgressBar';
@@ -308,6 +309,7 @@ export function HomeScreen() {
     libraryHydrated && !libraryLoading && recentItems.length === 0 && activeJobs.length === 0 && !currentMedia;
   const offline = !networkOnline || backendOnline === false;
   const offlineBytes = offlineEntries.reduce((sum, entry) => sum + entry.sizeBytes, 0);
+  const offlineShelfEmpty = offlineSupported() && offlineEntries.length === 0;
 
   const widgetRenderers: Record<WidgetId, () => ReactElement | null> = {
     import: () => (
@@ -490,29 +492,40 @@ export function HomeScreen() {
     offline: () => (
       <View style={{ marginTop: sectionGap }}>
         <SectionHeader title="Offline shelf" style={styles.sectionHeader} />
-        <GlassPanel style={styles.offlinePanel}>
-          <View style={styles.offlineRow}>
-            <View style={[styles.offlineDot, { backgroundColor: offline ? colors.warning : colors.success }]} />
-            <View style={styles.offlineCopy}>
-              <Text style={styles.offlineTitle}>
-                {offline ? 'Offline — playing from this device' : 'Connected to your hollow'}
-              </Text>
-              <Text style={styles.offlineDetail}>
-                {offlineSupported()
-                  ? offlineEntries.length > 0
-                    ? `${offlineEntries.length} ${offlineEntries.length === 1 ? 'track' : 'tracks'} saved · ${formatBytes(offlineBytes)}`
-                    : 'Nothing saved yet — use "Save offline" on any track'
-                  : 'Offline saving works in the web app and installed PWA'}
-              </Text>
-            </View>
-            <IconButton
-              icon="settings-outline"
-              accessibilityLabel="Open offline settings"
-              size={38}
-              iconSize={17}
-              onPress={() => navigation.navigate('Settings')}
+        <GlassPanel style={[styles.offlinePanel, offlineShelfEmpty && styles.offlinePanelEmpty]}>
+          {offlineShelfEmpty ? (
+            <EmptyState
+              compact
+              icon="cloud-download-outline"
+              title="Nothing saved yet"
+              subtitle={'Use "Save offline" on any track to keep it available on this device.'}
+              actionLabel="Offline settings"
+              onAction={() => navigation.navigate('Settings')}
             />
-          </View>
+          ) : (
+            <View style={styles.offlineRow}>
+              <View style={[styles.offlineDot, { backgroundColor: offline ? colors.warning : colors.success }]} />
+              <View style={styles.offlineCopy}>
+                <Text style={styles.offlineTitle}>
+                  {offline ? 'Offline — playing from this device' : 'Connected to your hollow'}
+                </Text>
+                <Text style={styles.offlineDetail}>
+                  {offlineSupported()
+                    ? offlineEntries.length > 0
+                      ? `${offlineEntries.length} ${offlineEntries.length === 1 ? 'track' : 'tracks'} saved · ${formatBytes(offlineBytes)}`
+                      : 'Nothing saved yet — use "Save offline" on any track'
+                    : 'Offline saving works in the web app and installed PWA'}
+                </Text>
+              </View>
+              <IconButton
+                icon="settings-outline"
+                accessibilityLabel="Open offline settings"
+                size={38}
+                iconSize={17}
+                onPress={() => navigation.navigate('Settings')}
+              />
+            </View>
+          )}
         </GlassPanel>
       </View>
     ),
@@ -749,6 +762,7 @@ const styles = StyleSheet.create({
   recentTitle: { ...typography.subtitle, fontSize: 14, lineHeight: 19, color: colors.textPrimary },
   recentArtist: { ...typography.caption, fontSize: 12, color: colors.textMuted },
   offlinePanel: { padding: spacing.md },
+  offlinePanelEmpty: { padding: 0 },
   offlineRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   offlineDot: { width: 9, height: 9, borderRadius: radii.pill },
   offlineCopy: { flex: 1 },

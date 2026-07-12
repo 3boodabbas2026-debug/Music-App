@@ -74,11 +74,13 @@ export function ReplayScreen() {
           </View>
 
           {topTracks.length === 0 ? (
-            <EmptyState
-              icon="sparkles-outline"
-              title="Nothing to replay yet"
-              subtitle="Listen through a few tracks and your recap will start filling in here."
-            />
+            <View style={styles.emptyBody}>
+              <EmptyState
+                icon="sparkles-outline"
+                title="Nothing to replay yet"
+                subtitle="Listen through a few tracks and your recap will start filling in here."
+              />
+            </View>
           ) : (
             <>
               <SectionHeader
@@ -153,7 +155,7 @@ export function ReplayScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  scroll: { paddingBottom: spacing.xxl },
+  scroll: { flexGrow: 1, paddingBottom: spacing.xxl },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.xl },
   heroHeader: { flex: 1 },
   hero: { ...typography.display, fontSize: 30, lineHeight: 37 },
@@ -161,6 +163,7 @@ const styles = StyleSheet.create({
   statTile: { flex: 1, borderRadius: radii.lg, padding: spacing.md, alignItems: 'center', gap: 2 },
   statValue: { ...typography.title, fontSize: 21, color: colors.textPrimary, fontVariant: ['tabular-nums'] },
   statLabel: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
+  emptyBody: { flex: 1, justifyContent: 'center' },
   sectionHeader: { marginBottom: spacing.sm },
   artistSection: { marginTop: spacing.xl },
   sectionTitle: { ...typography.title, fontSize: 18, lineHeight: 24, color: colors.textPrimary },

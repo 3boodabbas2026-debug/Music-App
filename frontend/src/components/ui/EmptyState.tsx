@@ -37,6 +37,9 @@ export function EmptyState({
 
 const styles = StyleSheet.create({
   wrap: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
     alignItems: 'center',
     gap: spacing.md,
     paddingVertical: spacing.xl,
@@ -54,8 +57,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   compactIcon: { width: 52, height: 52, borderRadius: radii.md },
-  copy: { alignItems: 'center', gap: spacing.xs },
-  title: { ...typography.subtitle, color: colors.textPrimary, textAlign: 'center' },
+  copy: { width: '100%', alignItems: 'center', gap: spacing.xs },
+  title: { ...typography.subtitle, color: colors.textPrimary, textAlign: 'center', maxWidth: 320 },
   subtitle: {
     ...typography.body,
     fontSize: 13,

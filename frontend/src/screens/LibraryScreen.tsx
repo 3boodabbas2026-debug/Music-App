@@ -616,25 +616,19 @@ export function LibraryScreen() {
           maxToRenderPerBatch={10}
           removeClippedSubviews
           columnWrapperStyle={view === 'grid' ? styles.gridRow : undefined}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, visible.length === 0 && styles.emptyListContent]}
           ListEmptyComponent={
-            <View style={styles.emptyWrap}>
-              <EmptyState
-                title={hasActiveFilters ? 'Nothing matches' : 'Your library is ready'}
-                subtitle={
-                  hasActiveFilters
-                    ? 'Try a broader search or clear the active filters.'
-                    : 'Save a link or identify a song to start your collection.'
-                }
-              />
-              <Pressable
-                onPress={hasActiveFilters ? resetFilters : () => navigation.navigate('Main', { screen: 'Home' })}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.emptyAction, pressed && { opacity: 0.75 }]}
-              >
-                <Text style={styles.emptyActionLabel}>{hasActiveFilters ? 'Clear filters' : 'Add your first track'}</Text>
-              </Pressable>
-            </View>
+            <EmptyState
+              icon={hasActiveFilters ? 'search-outline' : 'albums-outline'}
+              title={hasActiveFilters ? 'Nothing matches' : 'Your library is ready'}
+              subtitle={
+                hasActiveFilters
+                  ? 'Try a broader search or clear the active filters.'
+                  : 'Save a link or identify a song to start your collection.'
+              }
+              actionLabel={hasActiveFilters ? 'Clear filters' : 'Add your first track'}
+              onAction={hasActiveFilters ? resetFilters : () => navigation.navigate('Main', { screen: 'Home' })}
+            />
           }
           renderItem={({ item }) =>
             view === 'grid' ? (
@@ -900,16 +894,7 @@ const styles = StyleSheet.create({
   fixNamesChip: { backgroundColor: 'rgba(99,214,181,0.14)', borderWidth: 1, borderColor: 'rgba(99,214,181,0.3)' },
   gridRow: { gap: spacing.md },
   listContent: { gap: spacing.md, paddingBottom: layout.tabBarClearance },
-  emptyWrap: { alignItems: 'center', paddingBottom: spacing.xl },
-  emptyAction: {
-    minHeight: 46,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.pill,
-    backgroundColor: colors.cyan,
-    marginTop: -spacing.md,
-  },
-  emptyActionLabel: { ...typography.caption, color: colors.bg, fontFamily: 'Sora_600SemiBold' },
+  emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   bulkBar: {
     flexDirection: 'row',
     alignItems: 'center',

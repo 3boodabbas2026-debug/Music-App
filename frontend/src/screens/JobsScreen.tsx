@@ -203,12 +203,14 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
     navigation.navigate('Main', { screen: 'Home' });
   }
 
+  const activityEmpty = jobs !== null && !loadError && jobs.length === 0;
+
   return (
     <View style={styles.root}>
       <ScreenContainer maxWidth={760}>
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.scroll, embedded && styles.scrollEmbedded]}
+          contentContainerStyle={[styles.scroll, embedded && styles.scrollEmbedded, activityEmpty && styles.scrollEmpty]}
         >
           <View style={styles.headerRow}>
             {!embedded ? (
@@ -268,8 +270,9 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
                 title="Nothing in motion"
                 subtitle="Imports you start on Today will appear here with live progress."
                 icon="pulse-outline"
+                actionLabel="Import your first track"
+                onAction={goToday}
               />
-              <Button label="Import your first track" variant="ghost" onPress={goToday} />
             </View>
           ) : (
             <>
@@ -327,6 +330,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#050A0B' },
   scroll: { paddingBottom: spacing.xxl },
   scrollEmbedded: { paddingBottom: layout.tabBarClearance },
+  scrollEmpty: { flexGrow: 1 },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.lg },
   headerCopy: { flex: 1 },
   eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.xs },
@@ -372,7 +376,7 @@ const styles = StyleSheet.create({
   errorTitle: { ...typography.title, fontSize: 19, color: colors.textPrimary, textAlign: 'center' },
   errorBody: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
   retryLoadButton: { marginTop: spacing.sm, minWidth: 150 },
-  emptyWrap: { alignItems: 'center', paddingBottom: spacing.xl },
+  emptyWrap: { flex: 1, justifyContent: 'center' },
   section: { marginTop: spacing.lg },
   sectionHeading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textMuted, marginBottom: spacing.sm },

@@ -54,7 +54,7 @@ export function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; on
       data={playlists}
       keyExtractor={(item) => item.id}
       showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.listContent}
+      contentContainerStyle={[styles.listContent, playlists.length === 0 && styles.emptyListContent]}
       ListHeaderComponent={
         <View style={styles.createRow}>
           <TextInput
@@ -83,7 +83,13 @@ export function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; on
         </View>
       }
       ListEmptyComponent={
-        <EmptyState title="No playlists yet" subtitle="Name one above, then long-press any track to add it." />
+        <View style={styles.emptyListBody}>
+          <EmptyState
+            icon="list-outline"
+            title="No playlists yet"
+            subtitle="Name one above, then long-press any track to add it."
+          />
+        </View>
       }
       renderItem={({ item }) => {
         const coverMedia = item.items.find((media) => media.thumbnail_url);
@@ -460,6 +466,8 @@ export function EditMediaModal({
 
 const styles = StyleSheet.create({
   listContent: { gap: spacing.md, paddingBottom: layout.tabBarClearance },
+  emptyListContent: { flexGrow: 1 },
+  emptyListBody: { flex: 1, justifyContent: 'center' },
   cardTitle: { ...typography.subtitle, fontSize: 15, lineHeight: 19, color: colors.textPrimary },
   cardArtist: { ...typography.caption, fontSize: 12, color: colors.textMuted },
   listRow: {
