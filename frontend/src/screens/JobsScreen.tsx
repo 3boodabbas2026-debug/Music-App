@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
 import { Button } from '../components/ui/Button';
+import { DataRow, type DataRowTone } from '../components/ui/DataRow';
 import { EmptyState } from '../components/ui/EmptyState';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { ProgressRing } from '../components/ui/ProgressRing';
@@ -21,12 +22,12 @@ import { colors, layout, radii, spacing, typography } from '../theme/tokens';
 import { apiErrorMessage, friendlyJobError, friendlyJobStage } from '../utils/apiError';
 import { displayTitle } from '../utils/mediaDisplay';
 
-const STATUS_META: Record<Job['status'], { label: string; icon: keyof typeof Ionicons.glyphMap; color: string }> = {
-  pending: { label: 'Queued', icon: 'time-outline', color: colors.textMuted },
-  in_progress: { label: 'In progress', icon: 'sync-outline', color: colors.cyan },
-  complete: { label: 'Complete', icon: 'checkmark', color: colors.success },
-  failed: { label: 'Needs attention', icon: 'alert', color: colors.danger },
-  cancelled: { label: 'Cancelled', icon: 'close', color: colors.textMuted },
+const STATUS_META: Record<Job['status'], { label: string; icon: keyof typeof Ionicons.glyphMap; tone: DataRowTone }> = {
+  pending: { label: 'Queued', icon: 'time-outline', tone: 'neutral' },
+  in_progress: { label: 'In progress', icon: 'sync-outline', tone: 'active' },
+  complete: { label: 'Complete', icon: 'checkmark', tone: 'success' },
+  failed: { label: 'Needs attention', icon: 'alert', tone: 'attention' },
+  cancelled: { label: 'Cancelled', icon: 'close', tone: 'neutral' },
 };
 
 function sourceName(url: string | null): string {
@@ -72,54 +73,52 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel: () => void; on
   const progress = Math.max(0, Math.min(100, job.progress_pct));
   const detail = job.status === 'failed'
     ? friendlyJobError(job.error_message)
-    : `${friendlyJobStage(job.stage_label, meta.label)} · ${timeAgo(job.updated_at)}`;
+    : friendlyJobStage(job.stage_label, meta.label);
+
+  const trailingAction = running ? (
+    <Pressable
+      onPress={onCancel}
+      accessibilityRole="button"
+      accessibilityLabel={`Cancel ${title}`}
+      style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+    >
+      <Ionicons name="close" size={19} color={colors.textSecondary} />
+    </Pressable>
+  ) : job.status === 'failed' && job.source_url ? (
+    <Pressable
+      onPress={onRetry}
+      accessibilityRole="button"
+      accessibilityLabel={`Retry ${title}`}
+      style={({ pressed }) => [styles.iconButton, styles.retryButton, pressed && styles.pressed]}
+    >
+      <Ionicons name="refresh" size={19} color={colors.cyan} />
+    </Pressable>
+  ) : null;
 
   return (
-    <GlassPanel style={styles.jobCard} edgeColor={running ? 'rgba(99,214,181,0.2)' : undefined}>
-      <View style={styles.jobContent}>
-        {running ? (
+    <DataRow
+      title={title}
+      status={{ label: meta.label, tone: meta.tone }}
+      icon={meta.icon}
+      leading={
+        running ? (
           <ProgressRing progress={progress / 100} size={48} strokeWidth={3.5}>
             <Text style={styles.progressText}>{Math.round(progress)}%</Text>
           </ProgressRing>
-        ) : (
-          <View style={[styles.statusIcon, { backgroundColor: `${meta.color}1F` }]}>
-            <Ionicons name={meta.icon} size={19} color={meta.color} />
-          </View>
-        )}
-
-        <View style={styles.jobCopy}>
-          <View style={styles.jobSourceRow}>
-            <Ionicons name={sourceIcon(job.source_url)} size={12} color={colors.textMuted} />
-            <Text style={styles.jobSource}>{sourceName(job.source_url).replace(' import', '').toUpperCase()}</Text>
-          </View>
-          <Text numberOfLines={1} style={styles.jobTitle}>{title}</Text>
-          <Text numberOfLines={job.status === 'failed' ? 2 : 1} style={[styles.jobDetail, job.status === 'failed' && styles.jobDetailError]}>
-            {detail}
-          </Text>
+        ) : undefined
+      }
+      subtitle={
+        <View style={styles.jobSourceRow}>
+          <Ionicons name={sourceIcon(job.source_url)} size={12} color={colors.textMuted} />
+          <Text style={styles.jobSource}>{sourceName(job.source_url).replace(' import', '').toUpperCase()}</Text>
         </View>
-
-        {running ? (
-          <Pressable
-            onPress={onCancel}
-            accessibilityRole="button"
-            accessibilityLabel={`Cancel ${title}`}
-            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="close" size={19} color={colors.textSecondary} />
-          </Pressable>
-        ) : null}
-        {job.status === 'failed' && job.source_url ? (
-          <Pressable
-            onPress={onRetry}
-            accessibilityRole="button"
-            accessibilityLabel={`Retry ${title}`}
-            style={({ pressed }) => [styles.iconButton, styles.retryButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="refresh" size={19} color={colors.cyan} />
-          </Pressable>
-        ) : null}
-      </View>
-    </GlassPanel>
+      }
+      meta={detail}
+      metaTone={job.status === 'failed' ? 'attention' : 'muted'}
+      metaNumberOfLines={job.status === 'failed' ? 2 : 1}
+      timestamp={timeAgo(job.updated_at)}
+      trailingAction={trailingAction}
+    />
   );
 }
 
@@ -383,16 +382,9 @@ const styles = StyleSheet.create({
   clearButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.sm },
   clearButtonText: { ...typography.caption, fontFamily: 'Sora_500Medium', color: colors.cyan },
   list: { gap: spacing.sm },
-  jobCard: { borderRadius: radii.lg },
-  jobContent: { minHeight: 92, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
-  statusIcon: { width: 48, height: 48, borderRadius: radii.md, alignItems: 'center', justifyContent: 'center' },
   progressText: { ...typography.caption, fontSize: 9, fontFamily: 'Sora_600SemiBold', color: colors.cyan },
-  jobCopy: { flex: 1, minWidth: 0 },
-  jobSourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 2 },
+  jobSourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   jobSource: { ...typography.eyebrow, fontSize: 8, lineHeight: 11, letterSpacing: 1.4, color: colors.textMuted },
-  jobTitle: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary },
-  jobDetail: { ...typography.caption, fontSize: 12, color: colors.textMuted, marginTop: 2 },
-  jobDetailError: { color: colors.danger },
   iconButton: {
     width: 44,
     height: 44,

@@ -4,8 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 
 import * as adminApi from '../../../services/api/admin';
 import type { AdminUser } from '../../../services/api/admin';
+import { DataRow } from '../../../components/ui/DataRow';
 import { EmptyState } from '../../../components/ui/EmptyState';
-import { GlassPanel } from '../../../components/ui/GlassPanel';
 import { toast } from '../../../store/toastStore';
 import { apiErrorMessage } from '../../../utils/apiError';
 import { colors } from '../../../theme/tokens';
@@ -53,53 +53,41 @@ export function UsersTab({ users, onChanged }: { users: AdminUser[]; onChanged: 
   return (
     <View style={adminStyles.list}>
       {users.map((user) => (
-        <GlassPanel key={user.id} style={adminStyles.row}>
-          <View style={[adminStyles.rowContent, { alignItems: 'flex-start' }]}>
-            <View style={{ flex: 1, gap: 3 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text numberOfLines={1} style={adminStyles.title}>
-                  {user.display_name}
+        <DataRow
+          key={user.id}
+          title={user.display_name}
+          status={{ label: user.is_admin ? 'Admin' : 'User', tone: user.is_admin ? 'active' : 'neutral' }}
+          subtitle={
+            editingEmailFor === user.id ? (
+              <TextInput
+                accessibilityLabel={`Email for ${user.display_name}`}
+                value={emailDraft}
+                onChangeText={setEmailDraft}
+                onBlur={() => saveEmail(user)}
+                onSubmitEditing={() => saveEmail(user)}
+                autoCapitalize="none"
+                autoFocus
+                style={adminStyles.emailInput}
+              />
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Edit email for ${user.display_name}`}
+                onPress={() => {
+                  setEditingEmailFor(user.id);
+                  setEmailDraft(user.email);
+                }}
+                style={adminStyles.emailEditButton}
+              >
+                <Text numberOfLines={1} style={adminStyles.subtitle}>
+                  {user.email} <Ionicons name="pencil-outline" size={11} color={colors.textMuted} />
                 </Text>
-                {user.is_admin && (
-                  <View style={adminStyles.adminBadge}>
-                    <Text style={adminStyles.adminBadgeLabel}>ADMIN</Text>
-                  </View>
-                )}
-              </View>
-              {editingEmailFor === user.id ? (
-                <TextInput
-                  accessibilityLabel={`Email for ${user.display_name}`}
-                  value={emailDraft}
-                  onChangeText={setEmailDraft}
-                  onBlur={() => saveEmail(user)}
-                  onSubmitEditing={() => saveEmail(user)}
-                  autoCapitalize="none"
-                  autoFocus
-                  style={adminStyles.emailInput}
-                />
-              ) : (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit email for ${user.display_name}`}
-                  onPress={() => {
-                    setEditingEmailFor(user.id);
-                    setEmailDraft(user.email);
-                  }}
-                  style={adminStyles.emailEditButton}
-                >
-                  <Text numberOfLines={1} style={adminStyles.subtitle}>
-                    {user.email} <Ionicons name="pencil-outline" size={11} color={colors.textMuted} />
-                  </Text>
-                </Pressable>
-              )}
-              <Text style={adminStyles.mutedLine}>
-                {user.media_count} media · {user.job_count} jobs · {formatBytes(user.storage_bytes)}
-                {user.telegram_linked ? ' · Telegram linked' : ''}
-              </Text>
-              <Text style={adminStyles.mutedLine}>
-                {user.last_activity_at ? timeAgo(user.last_activity_at) : 'no activity'}
-              </Text>
-            </View>
+              </Pressable>
+            )
+          }
+          meta={`${user.media_count} media · ${user.job_count} jobs · ${formatBytes(user.storage_bytes)}${user.telegram_linked ? ' · Telegram linked' : ''}`}
+          timestamp={user.last_activity_at ? timeAgo(user.last_activity_at) : 'no activity'}
+          trailingAction={
             <Pressable
               onPress={() => toggleRole(user)}
               disabled={busyId === user.id}
@@ -116,8 +104,8 @@ export function UsersTab({ users, onChanged }: { users: AdminUser[]; onChanged: 
                 </Text>
               )}
             </Pressable>
-          </View>
-        </GlassPanel>
+          }
+        />
       ))}
     </View>
   );
