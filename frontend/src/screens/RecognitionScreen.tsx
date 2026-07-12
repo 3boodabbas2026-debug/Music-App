@@ -39,6 +39,7 @@ const RING_SIZE = BUTTON_SIZE + 26;
 const RING_STROKE = 3.5;
 const PULSE_SIZE = BUTTON_SIZE + 26;
 const WAVE_BARS = 26;
+const MINI_PLAYER_CLEARANCE = 84;
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -255,6 +256,9 @@ export function RecognitionScreen() {
   // Live waveform: re-renders arrive every 100ms from the recorder state poll,
   // so plain Views dance with the real mic level — no extra timers needed.
   const wavePhase = Date.now() / 150;
+  const bottomChromeClearance = isDesktop
+    ? spacing.md + MINI_PLAYER_CLEARANCE + spacing.lg
+    : layout.dockClearance + MINI_PLAYER_CLEARANCE + spacing.md;
 
   return (
     <View style={styles.root}>
@@ -279,7 +283,7 @@ export function RecognitionScreen() {
           isDesktop && styles.contentDesktop,
           {
             paddingTop: insets.top + spacing.lg,
-            paddingBottom: insets.bottom + (isDesktop ? spacing.xl : layout.dockClearance + spacing.md),
+            paddingBottom: insets.bottom + bottomChromeClearance,
           },
         ]}
       >
