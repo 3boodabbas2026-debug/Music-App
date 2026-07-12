@@ -1,7 +1,7 @@
 import { DarkTheme, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import { AdminScreen } from '../screens/AdminScreen';
+import { AdminScreen } from '../screens/admin/AdminScreen';
 import { JobsScreen } from '../screens/JobsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { PlayerScreen } from '../screens/PlayerScreen';
