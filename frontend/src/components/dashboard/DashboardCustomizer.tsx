@@ -55,16 +55,18 @@ export function DashboardCustomizer({ visible, onClose }: Props) {
         <IconButton
           icon="chevron-up"
           accessibilityLabel={`Move ${meta.label} up`}
-          size={36}
-          iconSize={17}
+          variant="surface"
+          size={48}
+          iconSize={20}
           disabled={index === 0}
           onPress={() => moveWidget(id, -1)}
         />
         <IconButton
           icon="chevron-down"
           accessibilityLabel={`Move ${meta.label} down`}
-          size={36}
-          iconSize={17}
+          variant="surface"
+          size={48}
+          iconSize={20}
           disabled={index === order.length - 1}
           onPress={() => moveWidget(id, 1)}
         />
@@ -98,31 +100,37 @@ export function DashboardCustomizer({ visible, onClose }: Props) {
           <IconButton icon="close" accessibilityLabel="Done customizing" onPress={onClose} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <View style={[styles.preferences, isWide && styles.preferencesWide]}>
+          <View style={styles.preferenceGroup}>
+            <Text style={styles.sectionLabel}>LAYOUT</Text>
+            <SegmentedControl
+              options={[
+                { value: 'spacious', label: 'Spacious', icon: 'resize-outline' },
+                { value: 'compact', label: 'Compact', icon: 'contract-outline' },
+              ]}
+              value={density}
+              onChange={setDensity}
+              accessibilityLabel="Dashboard density"
+            />
+          </View>
+
+          <View style={styles.preferenceGroup}>
+            <Text style={styles.sectionLabel}>ACCENT</Text>
+            <SegmentedControl
+              options={[
+                { value: 'forest', label: 'Forest Night', icon: 'leaf-outline' },
+                { value: 'cosmic', label: 'Cosmic Night', icon: 'planet-outline' },
+              ]}
+              value={accent}
+              onChange={setAccent}
+              accessibilityLabel="Dashboard accent"
+            />
+          </View>
+        </View>
+
+        <ScrollView style={styles.widgetScroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
           <Text style={styles.sectionLabel}>WIDGETS</Text>
           <View style={styles.rows}>{order.map(renderRow)}</View>
-
-          <Text style={[styles.sectionLabel, styles.sectionGap]}>LAYOUT</Text>
-          <SegmentedControl
-            options={[
-              { value: 'spacious', label: 'Spacious', icon: 'resize-outline' },
-              { value: 'compact', label: 'Compact', icon: 'contract-outline' },
-            ]}
-            value={density}
-            onChange={setDensity}
-            accessibilityLabel="Dashboard density"
-          />
-
-          <Text style={[styles.sectionLabel, styles.sectionGap]}>ACCENT</Text>
-          <SegmentedControl
-            options={[
-              { value: 'forest', label: 'Forest Night', icon: 'leaf-outline' },
-              { value: 'cosmic', label: 'Cosmic Night', icon: 'planet-outline' },
-            ]}
-            value={accent}
-            onChange={setAccent}
-            accessibilityLabel="Dashboard accent"
-          />
 
           <Pressable
             onPress={reset}
@@ -158,21 +166,24 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   eyebrow: { ...typography.eyebrow, fontSize: 9, lineHeight: 12, letterSpacing: 2, color: colors.cyan },
   title: { ...typography.title, fontSize: 20, lineHeight: 26, color: colors.textPrimary },
+  preferences: { gap: spacing.sm, marginBottom: spacing.md },
+  preferencesWide: { flexDirection: 'row', gap: spacing.md },
+  preferenceGroup: { flex: 1 },
+  widgetScroll: { flexShrink: 1 },
   scroll: { paddingBottom: spacing.md },
   sectionLabel: { ...typography.eyebrow, fontSize: 9, lineHeight: 12, letterSpacing: 1.8, color: colors.textMuted, marginBottom: spacing.sm },
-  sectionGap: { marginTop: spacing.lg },
   rows: { gap: 2 },
   row: {
-    minHeight: 52,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingVertical: spacing.xs,
+    paddingVertical: 0,
     paddingHorizontal: spacing.xs,
     borderRadius: radii.md,
   },
   rowHidden: { opacity: 0.55 },
-  rowText: { flex: 1, marginRight: spacing.sm },
+  rowText: { flex: 1, marginRight: spacing.xs },
   rowLabel: { ...typography.subtitle, fontSize: 14, lineHeight: 19, color: colors.textPrimary },
   rowDescription: { ...typography.caption, fontSize: 11, color: colors.textMuted },
   resetRow: {
@@ -181,7 +192,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
     borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
