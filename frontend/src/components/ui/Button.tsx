@@ -46,21 +46,36 @@ export function Button({
         variant === 'ghost' && styles.ghost,
         isDanger && styles.danger,
         pressed && !isDisabled && styles.pressed,
-        isDisabled && styles.disabled,
+        isDisabled && isPrimary && styles.disabledPrimary,
+        isDisabled && variant === 'secondary' && styles.disabledSecondary,
+        isDisabled && variant === 'ghost' && styles.disabledGhost,
+        isDisabled && isDanger && styles.disabledDanger,
         style,
       ]}
     >
       <View style={styles.content}>
         {loading ? (
-          <ActivityIndicator size="small" color={isPrimary ? colors.textInverse : isDanger ? colors.danger : colors.cyan} />
+          <ActivityIndicator
+            size="small"
+            color={isPrimary ? colors.textInverse : isDanger ? colors.danger : colors.cyan}
+          />
         ) : icon ? (
           <Ionicons
             name={icon}
             size={18}
-            color={isPrimary ? colors.textInverse : isDanger ? colors.danger : colors.textPrimary}
+            color={isDisabled ? colors.textMuted : isPrimary ? colors.textInverse : isDanger ? colors.danger : colors.textPrimary}
           />
         ) : null}
-        <Text style={[styles.label, isPrimary && styles.primaryLabel, isDanger && styles.dangerLabel]}>{label}</Text>
+        <Text
+          style={[
+            styles.label,
+            isPrimary && !isDisabled && styles.primaryLabel,
+            isDanger && !isDisabled && styles.dangerLabel,
+            isDisabled && !loading && styles.disabledLabel,
+          ]}
+        >
+          {label}
+        </Text>
       </View>
     </Pressable>
   );
@@ -94,7 +109,21 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(239,120,136,0.24)',
   },
   pressed: { opacity: 0.86, transform: [{ scale: 0.985 }] },
-  disabled: { opacity: 0.45 },
+  disabledPrimary: {
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.surfaceBorder,
+  },
+  disabledSecondary: {
+    backgroundColor: colors.surface,
+    borderColor: colors.surfaceBorder,
+  },
+  disabledGhost: {
+    borderColor: colors.surfaceBorder,
+  },
+  disabledDanger: {
+    backgroundColor: 'rgba(239,120,136,0.04)',
+    borderColor: 'rgba(239,120,136,0.12)',
+  },
   content: {
     minHeight: 22,
     flexDirection: 'row',
@@ -105,4 +134,5 @@ const styles = StyleSheet.create({
   label: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary, textAlign: 'center' },
   primaryLabel: { color: colors.textInverse },
   dangerLabel: { color: colors.danger },
+  disabledLabel: { color: colors.textMuted },
 });
