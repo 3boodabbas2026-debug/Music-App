@@ -31,13 +31,19 @@ export const palette = {
   danger: '#F0838C',
 } as const;
 
+/** Paint-only colors for the shared ambient canvas behind screen content. */
+export const ambient = {
+  ridgeBack: '#0A2027',
+  ridgeFront: '#061119',
+} as const;
+
 export const gradients = {
   /** A restrained, single-family accent reserved for primary hero moments. */
   accent: [palette.primary, '#8FE3C8'] as const,
   /** The night-sky sweep: aurora teal drifting through violet — rare moments only. */
   aurora: ['#5BD3B0', '#7FB6D9', palette.secondary] as const,
   heroCard: [palette.surfaceBright, palette.surface] as const,
-  screenIdle: [palette.void, palette.background, '#0D1A14'] as const,
+  screenIdle: ['#050911', '#08131A', '#0B191F'] as const,
   screenListening: ['#0E2019', '#0A1512', palette.background] as const,
   coverFallback: ['#16281F', '#0D1512'] as const,
   coverScrim: ['rgba(5,10,11,0)', 'rgba(5,10,11,0.52)', 'rgba(5,10,11,0.94)'] as const,
@@ -126,5 +132,5 @@ export const motion = {
   },
 } as const;
 
-export const theme = { palette, gradients, layout, typeScale, shadows, motion } as const;
+export const theme = { palette, ambient, gradients, layout, typeScale, shadows, motion } as const;
 export default theme;
