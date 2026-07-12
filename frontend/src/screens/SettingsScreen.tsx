@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   fieldValue: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', flexShrink: 1 },
-  hint: { ...typography.caption, color: colors.textMuted, lineHeight: 18 },
+  hint: { ...typography.caption, color: colors.textSecondary, lineHeight: 18 },
   aboutRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   signOutButton: { marginTop: spacing.xl },
 });
