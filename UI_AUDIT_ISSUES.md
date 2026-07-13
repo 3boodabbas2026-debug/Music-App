@@ -555,6 +555,8 @@ since the same root causes keep resurfacing:
   is wanted (Issue 2.3), that's a token-architecture change — a parallel
   light palette selected via a theme context — not a per-component fix. Worth
   scoping as its own project rather than folding into the dashboard modal fix.
+
+  **Status: fixed in codex/forest-and-remaining-audit**
 - **Reorder-by-drag is a common enough pattern** that adopting a
   battle-tested library (e.g. `react-native-draggable-flatlist`, already
   compatible with the app's Expo/RN version) will likely produce a better
@@ -821,6 +823,12 @@ file facts; missing optional metadata is omitted instead of shown as blanks.
   before any implementation work. Do not attempt to build this from the
   fix list below.
 
+**Resolution note:** these deferrals were superseded by the user's later
+explicit request to complete every remaining item. Issue 3.4 now persists an
+encrypted Telegram session in the database. Issue 17 now has a real, gated
+ACRCloud melody-provider path; only live provider validation remains blocked
+until deployment credentials are supplied.
+
 ---
 
 ## Suggested working order — completion record
@@ -834,18 +842,19 @@ leverage/risk order:
    parts of Issue 21.
 4. **Open visual design asks:** complete as one connected Star Hollow
    signature-moments pass.
-5. **Intentionally still open:** Issue 2.3's true light-theme architecture,
-   Issue 3.3 multi-account support, Issue 5.5's unexplained yellow status dot,
-   and Issue 21's category-sorting definition all still require clarification
-   or product scoping. Issue 3.4 and Issue 17 remain explicitly deferred.
+5. **Formerly open/deferred items:** implementation complete. Issue 2.3 now
+   has a true theme architecture; Issue 3.3 has privacy-safe remembered-account
+   switching; Issue 5.5 was resolved by direct code verification and an
+   accessible offline label; Issue 21 has smart genre categories; Issue 3.4
+   has durable encrypted sessions; Issue 17 has a real provider integration.
 
 ---
 
 ## Status
 
-All confirmed, bounded fixes are complete across `codex/ui-audit-completion`
-and `codex/ui-audit-open-items`; each completed entry is marked inline above.
-No bounded implementation item was left accidentally open. The only remaining
-entries are the four clarification/product-scope items and the two explicitly
-deferred items listed in the completion record above. Deferred behavior was
-not changed.
+All audit issues now have a completed implementation or a verified resolution
+across `codex/ui-audit-completion`, `codex/ui-audit-open-items`, and
+`codex/forest-and-remaining-audit`. The only external validation still pending
+is a live hummed-melody request, because no ACRCloud project credentials are
+present in the repository or local environment; the adapter, capability gate,
+API routing, and mocked provider contract are complete and tested.
