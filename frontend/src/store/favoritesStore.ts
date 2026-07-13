@@ -11,6 +11,7 @@ type FavoritesState = {
   hydrate: () => Promise<void>;
   toggle: (mediaId: string) => void;
   isFavorite: (mediaId: string) => boolean;
+  resetSession: () => Promise<void>;
 };
 
 async function persist(ids: Record<string, true>) {
@@ -47,5 +48,14 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
 
   isFavorite(mediaId) {
     return !!get().ids[mediaId];
+  },
+
+  async resetSession() {
+    set({ ids: {}, hydrated: false });
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // In-memory account data is already gone; storage cleanup is best-effort.
+    }
   },
 }));

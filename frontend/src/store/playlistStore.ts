@@ -11,6 +11,7 @@ type PlaylistState = {
   addItem: (playlistId: string, mediaId: string) => Promise<Playlist>;
   removeItem: (playlistId: string, mediaId: string) => Promise<Playlist>;
   remove: (playlistId: string) => Promise<void>;
+  resetSession: () => void;
 };
 
 export const usePlaylistStore = create<PlaylistState>((set, get) => ({
@@ -48,5 +49,9 @@ export const usePlaylistStore = create<PlaylistState>((set, get) => ({
   async remove(playlistId) {
     await playlistsApi.deletePlaylist(playlistId);
     set({ playlists: get().playlists.filter((p) => p.id !== playlistId) });
+  },
+
+  resetSession() {
+    set({ playlists: [], isLoading: false });
   },
 }));

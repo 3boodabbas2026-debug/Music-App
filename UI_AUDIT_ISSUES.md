@@ -141,6 +141,8 @@ treat it as higher priority than the cosmetic issues above, and fix before
 this bug worse, not better, if the underlying stores still aren't isolated
 per identity.
 
+**Status: fixed in codex/ui-audit-correctness**
+
 ---
 
 ## Issue 5 — Library card polish (grid + list view)

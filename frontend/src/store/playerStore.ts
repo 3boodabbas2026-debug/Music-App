@@ -103,6 +103,7 @@ type PlayerState = {
   cycleSleepTimer: () => void;
   setCrossfadeEnabled: (enabled: boolean) => void;
   setAutoplayContinuation: (enabled: boolean) => void;
+  resetSession: () => Promise<void>;
 };
 
 let unsubscribePlayback: (() => void) | null = null;
@@ -622,6 +623,40 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     setAutoplayContinuation(enabled) {
       set({ autoplayContinuation: enabled });
       persistSettings();
+    },
+
+    async resetSession() {
+      get().stop();
+      sourceRecoveryAttempts = 0;
+      sourceRecoveryNotified = false;
+      sourceRecoveryInFlight = false;
+      lastPersist = 0;
+      set({
+        currentMedia: null,
+        playing: false,
+        currentTime: 0,
+        duration: 0,
+        isBuffering: false,
+        amplitude: 0,
+        restored: false,
+        crossfading: false,
+        continuationActive: false,
+        queue: [],
+        queueIndex: 0,
+        repeat: 'off',
+        shuffle: false,
+        rate: 1,
+        volume: 1,
+        muted: false,
+        crossfadeEnabled: true,
+        autoplayContinuation: true,
+        sleepAt: null,
+      });
+      try {
+        await AsyncStorage.multiRemove([SESSION_KEY, SETTINGS_KEY]);
+      } catch {
+        // Playback is already stopped and in-memory account data is gone.
+      }
     },
   };
 });

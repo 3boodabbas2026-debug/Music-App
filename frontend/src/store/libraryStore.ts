@@ -17,6 +17,7 @@ type LibraryState = {
   refresh: (query?: string) => Promise<void>;
   upsert: (media: Media) => void;
   remove: (mediaId: string) => Promise<void>;
+  resetSession: () => Promise<void>;
 };
 
 async function persist(items: Media[]) {
@@ -73,5 +74,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const items = get().items.filter((item) => item.id !== mediaId);
     set({ items });
     void persist(items);
+  },
+
+  async resetSession() {
+    set({ items: [], isLoading: false, hydrated: false, isStale: false });
+    try {
+      await AsyncStorage.removeItem(CACHE_KEY);
+    } catch {
+      // In-memory account data is already gone; storage cleanup is best-effort.
+    }
   },
 }));

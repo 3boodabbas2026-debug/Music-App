@@ -15,6 +15,7 @@ type PinState = {
   hydrate: () => Promise<void>;
   toggle: (mediaId: string) => void;
   isPinned: (mediaId: string) => boolean;
+  resetSession: () => Promise<void>;
 };
 
 async function persist(ids: string[]) {
@@ -48,5 +49,14 @@ export const usePinStore = create<PinState>((set, get) => ({
 
   isPinned(mediaId) {
     return get().ids.includes(mediaId);
+  },
+
+  async resetSession() {
+    set({ ids: [], hydrated: false });
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // In-memory account data is already gone; storage cleanup is best-effort.
+    }
   },
 }));

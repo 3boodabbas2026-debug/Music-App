@@ -51,6 +51,7 @@ type DashboardState = {
   setDensity: (density: DashboardDensity) => void;
   setAccent: (accent: DashboardAccent) => void;
   reset: () => void;
+  resetSession: () => Promise<void>;
 };
 
 type Persisted = Pick<DashboardState, 'order' | 'hidden' | 'density' | 'accent'>;
@@ -130,5 +131,14 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   reset() {
     set({ order: DEFAULT_ORDER, hidden: [], density: 'spacious', accent: 'forest' });
     void persist({ order: DEFAULT_ORDER, hidden: [], density: 'spacious', accent: 'forest' });
+  },
+
+  async resetSession() {
+    set({ hydrated: false, order: DEFAULT_ORDER, hidden: [], density: 'spacious', accent: 'forest' });
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // In-memory account data is already gone; storage cleanup is best-effort.
+    }
   },
 }));

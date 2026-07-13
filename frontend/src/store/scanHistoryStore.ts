@@ -18,6 +18,7 @@ type ScanHistoryState = {
   hydrate: () => Promise<void>;
   add: (entry: Omit<ScanEntry, 'id' | 'at'>) => void;
   clear: () => void;
+  resetSession: () => Promise<void>;
 };
 
 async function persist(entries: ScanEntry[]) {
@@ -52,5 +53,14 @@ export const useScanHistoryStore = create<ScanHistoryState>((set, get) => ({
   clear() {
     set({ entries: [] });
     void persist([]);
+  },
+
+  async resetSession() {
+    set({ entries: [] });
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // In-memory account data is already gone; storage cleanup is best-effort.
+    }
   },
 }));

@@ -21,6 +21,7 @@ type VideoPlayerState = {
   setMediaId: (mediaId: string) => void;
   /** Audio is about to play — pause the video if one is open so the two never sound at once. */
   requestPause: () => void;
+  resetSession: () => void;
 };
 
 export const useVideoPlayerStore = create<VideoPlayerState>((set) => ({
@@ -45,5 +46,8 @@ export const useVideoPlayerStore = create<VideoPlayerState>((set) => ({
   },
   requestPause() {
     set((s) => (s.mediaId && s.mode !== 'closed' ? { pauseRequestedAt: Date.now() } : s));
+  },
+  resetSession() {
+    set({ mediaId: null, mode: 'closed', pauseRequestedAt: null });
   },
 }));

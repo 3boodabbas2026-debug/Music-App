@@ -2,8 +2,8 @@ import { create } from 'zustand';
 
 import * as authApi from '../services/api/auth';
 import { setAuthenticationExpiredHandler } from '../services/api/client';
-import * as offlineMedia from '../services/storage/offlineMedia';
 import { tokenStorage } from '../services/storage/tokenStorage';
+import { resetSessionStores } from './sessionStoreReset';
 import { toast } from './toastStore';
 import type { StoragePreference, User } from '../services/api/types';
 
@@ -48,7 +48,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     } catch (error) {
       if (isAuthRejection(error)) {
         // The server actively rejected this token — it really is invalid/expired.
-        await tokenStorage.clear();
+        await Promise.all([tokenStorage.clear(), resetSessionStores()]);
         set({ isBootstrapping: false });
         return;
       }
@@ -62,6 +62,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   async login(email, password) {
     const result = await authApi.login(email, password);
+    await resetSessionStores();
     await tokenStorage.setTokens(result.access_token, result.refresh_token);
     await tokenStorage.setCachedUser(result.user);
     set({ user: result.user, isAuthenticated: true, isOfflineSession: false });
@@ -69,14 +70,14 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   async register(email, password, displayName, inviteCode) {
     const result = await authApi.register(email, password, displayName, inviteCode);
+    await resetSessionStores();
     await tokenStorage.setTokens(result.access_token, result.refresh_token);
     await tokenStorage.setCachedUser(result.user);
     set({ user: result.user, isAuthenticated: true, isOfflineSession: false });
   },
 
   async logout() {
-    await tokenStorage.clear();
-    await offlineMedia.clearAll();
+    await Promise.all([tokenStorage.clear(), resetSessionStores()]);
     set({ user: null, isAuthenticated: false, isOfflineSession: false });
   },
 
@@ -88,6 +89,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 setAuthenticationExpiredHandler(() => {
+  void resetSessionStores();
   useAuthStore.setState({ user: null, isAuthenticated: false, isOfflineSession: false, isBootstrapping: false });
   toast('Your session expired. Log in to keep listening.', 'info');
 });

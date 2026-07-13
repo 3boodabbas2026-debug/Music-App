@@ -148,8 +148,7 @@ export default function App() {
   const [fontsLoaded] = useFonts({ Sora_400Regular, Sora_500Medium, Sora_600SemiBold, Sora_700Bold });
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const isBootstrapping = useAuthStore((s) => s.isBootstrapping);
-  const hydrateFavorites = useFavoritesStore((s) => s.hydrate);
-  const hydrateScans = useScanHistoryStore((s) => s.hydrate);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [audioReady, setAudioReady] = useState(false);
   // Font initialization should never hold the whole app hostage. If a device
   // cannot load the bundled assets, open with the system fallback after a
@@ -164,23 +163,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Restore the last listening session (paused, at the saved position) once
-    // auth is settled — pressing play picks up exactly where the user left off.
-    bootstrap().then(() => {
-      if (useAuthStore.getState().isAuthenticated) {
-        usePlayerStore.getState().hydrate();
-      }
-    });
-    // Read the last-cached library list immediately so the app has something
-    // to show the instant it opens offline, before (or instead of) any network
-    // refresh resolves.
-    useLibraryStore.getState().hydrate();
-    usePinStore.getState().hydrate();
-    usePlayHistoryStore.getState().hydrate();
-    hydrateFavorites();
-    hydrateScans();
+    // Authentication chooses the account before any private cache hydrates.
+    void bootstrap();
     configureAudioSession().finally(() => setAudioReady(true));
-  }, [bootstrap, hydrateFavorites, hydrateScans]);
+  }, [bootstrap]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    // Hydrate account-owned caches only after auth has selected the current
+    // user. This reruns after an account switch and prevents a rejected
+    // session's in-flight hydration from restoring the previous user's data.
+    void Promise.all([
+      usePlayerStore.getState().hydrate(),
+      useLibraryStore.getState().hydrate(),
+      usePinStore.getState().hydrate(),
+      usePlayHistoryStore.getState().hydrate(),
+      useFavoritesStore.getState().hydrate(),
+      useScanHistoryStore.getState().hydrate(),
+    ]);
+  }, [isAuthenticated]);
 
   if ((!fontsLoaded && !fontTimedOut) || isBootstrapping || !audioReady) {
     return <BootScreen />;

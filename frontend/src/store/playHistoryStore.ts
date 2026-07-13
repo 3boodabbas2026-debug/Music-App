@@ -33,6 +33,7 @@ type PlayHistoryState = {
   topArtistsInWindow: (days: number, limit?: number) => { artist: string; count: number }[];
   totalMinutesInWindow: (days: number) => number;
   totalPlaysAllTime: () => number;
+  resetSession: () => Promise<void>;
 };
 
 async function persist(events: PlayEvent[]) {
@@ -131,5 +132,14 @@ export const usePlayHistoryStore = create<PlayHistoryState>((set, get) => ({
 
   totalPlaysAllTime() {
     return get().events.length;
+  },
+
+  async resetSession() {
+    set({ hydrated: false, events: [] });
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // In-memory account data is already gone; storage cleanup is best-effort.
+    }
   },
 }));
