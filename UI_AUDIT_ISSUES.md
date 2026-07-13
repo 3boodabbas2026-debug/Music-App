@@ -153,6 +153,10 @@ everywhere content can sit near the tab bar or mini player.
    now stored as an encrypted database-backed StringSession, with automatic
    migration from intact legacy local sessions and explicit disconnect.
 
+   **Status: reconnect UI fixed in codex/forest-and-remaining-audit** — saved
+   settings can resend a code without re-entering API keys, while disconnect
+   requires confirmation and revokes the durable session.
+
 ---
 
 ## Issue 4 — Cross-account data leak: playback/library state isn't cleared on account switch (bug, not cosmetic)

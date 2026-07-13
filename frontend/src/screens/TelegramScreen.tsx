@@ -53,6 +53,8 @@ export function TelegramScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasSavedSettings, setHasSavedSettings] = useState(false);
+  const [disconnectArmed, setDisconnectArmed] = useState(false);
 
   const [pickerTab, setPickerTab] = useState<'chats' | 'folders'>('chats');
   const [dialogs, setDialogs] = useState<telegramApi.TelegramDialog[] | null>(null);
@@ -89,6 +91,7 @@ export function TelegramScreen({ navigation }: Props) {
       .then((status) => {
         if (!alive) return;
         if (status.phone) setPhone(status.phone);
+        setHasSavedSettings(status.configured);
         setPhase(status.authorized ? 'linked' : 'setup');
       })
       .catch(() => alive && setPhase('setup'));
@@ -112,11 +115,50 @@ export function TelegramScreen({ navigation }: Props) {
     setBusy(true);
     try {
       await telegramApi.saveSettings(numericApiId, apiHash.trim(), phone.trim());
+      setHasSavedSettings(true);
       const result = await telegramApi.sendCode();
       if (result.status === 'authorized') setPhase('linked');
       else setPhase('code');
     } catch (err) {
       fail(err, "Couldn't reach Telegram with those keys.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReconnect() {
+    setError(null);
+    setBusy(true);
+    try {
+      const result = await telegramApi.sendCode();
+      setPhase(result.status === 'authorized' ? 'linked' : 'code');
+    } catch (err) {
+      fail(err, "Couldn't send a new Telegram login code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDisconnect() {
+    if (!disconnectArmed) {
+      setDisconnectArmed(true);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const status = await telegramApi.disconnect();
+      setDialogs(null);
+      setFolders(null);
+      setSelectedChats({});
+      setSelectedFolder(null);
+      setImportJob(null);
+      setHasSavedSettings(status.configured);
+      setPhase('setup');
+      setDisconnectArmed(false);
+      toast('Telegram disconnected on this device', 'success');
+    } catch (err) {
+      fail(err, "Couldn't disconnect Telegram.");
     } finally {
       setBusy(false);
     }
@@ -242,38 +284,52 @@ export function TelegramScreen({ navigation }: Props) {
           {phase === 'setup' && (
             <GlassPanel style={styles.panel}>
               <View style={styles.panelContent}>
-                <Text style={styles.panelTitle}>Link your account</Text>
-                <Text style={styles.hint}>
-                  Telegram needs a one-time, free API key. It takes about a minute:
-                </Text>
-                <View style={styles.steps}>
-                  <Text style={styles.step}>
-                    <Text style={styles.stepNumber}>1.  </Text>
-                    Open{' '}
-                    <Text accessibilityRole="link" style={styles.stepLink} onPress={() => Linking.openURL('https://my.telegram.org/apps')}>
-                      my.telegram.org/apps
-                    </Text>{' '}
-                    and log in with your Telegram phone number.
-                  </Text>
-                  <Text style={styles.step}>
-                    <Text style={styles.stepNumber}>2.  </Text>
-                    Create an app if asked — any name and any platform is fine.
-                  </Text>
-                  <Text style={styles.step}>
-                    <Text style={styles.stepNumber}>3.  </Text>
-                    Copy the api_id and api_hash it shows you into the boxes below.
-                  </Text>
-                </View>
-                <TextField label="API ID" value={apiId} onChangeText={setApiId} keyboardType="numeric" placeholder="1234567" />
-                <TextField label="API Hash" value={apiHash} onChangeText={setApiHash} autoCapitalize="none" placeholder="a1b2c3…" />
-                <TextField label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+90…" />
-                {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
-                <Button
-                  label="Send login code"
-                  loading={busy}
-                  disabled={!/^\d+$/.test(apiId.trim()) || !apiHash.trim() || !phone.trim()}
-                  onPress={handleConnect}
-                />
+                {hasSavedSettings ? (
+                  <>
+                    <Text style={styles.panelTitle}>Reconnect your saved account</Text>
+                    <Text style={styles.hint}>
+                      Your API keys are still encrypted on the server. Send a new code to {phone || 'your saved phone number'} without entering them again.
+                    </Text>
+                    {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
+                    <Button label="Send a new login code" loading={busy} onPress={handleReconnect} />
+                    <Button label="Use a different Telegram account" variant="ghost" onPress={() => setHasSavedSettings(false)} />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.panelTitle}>Link your account</Text>
+                    <Text style={styles.hint}>
+                      Telegram needs a one-time, free API key. It takes about a minute:
+                    </Text>
+                    <View style={styles.steps}>
+                      <Text style={styles.step}>
+                        <Text style={styles.stepNumber}>1.  </Text>
+                        Open{' '}
+                        <Text accessibilityRole="link" style={styles.stepLink} onPress={() => Linking.openURL('https://my.telegram.org/apps')}>
+                          my.telegram.org/apps
+                        </Text>{' '}
+                        and log in with your Telegram phone number.
+                      </Text>
+                      <Text style={styles.step}>
+                        <Text style={styles.stepNumber}>2.  </Text>
+                        Create an app if asked — any name and any platform is fine.
+                      </Text>
+                      <Text style={styles.step}>
+                        <Text style={styles.stepNumber}>3.  </Text>
+                        Copy the api_id and api_hash it shows you into the boxes below.
+                      </Text>
+                    </View>
+                    <TextField label="API ID" value={apiId} onChangeText={setApiId} keyboardType="numeric" placeholder="1234567" />
+                    <TextField label="API Hash" value={apiHash} onChangeText={setApiHash} autoCapitalize="none" placeholder="a1b2c3…" />
+                    <TextField label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+90…" />
+                    {error ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
+                    <Button
+                      label="Send login code"
+                      loading={busy}
+                      disabled={!/^\d+$/.test(apiId.trim()) || !apiHash.trim() || !phone.trim()}
+                      onPress={handleConnect}
+                    />
+                  </>
+                )}
               </View>
             </GlassPanel>
           )}
@@ -315,6 +371,15 @@ export function TelegramScreen({ navigation }: Props) {
                       <Text style={styles.hint}>Pull music or video straight from any chat into your library.</Text>
                     </View>
                   </View>
+
+                  <Button
+                    label={disconnectArmed ? 'Disconnect and revoke session' : 'Disconnect Telegram'}
+                    variant="danger"
+                    icon={disconnectArmed ? 'warning-outline' : 'unlink-outline'}
+                    loading={busy && disconnectArmed}
+                    onPress={handleDisconnect}
+                    accessibilityHint={disconnectArmed ? 'Tap again to confirm' : 'Requires confirmation'}
+                  />
 
                   {!dialogs ? (
                     <>

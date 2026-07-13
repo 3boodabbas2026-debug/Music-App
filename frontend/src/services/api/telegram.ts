@@ -50,6 +50,11 @@ export async function verifyPassword(password: string): Promise<LinkStepResult> 
   return data;
 }
 
+export async function disconnect(): Promise<TelegramStatus> {
+  const { data } = await apiClient.delete<TelegramStatus>('/telegram/connection');
+  return data;
+}
+
 export async function listDialogs(): Promise<TelegramDialog[]> {
   const { data } = await apiClient.get<TelegramDialog[]>('/telegram/dialogs');
   return data;
