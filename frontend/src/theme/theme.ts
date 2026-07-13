@@ -1,4 +1,4 @@
-import { Appearance, Platform } from 'react-native';
+import { initialThemeScheme, supportsCssVariables } from './themePlatform';
 
 export type ThemeScheme = 'light' | 'dark';
 
@@ -84,11 +84,9 @@ const lightGlassSeed: ColorScale<typeof darkGlassSeed> = {
   tintDangerStroke: 'rgba(182, 61, 76, 0.28)',
 };
 
-const initialNativeScheme: ThemeScheme = Appearance.getColorScheme() === 'light' ? 'light' : 'dark';
-
 function themedColor(group: string, key: string, darkFallback: string, lightFallback = darkFallback): string {
-  if (Platform.OS === 'web') return `var(--sh-${group}-${key}, ${darkFallback})`;
-  return initialNativeScheme === 'light' ? lightFallback : darkFallback;
+  if (supportsCssVariables) return `var(--sh-${group}-${key}, ${darkFallback})`;
+  return initialThemeScheme === 'light' ? lightFallback : darkFallback;
 }
 
 function themedScale<T extends Record<string, string>>(group: string, dark: T, light: ColorScale<T>): ColorScale<T> {
@@ -216,7 +214,7 @@ export const literalThemes = {
 } as const;
 
 export function applyWebTheme(scheme: ThemeScheme): void {
-  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  if (!supportsCssVariables || typeof document === 'undefined') return;
   const selected = literalThemes[scheme];
   const root = document.documentElement;
   root.dataset.theme = scheme;
