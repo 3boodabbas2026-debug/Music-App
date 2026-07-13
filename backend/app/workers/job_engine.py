@@ -26,7 +26,8 @@ from app.models.media import Media, MediaSource, MediaType
 from app.schemas.job import JobOut
 from app.services import audio_analysis, thumbnails
 from app.services.downloader import ytdlp_service
-from app.services.recognition import shazam_service
+from app.services.recognition import service as recognition_service
+from app.services.recognition.types import RecognitionMode
 from app.services.admin_events import log_event
 from app.services.storage import backend as storage_backend
 from app.services.storage import local_storage
@@ -615,10 +616,11 @@ async def run_recognition_job(
     tmp_audio_path: Path,
     existing_media_id: str | None,
     cleanup: bool = True,
+    recognition_mode: RecognitionMode = RecognitionMode.RECORDING,
 ) -> None:
     await _touch_job(job_id, status=JobStatus.IN_PROGRESS, stage_label="listening")
     try:
-        match = await shazam_service.recognize_file(tmp_audio_path)
+        match = await recognition_service.recognize_file(tmp_audio_path, recognition_mode)
 
         if match is None:
             await _touch_job(job_id, status=JobStatus.COMPLETE, progress_pct=100, stage_label="no_match")

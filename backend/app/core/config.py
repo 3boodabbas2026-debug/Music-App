@@ -40,6 +40,18 @@ class Settings(BaseSettings):
 
     max_concurrent_downloads: int = 3
     recognition_timeout_seconds: int = 25
+    # Optional melody-recognition provider. The ACRCloud project must use the
+    # ACRCloud Music bucket with Cover Song (humming) Identification enabled.
+    acrcloud_host: str | None = None
+    acrcloud_access_key: str | None = None
+    acrcloud_access_secret: str | None = None
+
+    @property
+    def acrcloud_humming_configured(self) -> bool:
+        return all(
+            value is not None and bool(value.strip())
+            for value in (self.acrcloud_host, self.acrcloud_access_key, self.acrcloud_access_secret)
+        )
 
     # Media storage backend: "local" keeps files on this instance's disk
     # (fine for local dev, wiped on every Render free-tier redeploy/restart).

@@ -15,6 +15,9 @@ from app.models.job import Job, JobStatus, JobType
 from app.models.media import Media, MediaType
 from app.models.user import User
 from app.schemas.job import JobOut
+from app.schemas.recognition import RecognitionCapabilities
+from app.services.recognition import service as recognition_service
+from app.services.recognition.types import RecognitionMode
 from app.workers import job_engine
 
 router = APIRouter(prefix="/recognitions", tags=["recognitions"])
@@ -59,11 +62,26 @@ async def _stage_recognition_upload(file: UploadFile) -> Path:
 async def recognize(
     file: UploadFile | None = File(None),
     media_id: str | None = Form(None),
+    recognition_mode: RecognitionMode = Form(RecognitionMode.RECORDING),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> JobOut:
     if (file is None) == (media_id is None):
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Provide exactly one of: file, media_id")
+    if recognition_mode == RecognitionMode.HUMMING:
+        if media_id is not None:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                "Humming recognition requires a recorded audio clip, not a library media item",
+            )
+        if not recognition_service.humming_recognition_available():
+            # Reject before staging the upload or creating a misleading
+            # no-match Job. The capabilities endpoint lets clients disable
+            # this mode proactively, but the API remains authoritative.
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "Humming recognition is unavailable because ACRCloud is not configured",
+            )
 
     if media_id is not None:
         media = await db.scalar(select(Media).where(Media.id == media_id, Media.user_id == current_user.id))
@@ -93,7 +111,12 @@ async def recognize(
     try:
         await asyncio.wait_for(
             job_engine.run_recognition_job(
-                job_id, current_user.id, audio_path, media_id, cleanup=cleanup
+                job_id,
+                current_user.id,
+                audio_path,
+                media_id,
+                cleanup=cleanup,
+                recognition_mode=recognition_mode,
             ),
             timeout=settings.recognition_timeout_seconds,
         )
@@ -153,6 +176,18 @@ async def recognize_library(
         )
         jobs.append(JobOut.model_validate(job))
     return jobs
+
+
+@router.get("/capabilities", response_model=RecognitionCapabilities)
+async def recognition_capabilities(
+    _current_user: User = Depends(get_current_user),
+) -> RecognitionCapabilities:
+    humming = recognition_service.humming_recognition_available()
+    return RecognitionCapabilities(
+        recording=True,
+        humming=humming,
+        humming_provider="acrcloud" if humming else None,
+    )
 
 
 @router.get("/{job_id}", response_model=JobOut)

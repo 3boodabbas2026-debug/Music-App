@@ -647,6 +647,10 @@ integrate, or would this require building melody-matching in-house (a real
 ML undertaking, not a config change)? Don't scope implementation work until
 that's answered.
 
+**Status: provider integration implemented in codex/forest-and-remaining-audit**
+— ACRCloud Cover Song/Humming Identification is now a separately gated mode;
+live provider verification still requires project credentials.
+
 ---
 
 ## Issue 18 — Activity screen: functionally fine, just needs the same design pass as everything else

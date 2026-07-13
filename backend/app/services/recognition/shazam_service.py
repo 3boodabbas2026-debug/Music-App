@@ -10,7 +10,6 @@ import re
 import subprocess
 import tempfile
 import warnings
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
@@ -21,16 +20,7 @@ warnings.filterwarnings(
 import imageio_ffmpeg
 from shazamio import Shazam
 
-
-@dataclass
-class RecognitionMatch:
-    title: str
-    artist: str
-    album: Optional[str]
-    thumbnail_url: Optional[str]
-    shazam_key: Optional[str]
-    genre: Optional[str]
-    release_year: Optional[int]
+from app.services.recognition.types import RecognitionMatch, RecognitionMode
 
 
 def _clean_text(value: Any) -> Optional[str]:
@@ -86,9 +76,11 @@ def _extract_match(raw: dict[str, Any]) -> Optional[RecognitionMatch]:
         artist=artist,
         album=album,
         thumbnail_url=images.get("coverarthq") or images.get("coverart") or images.get("background"),
-        shazam_key=str(track.get("key")) if track.get("key") else None,
+        provider_key=str(track.get("key")) if track.get("key") else None,
         genre=genres.get("primary"),
         release_year=release_year,
+        provider="shazam",
+        match_kind=RecognitionMode.RECORDING,
     )
 
 
