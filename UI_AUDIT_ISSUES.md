@@ -250,6 +250,8 @@ minimized/floating state seen over the Library screen.
    seconds idle, restore instantly on any interaction — the same pattern
    most video apps use (YouTube, Netflix).
 
+   **Status: fixed in codex/ui-audit-completion**
+
 4. **Dislikes the minimized/floating video window** overlapping other
    screens — seen in the second screenshot, where a small floating video
    card sits on top of the Library list, obscuring the Favorites tab and

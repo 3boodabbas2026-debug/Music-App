@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   FlatList,
   PanResponder,
@@ -24,11 +25,12 @@ import * as PlayerService from '../../services/audio/PlayerService';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useVideoPlayerStore } from '../../store/videoPlayerStore';
 import { coverGradient, displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
-import { colors, gradients, radii, shadows, spacing, typography } from '../../theme/tokens';
+import { colors, glass, glassBlur, gradients, motion, radii, shadows, spacing, typography } from '../../theme/tokens';
 
 const STRIP_CARD_WIDTH = 132;
 const MINI_WIDTH = 208;
 const MINI_HEIGHT = 117; // 16:9
+export const VIDEO_CHROME_HIDE_DELAY_MS = 4000;
 
 /**
  * The one place video actually plays. Lives outside the navigation stack so
@@ -50,6 +52,10 @@ export function GlobalVideoStage() {
   const [theater, setTheater] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const controlsOpacity = useRef(new Animated.Value(1)).current;
+  const controlsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const videoQueue = useMemo(
     () => [...items].filter((m) => m.media_type === 'video').sort((a, b) => b.created_at.localeCompare(a.created_at)),
@@ -64,6 +70,56 @@ export function GlobalVideoStage() {
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
   });
+
+  const clearControlsTimer = useCallback(() => {
+    if (controlsTimer.current) {
+      clearTimeout(controlsTimer.current);
+      controlsTimer.current = null;
+    }
+  }, []);
+
+  const hideControls = useCallback(() => {
+    if (mode !== 'expanded') return;
+    Animated.timing(controlsOpacity, {
+      toValue: 0,
+      duration: reduceMotion ? 0 : motion.duration.base,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setControlsVisible(false);
+    });
+  }, [controlsOpacity, mode, reduceMotion]);
+
+  const showControls = useCallback(() => {
+    clearControlsTimer();
+    setControlsVisible(true);
+    controlsOpacity.stopAnimation();
+    Animated.timing(controlsOpacity, {
+      toValue: 1,
+      duration: reduceMotion ? 0 : motion.duration.fast,
+      useNativeDriver: true,
+    }).start();
+    if (mode === 'expanded') {
+      controlsTimer.current = setTimeout(hideControls, VIDEO_CHROME_HIDE_DELAY_MS);
+    }
+  }, [clearControlsTimer, controlsOpacity, hideControls, mode, reduceMotion]);
+
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReduceMotion(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'expanded') showControls();
+    else clearControlsTimer();
+    return clearControlsTimer;
+  }, [clearControlsTimer, media?.id, mode, showControls]);
 
   // One straight shot from "video chosen" to "player loading": the access
   // token comes from tokenStorage's in-memory cache (a microtask, not an
@@ -157,6 +213,7 @@ export function GlobalVideoStage() {
   if (mode === 'mini') {
     return (
       <Animated.View
+        testID="video-top-chrome"
         {...panResponder.panHandlers}
         style={[styles.miniWrap, { transform: pan.getTranslateTransform() }]}
       >
@@ -189,22 +246,37 @@ export function GlobalVideoStage() {
   // stacked directly under the video layer. The plain `root` background
   // already reads fine for the thin letterbox bars.
   return (
-    <View style={styles.root}>
-      <View pointerEvents="box-none" style={[styles.topBar, { top: insets.top + spacing.sm }]}>
-        <Pressable onPress={minimize} accessibilityLabel="Minimize video" hitSlop={12} style={styles.closeButton}>
+    <View style={styles.root} onTouchStart={showControls} onPointerMove={showControls}>
+      <Animated.View
+        pointerEvents={controlsVisible ? 'box-none' : 'none'}
+        style={[styles.topBar, { top: insets.top + spacing.sm, opacity: controlsOpacity }]}
+      >
+        <Pressable
+          onPress={() => { showControls(); minimize(); }}
+          onFocus={showControls}
+          accessibilityLabel="Minimize video"
+          hitSlop={12}
+          style={[styles.closeButton, glassBlur]}
+        >
           <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
         </Pressable>
         {!theater && (
-          <View style={styles.chip}>
+          <View style={[styles.chip, glassBlur]}>
             <Text style={styles.chipLabel}>
               {queueIndex >= 0 ? `VIDEO ${queueIndex + 1} OF ${videoQueue.length}` : 'VIDEO'}
             </Text>
           </View>
         )}
-        <Pressable onPress={() => setTheater((v) => !v)} accessibilityLabel={theater ? 'Exit theater mode' : 'Enter theater mode'} hitSlop={12} style={styles.closeButton}>
+        <Pressable
+          onPress={() => { showControls(); setTheater((value) => !value); }}
+          onFocus={showControls}
+          accessibilityLabel={theater ? 'Exit theater mode' : 'Enter theater mode'}
+          hitSlop={12}
+          style={[styles.closeButton, glassBlur]}
+        >
           <Ionicons name={theater ? 'contract' : 'expand'} size={18} color={colors.textSecondary} />
         </Pressable>
-      </View>
+      </Animated.View>
 
       <View style={styles.stage}>
         <VideoView player={player} style={styles.video} nativeControls allowsPictureInPicture contentFit="contain" />
@@ -237,13 +309,25 @@ export function GlobalVideoStage() {
             </View>
           </View>
         )}
+        <Pressable
+          pointerEvents={controlsVisible ? 'none' : 'auto'}
+          style={StyleSheet.absoluteFill}
+          onPress={showControls}
+          accessibilityElementsHidden={controlsVisible}
+          accessibilityRole="button"
+          accessibilityLabel="Show video controls"
+        />
       </View>
 
       {!theater && (
-        <View style={[styles.metaBar, { paddingBottom: insets.bottom + spacing.md }]}>
-          <View style={styles.metaRow}>
-            <PressableScale onPress={() => prevMedia && setMediaId(prevMedia.id)} accessibilityLabel="Previous video" accessibilityHint={!prevMedia ? 'No previous video' : undefined} disabled={!prevMedia} scaleTo={0.88}>
-              <View style={styles.skipButton}>
+        <Animated.View
+          testID="video-bottom-chrome"
+          pointerEvents={controlsVisible ? 'auto' : 'none'}
+          style={[styles.metaBar, { paddingBottom: insets.bottom + spacing.md, opacity: controlsOpacity }]}
+        >
+          <View style={[styles.metaRow, styles.metaChrome, glassBlur]}>
+            <PressableScale onPress={() => { showControls(); if (prevMedia) setMediaId(prevMedia.id); }} accessibilityLabel="Previous video" accessibilityHint={!prevMedia ? 'No previous video' : undefined} disabled={!prevMedia} scaleTo={0.88}>
+              <View style={[styles.skipButton, glassBlur]}>
                 <Ionicons name="play-skip-back" size={20} color={colors.textSecondary} />
               </View>
             </PressableScale>
@@ -257,8 +341,8 @@ export function GlobalVideoStage() {
               </Text>
             </View>
 
-            <PressableScale onPress={() => nextMedia && setMediaId(nextMedia.id)} accessibilityLabel="Next video" accessibilityHint={!nextMedia ? 'No next video' : undefined} disabled={!nextMedia} scaleTo={0.88}>
-              <View style={styles.skipButton}>
+            <PressableScale onPress={() => { showControls(); if (nextMedia) setMediaId(nextMedia.id); }} accessibilityLabel="Next video" accessibilityHint={!nextMedia ? 'No next video' : undefined} disabled={!nextMedia} scaleTo={0.88}>
+              <View style={[styles.skipButton, glassBlur]}>
                 <Ionicons name="play-skip-forward" size={20} color={colors.textSecondary} />
               </View>
             </PressableScale>
@@ -275,7 +359,7 @@ export function GlobalVideoStage() {
                 contentContainerStyle={styles.stripContent}
                 renderItem={({ item }) => (
                   <PressableScale
-                    onPress={() => setMediaId(item.id)}
+                    onPress={() => { showControls(); setMediaId(item.id); }}
                     accessibilityLabel={`Play ${displayTitle(item)}`}
                     scaleTo={0.95}
                   >
@@ -296,7 +380,7 @@ export function GlobalVideoStage() {
               />
             </View>
           )}
-        </View>
+        </Animated.View>
       )}
     </View>
   );
@@ -325,7 +409,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(17,30,25,0.72)',
+    backgroundColor: glass.fillHeavy,
+    borderWidth: 1,
+    borderColor: glass.stroke,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -333,7 +419,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(17,30,25,0.6)',
+    backgroundColor: glass.fillHeavy,
+    borderWidth: 1,
+    borderColor: glass.stroke,
   },
   chipLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textSecondary },
   stage: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -345,11 +433,18 @@ const styles = StyleSheet.create({
   posterLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textSecondary },
   metaBar: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, width: '100%', maxWidth: 960, alignSelf: 'center' },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  metaChrome: {
+    padding: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: glass.fillDeep,
+    borderWidth: 1,
+    borderColor: glass.stroke,
+  },
   skipButton: {
     width: 42,
     height: 42,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(17,30,25,0.7)',
+    backgroundColor: glass.fillBright,
     alignItems: 'center',
     justifyContent: 'center',
   },
