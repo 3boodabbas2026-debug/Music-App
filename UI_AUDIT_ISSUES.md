@@ -627,6 +627,8 @@ these sheets match the rest of the app. Check whether other sheets in this
 same file share the `sheet` style — if so, one fix resolves all of them at
 once.
 
+**Status: fixed in codex/ui-audit-completion**
+
 **Also reinforces two already-logged issues (not new numbers), both
 confirmed again on this screen:**
 - Blank/black playlist thumbnails — same root cause as Issue 5.2, now

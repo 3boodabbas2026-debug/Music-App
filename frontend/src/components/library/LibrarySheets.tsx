@@ -495,7 +495,7 @@ const styles = StyleSheet.create({
   modalRootDesktop: { justifyContent: 'center', alignItems: 'center' },
   modalBackdrop: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(3,5,3,0.65)' },
   sheet: {
-    backgroundColor: '#1B1426',
+    backgroundColor: colors.bgElevated,
     borderTopLeftRadius: radii.lg + 8,
     borderTopRightRadius: radii.lg + 8,
     paddingHorizontal: spacing.lg,
