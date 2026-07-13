@@ -329,6 +329,8 @@ start.**
    derived color's luminance before using it as a button fill), not per
    button. See also the elevated note in Broader Suggestions below.
 
+   **Status: fixed in codex/ui-audit-completion**
+
 3. **"Sanctuary" pill looks disabled/inconsistent with the other three
    pills** (Up next, Lyrics, More look active-styled; Sanctuary looks
    visibly dimmed with no explanation).

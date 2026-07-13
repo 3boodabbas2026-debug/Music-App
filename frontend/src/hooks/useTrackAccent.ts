@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { getDominantColor } from '../utils/dominantColor';
+import { ensureTrackAccentContrast } from '../utils/accentContrast';
 
 /** The current track's cover-art accent color, or null while it's loading /
  * unavailable (native, no thumbnail, or a host that blocks pixel reads) —
@@ -12,7 +13,7 @@ export function useTrackAccent(thumbnailUrl: string | null | undefined): string 
     let alive = true;
     setAccent(null);
     getDominantColor(thumbnailUrl).then((color) => {
-      if (alive) setAccent(color);
+      if (alive) setAccent(color ? ensureTrackAccentContrast(color) : null);
     });
     return () => {
       alive = false;
