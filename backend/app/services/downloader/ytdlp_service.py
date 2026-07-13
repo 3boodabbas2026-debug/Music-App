@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterator, Optional
+from urllib.parse import urlsplit
 
 import imageio_ffmpeg
 import yt_dlp
@@ -48,6 +49,11 @@ _CERTIFICATE_ERROR_MARKERS = (
     "certificate verify failed",
     "ssl certificate problem",
     "unable to get local issuer certificate",
+)
+_YOUTUBE_AUTH_ERROR_MARKERS = (
+    "sign in to confirm",
+    "not a bot",
+    "youtube account cookies are no longer valid",
 )
 
 
@@ -163,6 +169,21 @@ def _is_certificate_error(error: object) -> bool:
     return any(marker in message for marker in _CERTIFICATE_ERROR_MARKERS)
 
 
+def _is_youtube_source(url: str) -> bool:
+    if url.lower().startswith("ytsearch"):
+        return True
+    try:
+        hostname = (urlsplit(url).hostname or "").lower().rstrip(".")
+    except ValueError:
+        return False
+    return hostname == "youtu.be" or hostname == "youtube.com" or hostname.endswith(".youtube.com")
+
+
+def _is_youtube_auth_error(error: object) -> bool:
+    message = str(error).lower()
+    return any(marker in message for marker in _YOUTUBE_AUTH_ERROR_MARKERS)
+
+
 def _extract_info(url: str, ydl_opts: dict) -> dict | None:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         return ydl.extract_info(url, download=True)
@@ -213,8 +234,7 @@ def _friendly_download_error(exc: DownloadError) -> RuntimeError:
             "The backend could not verify the media site's secure connection. Update the host's trusted "
             "CA certificates, or enable SMA_YTDLP_PREFER_SYSTEM_CERTS so yt-dlp uses the operating system store."
         )
-    lower_message = message.lower()
-    needs_cookies = "sign in to confirm" in lower_message or "not a bot" in lower_message
+    needs_cookies = _is_youtube_auth_error(exc)
     has_cookies = _has_cookie_settings()
     if needs_cookies and not has_cookies:
         return RuntimeError(
@@ -305,7 +325,18 @@ def download_media(
         try:
             info = _extract_with_transport_fallback(url, ydl_opts)
         except DownloadError as exc:
-            raise _friendly_download_error(exc) from exc
+            if not cookiefile or not _is_youtube_source(url) or not _is_youtube_auth_error(exc):
+                raise _friendly_download_error(exc) from exc
+
+            # A stale or incomplete cookie jar can make a public video fail
+            # even when anonymous extraction still works. Retry once without
+            # the cookie jar; keep all transport fallbacks and other options.
+            anonymous_opts = dict(ydl_opts)
+            anonymous_opts.pop("cookiefile", None)
+            try:
+                info = _extract_with_transport_fallback(url, anonymous_opts)
+            except DownloadError as anonymous_exc:
+                raise _friendly_download_error(anonymous_exc) from anonymous_exc
 
     if info is None:
         raise RuntimeError("yt-dlp returned no result for this URL")

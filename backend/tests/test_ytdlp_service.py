@@ -11,7 +11,11 @@ from app.core.config import settings
 from app.services.downloader import ytdlp_service
 
 
-VALID_COOKIES = "# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\ttest\n"
+VALID_COOKIES = (
+    "# Netscape HTTP Cookie File\n"
+    ".youtube.com\tTRUE\t/\tTRUE\t0\tLOGIN_INFO\tlogin\n"
+    ".youtube.com\tTRUE\t/\tTRUE\t0\tSAPISID\ttest\n"
+)
 
 
 class YoutubeDlServiceTests(unittest.TestCase):
@@ -140,6 +144,118 @@ class YoutubeDlServiceTests(unittest.TestCase):
         friendly = ytdlp_service._friendly_download_error(error)
         self.assertIn("trusted CA certificates", str(friendly))
         self.assertNotIn("disable", str(friendly).lower())
+
+    def test_cookie_auth_failure_retries_once_without_cookiefile(self) -> None:
+        calls: list[dict] = []
+
+        def fake_extract(_url: str, opts: dict) -> dict:
+            calls.append(dict(opts))
+            if len(calls) == 1:
+                raise DownloadError("ERROR: [youtube] Sign in to confirm you're not a bot")
+            output.write_bytes(b"media")
+            return {"id": "video-id", "title": "Public video", "duration": 1}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cookie_path = tmp_path / "youtube_cookies.txt"
+            cookie_path.write_text(VALID_COOKIES, encoding="utf-8")
+            settings.ytdlp_cookies_file = str(cookie_path)
+            output = tmp_path / "video-id.webm"
+
+            with patch.object(ytdlp_service, "_extract_with_transport_fallback", fake_extract):
+                result = ytdlp_service.download_media(
+                    "https://www.youtube.com/watch?v=video-id",
+                    "audio",
+                    tmp_path,
+                    audio_format="source",
+                )
+
+        self.assertEqual(result.file_path.name, "video-id.webm")
+        self.assertEqual(len(calls), 2)
+        self.assertIn("cookiefile", calls[0])
+        self.assertNotIn("cookiefile", calls[1])
+
+    def test_non_auth_download_error_does_not_retry_without_cookies(self) -> None:
+        calls: list[dict] = []
+
+        def fake_extract(_url: str, opts: dict) -> dict:
+            calls.append(dict(opts))
+            raise DownloadError("ERROR: [youtube] This video is unavailable")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cookie_path = tmp_path / "youtube_cookies.txt"
+            cookie_path.write_text(VALID_COOKIES, encoding="utf-8")
+            settings.ytdlp_cookies_file = str(cookie_path)
+
+            with (
+                patch.object(ytdlp_service, "_extract_with_transport_fallback", fake_extract),
+                self.assertRaisesRegex(RuntimeError, "This video is unavailable"),
+            ):
+                ytdlp_service.download_media(
+                    "https://www.youtube.com/watch?v=video-id",
+                    "audio",
+                    tmp_path,
+                    audio_format="source",
+                )
+
+        self.assertEqual(len(calls), 1)
+
+    def test_anonymous_retry_failure_preserves_friendly_error(self) -> None:
+        calls: list[dict] = []
+
+        def fake_extract(_url: str, opts: dict) -> dict:
+            calls.append(dict(opts))
+            raise DownloadError("ERROR: [youtube] Sign in to confirm you're not a bot")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cookie_path = tmp_path / "private-youtube-cookies.txt"
+            cookie_path.write_text(VALID_COOKIES, encoding="utf-8")
+            settings.ytdlp_cookies_file = str(cookie_path)
+
+            with (
+                patch.object(ytdlp_service, "_extract_with_transport_fallback", fake_extract),
+                self.assertRaises(RuntimeError) as raised,
+            ):
+                ytdlp_service.download_media(
+                    "https://youtu.be/video-id",
+                    "audio",
+                    tmp_path,
+                    audio_format="source",
+                )
+
+        self.assertEqual(len(calls), 2)
+        self.assertIn("configured cookies", str(raised.exception))
+        self.assertNotIn(str(cookie_path), str(raised.exception))
+        self.assertNotIn("login", str(raised.exception).lower())
+
+    def test_valid_cookie_success_does_not_retry(self) -> None:
+        calls: list[dict] = []
+
+        def fake_extract(_url: str, opts: dict) -> dict:
+            calls.append(dict(opts))
+            output.write_bytes(b"media")
+            return {"id": "video-id", "title": "Restricted video", "duration": 1}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cookie_path = tmp_path / "youtube_cookies.txt"
+            cookie_path.write_text(VALID_COOKIES, encoding="utf-8")
+            settings.ytdlp_cookies_file = str(cookie_path)
+            output = tmp_path / "video-id.webm"
+
+            with patch.object(ytdlp_service, "_extract_with_transport_fallback", fake_extract):
+                result = ytdlp_service.download_media(
+                    "https://www.youtube.com/watch?v=video-id",
+                    "audio",
+                    tmp_path,
+                    audio_format="source",
+                )
+
+        self.assertEqual(result.file_path.name, "video-id.webm")
+        self.assertEqual(len(calls), 1)
+        self.assertIn("cookiefile", calls[0])
 
 
 if __name__ == "__main__":
