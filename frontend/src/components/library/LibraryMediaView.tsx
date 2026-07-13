@@ -9,7 +9,7 @@ import {
   displayArtist,
   displayTitle,
 } from '../../utils/mediaDisplay';
-import { colors, gradients, radii, spacing, typography } from '../../theme/tokens';
+import { colors, glass, gradients, radii, spacing, typography } from '../../theme/tokens';
 
 type MediaItemProps = {
   media: Media;
@@ -55,6 +55,8 @@ export const GridCard = memo(function GridCard({
       onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={`${displayTitle(media)}${artist ? `, ${artist}` : ''}${metadata ? `, ${metadata}` : ''}`}
+      accessibilityState={selectMode ? { selected: !!selected } : undefined}
+      aria-selected={selectMode ? !!selected : undefined}
       delayLongPress={350}
       onHoverIn={Platform.OS === 'web' ? () => setHovered(true) : undefined}
       onHoverOut={Platform.OS === 'web' ? () => setHovered(false) : undefined}
@@ -77,15 +79,18 @@ export const GridCard = memo(function GridCard({
           style={StyleSheet.absoluteFill}
         />
         <LinearGradient colors={gradients.coverScrim} style={styles.scrim} />
+        {selectMode && selected && <View pointerEvents="none" style={styles.selectionTint} />}
 
-        <View style={styles.durationChip}>
-          <Ionicons
-            name={media.media_type === 'video' ? 'videocam' : 'musical-notes'}
-            size={10}
-            color={colors.textSecondary}
-          />
-          <Text style={styles.durationText}>{formatDuration(media.duration_seconds)}</Text>
-        </View>
+        {!selectMode && (
+          <View style={styles.durationChip}>
+            <Ionicons
+              name={media.media_type === 'video' ? 'videocam' : 'musical-notes'}
+              size={10}
+              color={colors.textSecondary}
+            />
+            <Text style={styles.durationText}>{formatDuration(media.duration_seconds)}</Text>
+          </View>
+        )}
         {favorite && (
           <View style={styles.heartChip}>
             <Ionicons name="heart" size={12} color={colors.pink} />
@@ -149,6 +154,8 @@ export const ListRow = memo(function ListRow({
       onLongPress={onLongPress}
       accessibilityRole="button"
       accessibilityLabel={`${displayTitle(media)}${artist ? `, ${artist}` : ''}${metadata ? `, ${metadata}` : ''}`}
+      accessibilityState={selectMode ? { selected: !!selected } : undefined}
+      aria-selected={selectMode ? !!selected : undefined}
       delayLongPress={350}
       onHoverIn={Platform.OS === 'web' ? () => setHovered(true) : undefined}
       onHoverOut={Platform.OS === 'web' ? () => setHovered(false) : undefined}
@@ -245,7 +252,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(158,181,170,0.12)',
   },
   cardHovered: { borderColor: 'rgba(99,214,181,0.45)' },
-  cardSelected: { borderColor: colors.cyan, borderWidth: 2 },
+  cardSelected: { borderColor: glass.tintPrimaryStroke },
+  selectionTint: {
+    ...(StyleSheet.absoluteFill as object),
+    backgroundColor: glass.tintPrimary,
+  },
   selectCheck: {
     position: 'absolute',
     top: spacing.sm,
@@ -343,12 +354,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     backgroundColor: 'rgba(17,30,25,0.5)',
+    borderWidth: 1,
+    borderColor: 'transparent',
     borderRadius: radii.md,
     padding: spacing.sm,
   },
   listRowHovered: { backgroundColor: 'rgba(17,30,25,0.85)' },
   listRowPressed: { backgroundColor: 'rgba(99,214,181,0.10)' },
-  listRowSelected: { borderWidth: 1, borderColor: colors.cyan },
+  listRowSelected: { backgroundColor: glass.tintPrimary, borderColor: glass.tintPrimaryStroke },
   listText: { flex: 1 },
   skeletonGridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   skeletonListWrap: { gap: spacing.md },

@@ -330,10 +330,10 @@ occurrence (Issue 1b, Issue 2.7, and this one).
 treatment may need polishing, and the same problem may occur when selecting
 a video item specifically, not just other media types.
 
-**Status: needs clarification** — unclear whether this means Issue 8's
-overlap also reproduces with a video selected, or a distinct visual bug in
-the selected-row treatment (checkmark/border) for video cards specifically.
-Get a screenshot of a video item selected before scoping a fix.
+**Status: fixed in codex/ui-audit-open-items** — the video fixture exposed a
+real grid collision: the duration/type badge and selection check occupied the
+same corner. Selection now hides that badge, exposes selected state to assistive
+technology, and uses the same no-layout-shift glass treatment in grid/list.
 
 ---
 

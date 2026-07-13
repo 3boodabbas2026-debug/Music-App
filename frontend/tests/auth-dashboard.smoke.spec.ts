@@ -148,7 +148,7 @@ test('an expired access token refreshes without logging the user out', async ({ 
 test('a 520-track library stays virtualized, searchable, and selectable', async ({ page }) => {
   const library = Array.from({ length: 520 }, (_, index) => ({
     id: `track-${index}`,
-    media_type: 'audio',
+    media_type: index === 519 ? 'video' : 'audio',
     source: 'other_url',
     source_url: null,
     title: `Track ${index}`,
@@ -177,9 +177,13 @@ test('a 520-track library stays virtualized, searchable, and selectable', async 
 
   await page.getByPlaceholder('Search title or artist').fill('Track 519');
   const targetCard = page.getByRole('button', { name: /^Track 519, Artist 19, Ambient.*2019$/ });
+  const durationBadge = targetCard.getByText('11:39', { exact: true });
   await expect(targetCard).toHaveCount(1);
   await expect(targetCard).toBeVisible();
+  await expect(durationBadge).toBeVisible();
   await page.getByRole('button', { name: 'Select tracks' }).click();
   await targetCard.click();
+  await expect(targetCard).toHaveAttribute('aria-selected', 'true');
+  await expect(durationBadge).toHaveCount(0);
   await expect(page.getByText('1 selected', { exact: true })).toBeVisible();
 });
