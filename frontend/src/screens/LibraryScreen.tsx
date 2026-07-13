@@ -624,62 +624,65 @@ export function LibraryScreen() {
         ) : isLoading && visible.length === 0 ? (
           <SkeletonGrid columns={columns} cellSize={cellSize} view={view} />
         ) : (
-        <FlatList
-          key={`${view}-${columns}`}
-          data={visible}
-          keyExtractor={(item) => item.id}
-          numColumns={columns}
-          refreshing={isLoading}
-          onRefresh={() => refresh(query || undefined)}
-          showsVerticalScrollIndicator={false}
-          // A 100+ item library rendered all at once is real jank in the
-          // WebView — window it so offscreen cards don't exist in the DOM.
-          windowSize={7}
-          initialNumToRender={10}
-          maxToRenderPerBatch={10}
-          removeClippedSubviews
-          columnWrapperStyle={view === 'grid' ? styles.gridRow : undefined}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: bottomChromeClearance },
-            visible.length === 0 && styles.emptyListContent,
-          ]}
-          ListEmptyComponent={
-            <EmptyState
-              icon={hasActiveFilters ? 'search-outline' : 'albums-outline'}
-              title={hasActiveFilters ? 'Nothing matches' : 'Your library is ready'}
-              subtitle={
-                hasActiveFilters
-                  ? 'Try a broader search or clear the active filters.'
-                  : 'Save a link or identify a song to start your collection.'
+          <Reveal key={`${view}-${columns}`} style={styles.listReveal} distance={6}>
+            <FlatList
+              key={`${view}-${columns}`}
+              style={styles.list}
+              data={visible}
+              keyExtractor={(item) => item.id}
+              numColumns={columns}
+              refreshing={isLoading}
+              onRefresh={() => refresh(query || undefined)}
+              showsVerticalScrollIndicator={false}
+              // A 100+ item library rendered all at once is real jank in the
+              // WebView — window it so offscreen cards don't exist in the DOM.
+              windowSize={7}
+              initialNumToRender={10}
+              maxToRenderPerBatch={10}
+              removeClippedSubviews
+              columnWrapperStyle={view === 'grid' ? styles.gridRow : undefined}
+              contentContainerStyle={[
+                styles.listContent,
+                { paddingBottom: bottomChromeClearance },
+                visible.length === 0 && styles.emptyListContent,
+              ]}
+              ListEmptyComponent={
+                <EmptyState
+                  icon={hasActiveFilters ? 'search-outline' : 'albums-outline'}
+                  title={hasActiveFilters ? 'Nothing matches' : 'Your library is ready'}
+                  subtitle={
+                    hasActiveFilters
+                      ? 'Try a broader search or clear the active filters.'
+                      : 'Save a link or identify a song to start your collection.'
+                  }
+                  actionLabel={hasActiveFilters ? 'Clear filters' : 'Add your first track'}
+                  onAction={hasActiveFilters ? resetFilters : () => navigation.navigate('Main', { screen: 'Home' })}
+                />
               }
-              actionLabel={hasActiveFilters ? 'Clear filters' : 'Add your first track'}
-              onAction={hasActiveFilters ? resetFilters : () => navigation.navigate('Main', { screen: 'Home' })}
+              renderItem={({ item }) =>
+                view === 'grid' ? (
+                  <GridCard
+                    media={item}
+                    size={cellSize}
+                    favorite={!!favoriteIds[item.id]}
+                    selectMode={selectMode}
+                    selected={!!selectedIds[item.id]}
+                    onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
+                    onLongPress={(event) => (selectMode ? toggleSelect(item.id) : openTrackSheet(item, event))}
+                  />
+                ) : (
+                  <ListRow
+                    media={item}
+                    favorite={!!favoriteIds[item.id]}
+                    selectMode={selectMode}
+                    selected={!!selectedIds[item.id]}
+                    onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
+                    onLongPress={(event) => (selectMode ? toggleSelect(item.id) : openTrackSheet(item, event))}
+                  />
+                )
+              }
             />
-          }
-          renderItem={({ item }) =>
-            view === 'grid' ? (
-              <GridCard
-                media={item}
-                size={cellSize}
-                favorite={!!favoriteIds[item.id]}
-                selectMode={selectMode}
-                selected={!!selectedIds[item.id]}
-                onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
-                onLongPress={(event) => (selectMode ? toggleSelect(item.id) : openTrackSheet(item, event))}
-              />
-            ) : (
-              <ListRow
-                media={item}
-                favorite={!!favoriteIds[item.id]}
-                selectMode={selectMode}
-                selected={!!selectedIds[item.id]}
-                onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
-                onLongPress={(event) => (selectMode ? toggleSelect(item.id) : openTrackSheet(item, event))}
-              />
-            )
-          }
-        />
+          </Reveal>
         )}
       </ScreenContainer>
 
@@ -929,6 +932,8 @@ const styles = StyleSheet.create({
   toolChipActive: { backgroundColor: 'rgba(99,214,181,0.18)' },
   fixNamesChip: { backgroundColor: 'rgba(99,214,181,0.14)', borderWidth: 1, borderColor: 'rgba(99,214,181,0.3)' },
   gridRow: { gap: spacing.md },
+  listReveal: { flex: 1 },
+  list: { flex: 1 },
   listContent: { gap: spacing.md },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   bulkBar: {

@@ -212,12 +212,19 @@ per identity.
 4. **No animations** — grid↔list view toggle snaps instantly; cards have no
    entrance transition and only the play button fades on hover.
 
+   **Status: fixed in codex/ui-audit-completion**
+
 5. **General "friendliness" gaps:**
    - The yellow status dot on a card has no visible label/tooltip explaining
      what it means.
    - Grid and list cards currently show wildly inconsistent visual quality
      (one has a real, readable thumbnail; the other is a near-blank square)
      — reads as broken/unfinished rather than "no artwork available."
+
+   **Status: needs clarification** — the current card implementation has no
+   yellow status dot to label; a screenshot or its intended meaning is needed
+   before adding or changing one. The artwork-quality portion is fixed by
+   Issue 5.2's shared fallback.
 
 ---
 
