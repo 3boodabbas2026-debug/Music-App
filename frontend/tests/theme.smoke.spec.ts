@@ -76,3 +76,28 @@ test('system appearance follows live browser color-scheme changes', async ({ pag
   await page.emulateMedia({ colorScheme: 'dark' });
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
 });
+
+test('the living forest moves gently and respects reduced motion', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await mockApi(page);
+  await login(page);
+
+  const drift = page.getByTestId('forest-drift-layer');
+  const fireflies = page.getByTestId('forest-fireflies');
+  await expect(drift).toBeVisible();
+  await expect(fireflies).toBeAttached();
+
+  const movingStart = await drift.evaluate((element) => getComputedStyle(element).transform);
+  await page.waitForTimeout(700);
+  const movingEnd = await drift.evaluate((element) => getComputedStyle(element).transform);
+  expect(movingEnd).not.toBe(movingStart);
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await expect(page.getByText('Bring a track home.', { exact: true })).toBeVisible();
+  await page.waitForTimeout(300);
+  const stillStart = await drift.evaluate((element) => getComputedStyle(element).transform);
+  await page.waitForTimeout(700);
+  const stillEnd = await drift.evaluate((element) => getComputedStyle(element).transform);
+  expect(stillEnd).toBe(stillStart);
+});

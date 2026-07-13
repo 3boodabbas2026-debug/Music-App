@@ -109,20 +109,16 @@ test('the 390px mobile shell navigates across every primary destination without 
   await expect(page.getByTestId('forest-backdrop-app')).toBeVisible();
   const atmosphere = page.getByTestId('forest-atmosphere');
   await expect(atmosphere).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
-  await expect
-    .poll(() =>
-      atmosphere.evaluate((element) => {
-        const bounds = element.getBoundingClientRect();
-        return [...element.children].some((child) => {
-          const childBounds = child.getBoundingClientRect();
-          const style = window.getComputedStyle(child);
-          const coversScreen =
-            childBounds.width >= bounds.width * 0.95 && childBounds.height >= bounds.height * 0.95;
-          return coversScreen && style.backgroundImage !== 'none' && Number.parseFloat(style.opacity) > 0.9;
-        });
-      }),
-    )
-    .toBe(false);
+  const opaqueAtmosphereCover = await atmosphere.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    return [...element.children].some((child) => {
+      const childBounds = child.getBoundingClientRect();
+      const style = window.getComputedStyle(child);
+      const coversScreen = childBounds.width >= bounds.width * 0.95 && childBounds.height >= bounds.height * 0.95;
+      return coversScreen && style.backgroundImage !== 'none' && Number.parseFloat(style.opacity) > 0.9;
+    });
+  });
+  expect(opaqueAtmosphereCover).toBe(false);
   await expect(page.getByText('Bring a track home.', { exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Media link' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Today' })).toHaveAttribute('aria-selected', 'true');
