@@ -9,6 +9,50 @@ import type { Media } from '../services/api/types';
  * (job_engine.py), which decides when to auto-run recognition.
  */
 const GARBAGE_TITLE_RE = /^[A-Za-z0-9_-]{16,}$/;
+const TRAILING_HASHTAGS_RE = /(?:\s+#[^\s#]+)+\s*$/u;
+const SOCIAL_TAG_RE = /^(?:fyp|viral|tiktok|shorts?|lyrics?|lyricsongs?|lyricsedit|music|songs?|pianocover|popmusic)$/i;
+const BRACKET_SOURCE_NOISE_RE = /^(?:(?:official\s+)?(?:(?:music|lyric)\s+)?(?:video|audio)|lyrics?|visuali[sz]er|(?:(?:beginner|intermediate|advanced)\s+)?(?:piano\s+)?tutorial|(?:official\s+)?(?:music\s+)?cover|karaoke|hd|4k|shorts?)(?:\s+(?:hd|4k))?$/i;
+const TRAILING_TOPIC_RE = /\s+[-–—|]\s*topic$/i;
+
+function stripTrailingHashtags(value: string): string {
+  const match = TRAILING_HASHTAGS_RE.exec(value);
+  if (!match) return value;
+  const tags = match[0].match(/#[^\s#]+/gu) ?? [];
+  const isPublishingNoise = tags.length >= 2 || tags.every((tag) => SOCIAL_TAG_RE.test(tag.slice(1).replace(/_/g, '')));
+  return isPublishingNoise ? value.slice(0, match.index).trim() : value;
+}
+
+/**
+ * Removes source-site decoration without rewriting the actual song name.
+ * Only trailing hashtag runs and bracket groups containing known publishing
+ * noise are removed; meaningful qualifiers such as “Live”, “Remix”, or a
+ * featured artist remain intact.
+ */
+export function cleanMediaTitle(title: string | null | undefined): string | null {
+  if (!title) return null;
+  let cleaned = title.replace(/\s+/g, ' ').trim();
+  cleaned = stripTrailingHashtags(cleaned);
+
+  let previous = '';
+  while (cleaned !== previous) {
+    previous = cleaned;
+    cleaned = cleaned.replace(/\s*[([\{]([^\])\}]+)[\])\}]\s*$/u, (match, contents: string) =>
+      BRACKET_SOURCE_NOISE_RE.test(contents.trim()) ? '' : match,
+    ).trim();
+  }
+
+  return cleaned || null;
+}
+
+/** Conservative cleanup for uploader/channel decoration on artist lines. */
+export function cleanMediaArtist(artist: string | null | undefined): string | null {
+  if (!artist) return null;
+  const cleaned = artist
+    .replace(/\s+/g, ' ')
+    .trim();
+  const withoutTags = stripTrailingHashtags(cleaned);
+  return withoutTags.replace(TRAILING_TOPIC_RE, '').trim() || null;
+}
 
 export function looksLikeGarbageTitle(title: string | null | undefined): boolean {
   if (!title) return true;
@@ -35,8 +79,10 @@ function formatDuration(seconds: number | null | undefined): string | null {
  * shows as a humane "Untitled · 3:33" instead of a wall of base64.
  */
 export function displayTitle(media: Pick<Media, 'title' | 'recognized_title' | 'duration_seconds'>): string {
-  if (media.title && !looksLikeGarbageTitle(media.title)) return media.title;
-  if (media.recognized_title) return media.recognized_title;
+  const title = cleanMediaTitle(media.title);
+  const recognizedTitle = cleanMediaTitle(media.recognized_title);
+  if (title && !looksLikeGarbageTitle(title)) return title;
+  if (recognizedTitle) return recognizedTitle;
   if (media.title) {
     const duration = formatDuration(media.duration_seconds);
     return duration ? `Untitled · ${duration}` : 'Untitled track';
@@ -47,7 +93,7 @@ export function displayTitle(media: Pick<Media, 'title' | 'recognized_title' | '
 /** Artist line, or null when there's nothing real to say — callers can hide
  * the line entirely instead of printing a noisy "Unknown artist". */
 export function displayArtist(media: Pick<Media, 'artist' | 'recognized_artist'>): string | null {
-  return media.artist ?? media.recognized_artist ?? null;
+  return cleanMediaArtist(media.artist) ?? cleanMediaArtist(media.recognized_artist);
 }
 
 /** Resolves a media thumbnail to something an <Image> can load. Backend-

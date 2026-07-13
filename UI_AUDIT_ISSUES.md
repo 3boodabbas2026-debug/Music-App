@@ -180,6 +180,8 @@ per identity.
    card) — confirms this is systemic, not a one-off, and should be fixed
    once in `displayTitle` rather than per-screen.
 
+   **Status: fixed in codex/ui-audit-completion**
+
 4. **No animations** — grid↔list view toggle snaps instantly; cards have no
    entrance transition and only the play button fades on hover.
 
@@ -407,6 +409,8 @@ lrclib. Also worth distinguishing "uploader/channel name" from "real artist"
 in the data model if that distinction doesn't already exist, since
 `capo.piano` (a channel) and `Robert Miles` (the actual artist) are very
 different things for a lyrics/metadata lookup.
+
+**Status: fixed in codex/ui-audit-completion**
 
 ---
 

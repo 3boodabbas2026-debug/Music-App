@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { API_BASE_URL } from '../../config';
 import { colors, radii } from '../../theme/tokens';
-import { coverGlyphColor, coverGradient } from '../../utils/mediaDisplay';
+import { coverGlyphColor, coverGradient, displayArtist, displayTitle } from '../../utils/mediaDisplay';
 
 export type ArtworkMedia = {
   id?: string | number | null;
@@ -13,6 +13,7 @@ export type ArtworkMedia = {
   recognized_title?: string | null;
   artist?: string | null;
   recognized_artist?: string | null;
+  duration_seconds?: number | null;
   media_type?: 'audio' | 'video' | string | null;
   thumbnail_url?: string | null;
   thumbnailUrl?: string | null;
@@ -47,8 +48,15 @@ export function Artwork({
 }: Props) {
   const key = String(media?.id ?? resolveUri(media) ?? 'untitled');
   const uri = resolveUri(media);
-  const title = media?.title ?? media?.recognized_title ?? 'Untitled track';
-  const artist = media?.artist ?? media?.recognized_artist;
+  const title = displayTitle({
+    title: media?.title ?? null,
+    recognized_title: media?.recognized_title ?? null,
+    duration_seconds: media?.duration_seconds ?? null,
+  });
+  const artist = displayArtist({
+    artist: media?.artist ?? null,
+    recognized_artist: media?.recognized_artist ?? null,
+  });
   const label = accessibilityLabel ?? `${title}${artist ? ` by ${artist}` : ''} artwork`;
   const dimensions: ViewStyle = { width: size, height: size };
 

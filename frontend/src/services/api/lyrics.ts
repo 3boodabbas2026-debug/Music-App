@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { Media } from './types';
-import { looksLikeGarbageTitle } from '../../utils/mediaDisplay';
+import { cleanMediaArtist, cleanMediaTitle, looksLikeGarbageTitle } from '../../utils/mediaDisplay';
 
 /**
  * Lyrics via lrclib.net — a free, CORS-open lyrics database with word-for-word
@@ -24,6 +24,55 @@ type LrclibRecord = {
 const memoryCache = new Map<string, Lyrics | null>();
 
 const LRC_LINE = /\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\](.*)/;
+const TITLE_ARTIST_SEPARATOR = /\s+[-–—]\s+/;
+
+type LyricsSearchCandidate = { title: string; artist: string | null };
+
+/**
+ * Builds conservative lookup variants from cleaned metadata. Recognition is
+ * authoritative when available; a two-part scraped title is tried in both
+ * common “Artist — Title” and “Title — Artist” orientations instead of
+ * guessing which convention a source used.
+ */
+export function buildLyricsSearchCandidates(media: Media): LyricsSearchCandidate[] {
+  const candidates: LyricsSearchCandidate[] = [];
+  const add = (title: string | null, artist: string | null) => {
+    if (!title || looksLikeGarbageTitle(title)) return;
+    const key = `${title.toLocaleLowerCase()}\u0000${artist?.toLocaleLowerCase() ?? ''}`;
+    if (candidates.some((candidate) =>
+      `${candidate.title.toLocaleLowerCase()}\u0000${candidate.artist?.toLocaleLowerCase() ?? ''}` === key
+    )) return;
+    candidates.push({ title, artist });
+  };
+
+  const recognizedTitle = cleanMediaTitle(media.recognized_title);
+  const recognizedArtist = cleanMediaArtist(media.recognized_artist);
+  const rawTitle = cleanMediaTitle(media.title);
+  const rawArtist = cleanMediaArtist(media.artist);
+
+  add(recognizedTitle, recognizedArtist ?? rawArtist);
+  add(rawTitle, rawArtist ?? recognizedArtist);
+
+  if (rawTitle) {
+    const parts = rawTitle.split(TITLE_ARTIST_SEPARATOR).map((part) => part.trim()).filter(Boolean);
+    if (parts.length === 2) {
+      add(parts[0], parts[1]);
+      add(parts[1], parts[0]);
+    }
+  }
+
+  return candidates;
+}
+
+function lyricsCacheKey(mediaId: string, candidates: LyricsSearchCandidate[]): string {
+  const fingerprint = JSON.stringify(candidates);
+  let hash = 2166136261;
+  for (let index = 0; index < fingerprint.length; index += 1) {
+    hash ^= fingerprint.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `lyrics-v2:${mediaId}:${(hash >>> 0).toString(36)}`;
+}
 
 export function parseLrc(lrc: string): SyncedLine[] {
   const lines: SyncedLine[] = [];
@@ -40,20 +89,19 @@ export function parseLrc(lrc: string): SyncedLine[] {
   return lines.sort((a, b) => a.time - b.time);
 }
 
-async function queryLrclib(media: Media): Promise<LrclibRecord | null> {
-  // Never search lrclib with a base64-ish garbage title — it can only miss.
-  const title = !looksLikeGarbageTitle(media.title) ? media.title : media.recognized_title;
-  const artist = media.artist ?? media.recognized_artist;
-  if (!title) return null;
-
+async function queryLrclib(media: Media, candidates: LyricsSearchCandidate[]): Promise<LrclibRecord | null> {
   const base = 'https://lrclib.net/api';
   const attempts: string[] = [];
-  if (artist && media.duration_seconds) {
-    attempts.push(
-      `${base}/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}&duration=${Math.round(media.duration_seconds)}`,
-    );
+  for (const { title, artist } of candidates) {
+    if (artist && media.duration_seconds) {
+      attempts.push(
+        `${base}/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}&duration=${Math.round(media.duration_seconds)}`,
+      );
+    }
   }
-  attempts.push(`${base}/search?q=${encodeURIComponent(artist ? `${artist} ${title}` : title)}`);
+  for (const { title, artist } of candidates) {
+    attempts.push(`${base}/search?q=${encodeURIComponent(artist ? `${artist} ${title}` : title)}`);
+  }
 
   for (const url of attempts) {
     try {
@@ -70,21 +118,22 @@ async function queryLrclib(media: Media): Promise<LrclibRecord | null> {
 }
 
 export async function fetchLyrics(media: Media): Promise<Lyrics | null> {
-  if (memoryCache.has(media.id)) return memoryCache.get(media.id) ?? null;
+  const candidates = buildLyricsSearchCandidates(media);
+  const storageKey = lyricsCacheKey(media.id, candidates);
+  if (memoryCache.has(storageKey)) return memoryCache.get(storageKey) ?? null;
 
-  const storageKey = `lyrics-v1:${media.id}`;
   try {
     const cached = await AsyncStorage.getItem(storageKey);
     if (cached) {
       const parsed = JSON.parse(cached) as Lyrics | null;
-      memoryCache.set(media.id, parsed);
+      memoryCache.set(storageKey, parsed);
       return parsed;
     }
   } catch {
     // Cache miss path below covers it.
   }
 
-  const record = await queryLrclib(media);
+  const record = await queryLrclib(media, candidates);
   const lyrics: Lyrics | null = record
     ? {
         synced: record.syncedLyrics ? parseLrc(record.syncedLyrics) : null,
@@ -92,7 +141,10 @@ export async function fetchLyrics(media: Media): Promise<Lyrics | null> {
       }
     : null;
 
-  memoryCache.set(media.id, lyrics);
-  AsyncStorage.setItem(storageKey, JSON.stringify(lyrics)).catch(() => {});
+  memoryCache.set(storageKey, lyrics);
+  // A miss may be a transient network/CORS failure. Cache only real lyrics
+  // on disk so a later app session can retry instead of preserving null
+  // forever after the metadata-cleaning fix.
+  if (lyrics) AsyncStorage.setItem(storageKey, JSON.stringify(lyrics)).catch(() => {});
   return lyrics;
 }
