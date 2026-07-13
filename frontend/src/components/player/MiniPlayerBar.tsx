@@ -7,10 +7,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Artwork } from '../ui/Artwork';
 import { GlassPanel } from '../ui/GlassPanel';
-import { useDockClearance } from '../../hooks/useBottomChromeClearance';
+import { useDockClearance, usePlayerChromeBottomOffset } from '../../hooks/useBottomChromeClearance';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useTrackAccent } from '../../hooks/useTrackAccent';
 import { usePlayerStore } from '../../store/playerStore';
+import { useVideoPlayerStore } from '../../store/videoPlayerStore';
 import { displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 import { colors, glass, radii, spacing, typography } from '../../theme/tokens';
 import type { RootStackParamList } from '../../navigation/types';
@@ -101,6 +102,7 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
   const insets = useSafeAreaInsets();
   const { isDesktop } = useResponsive();
   const dockClearance = useDockClearance();
+  const contextualBottomOffset = usePlayerChromeBottomOffset();
   // Mounted by all three tab screens, and tabs stay alive in the background —
   // without this gate, three copies render (and tick) at once.
   const isFocused = useIsFocused();
@@ -116,17 +118,20 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
   const playNext = usePlayerStore((s) => s.playNext);
   const playPrev = usePlayerStore((s) => s.playPrev);
   const queue = usePlayerStore((s) => s.queue);
+  const videoMode = useVideoPlayerStore((state) => state.mode);
   const [queueOpen, setQueueOpen] = useState(false);
   const accentColor = useTrackAccent(currentMedia ? thumbnailUri(currentMedia) : null);
 
-  if (!currentMedia || !isFocused) return null;
+  if (!currentMedia || !isFocused || videoMode !== 'closed') return null;
 
   const progress = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0;
 
   // On phones the bar floats above the bottom dock; on desktop there is no
   // dock, so it hugs the bottom edge as a centered strip.
   const bottom =
-    (isDesktop ? insets.bottom + spacing.md : insets.bottom + dockClearance + spacing.sm) + bottomOffset;
+    (isDesktop ? insets.bottom + spacing.md : insets.bottom + dockClearance + spacing.sm) +
+    bottomOffset +
+    contextualBottomOffset;
 
   return (
     <View pointerEvents="box-none" style={[styles.holder, isDesktop && styles.holderDesktop, { bottom }]}>

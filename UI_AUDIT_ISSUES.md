@@ -238,6 +238,10 @@ minimized/floating state seen over the Library screen.
    sub-complaint beyond "I don't like how the video displayed" — needs a
    concrete design direction before implementation.
 
+   **Status: fixed in codex/ui-audit-open-items** — the expanded player now
+   uses a responsive cinema stage, poster-derived night ambience, and one
+   coherent frosted-glass chrome hierarchy while retaining native controls.
+
 2. **Wants next/prev to visibly swap the video content, not just audio.**
    Needs verification before assuming it's broken: `GlobalVideoStage.tsx`
    already builds a `videoQueue` from the library's video items and wires
@@ -275,6 +279,10 @@ minimized/floating state seen over the Library screen.
    constrain it to never overlap primary content (fixed corner dock, correct
    z-index, smaller size), or (c) replace it with a persistent strip matching
    the audio mini-player's pattern instead of a floating card.
+
+   **Status: fixed in codex/ui-audit-open-items** — option (c) implemented as
+   a fixed frosted mini-video strip sharing the audio player's dock, safe-area,
+   desktop-rail, and contextual bottom-bar clearance behavior.
 
 ---
 

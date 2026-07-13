@@ -1,6 +1,7 @@
 import { layout } from '../theme/tokens';
 import { usePlayerStore } from '../store/playerStore';
 import { useUiStore } from '../store/uiStore';
+import { useVideoPlayerStore } from '../store/videoPlayerStore';
 import { useResponsive } from './useResponsive';
 
 /**
@@ -29,7 +30,15 @@ export function useDockClearance(): number {
  */
 export function useBottomChromeClearance(): number {
   const dockClearance = useDockClearance();
-  const hasMiniPlayer = usePlayerStore((state) => !!state.currentMedia);
+  const hasAudioMiniPlayer = usePlayerStore((state) => !!state.currentMedia);
+  const hasVideoMiniPlayer = useVideoPlayerStore((state) => state.mode === 'mini');
 
-  return dockClearance + (hasMiniPlayer ? MINI_PLAYER_CLEARANCE : 0);
+  return dockClearance + (hasAudioMiniPlayer || hasVideoMiniPlayer ? MINI_PLAYER_CLEARANCE : 0);
+}
+
+/** Extra height occupied by focused, screen-specific bottom chrome (for
+ * example Library's multi-select actions). Mini players add this to their
+ * dock/safe-area position instead of learning about every screen directly. */
+export function usePlayerChromeBottomOffset(): number {
+  return useUiStore((state) => state.bottomOverlayOffset);
 }

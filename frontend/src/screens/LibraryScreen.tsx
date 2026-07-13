@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -56,6 +56,7 @@ import { MAX_PINS, usePinStore } from '../store/pinStore';
 import { usePlayerStore } from '../store/playerStore';
 import { usePlaylistStore } from '../store/playlistStore';
 import { useVideoPlayerStore } from '../store/videoPlayerStore';
+import { useUiStore } from '../store/uiStore';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage } from '../utils/apiError';
 import { colors, gradients, radii, spacing, typography } from '../theme/tokens';
@@ -95,11 +96,13 @@ const LIBRARY_MAX_WIDTH = 1160;
 export function LibraryScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<MainTabParamList, 'Library'>>();
+  const isFocused = useIsFocused();
   const { width } = useWindowDimensions();
   const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
   const bottomChromeClearance = useBottomChromeClearance();
   const dockClearance = useDockClearance();
+  const setBottomOverlayOffset = useUiStore((state) => state.setBottomOverlayOffset);
   const { items, isLoading, refresh, upsert, remove } = useLibraryStore();
   const playQueue = usePlayerStore((s) => s.playQueue);
   const playNextInQueue = usePlayerStore((s) => s.playNextInQueue);
@@ -463,6 +466,11 @@ export function LibraryScreen() {
     ? Math.max(bulkBarHeight - dockClearance, insets.bottom + spacing.xxxl)
     : 0;
 
+  useEffect(() => {
+    setBottomOverlayOffset(isFocused ? bulkBarOffset : 0);
+    return () => setBottomOverlayOffset(0);
+  }, [bulkBarOffset, isFocused, setBottomOverlayOffset]);
+
   function resetFilters() {
     setQuery('');
     setGenreFilter(null);
@@ -688,6 +696,7 @@ export function LibraryScreen() {
 
       {selectMode && (
         <View
+          testID="library-bulk-bar"
           onLayout={(event) => setBulkBarHeight(Math.ceil(event.nativeEvent.layout.height))}
           style={[
             styles.bulkBar,
@@ -742,7 +751,7 @@ export function LibraryScreen() {
           </View>
         </View>
       )}
-      <MiniPlayerBar bottomOffset={bulkBarOffset} />
+      <MiniPlayerBar />
 
       {/* Track actions sheet */}
       <CompactGlassSheet

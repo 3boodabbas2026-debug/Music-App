@@ -10,6 +10,28 @@ const user = {
   created_at: new Date().toISOString(),
 };
 
+function videoFixture(id: string, title: string, createdAt: string) {
+  return {
+    id,
+    media_type: 'video',
+    source: 'other_url',
+    source_url: null,
+    title,
+    artist: 'Star Hollow Studio',
+    album: null,
+    thumbnail_url: null,
+    recognized_title: null,
+    recognized_artist: null,
+    genre: null,
+    release_year: null,
+    is_remix: null,
+    fade_in_ms: null,
+    fade_out_ms: null,
+    duration_seconds: 120,
+    created_at: createdAt,
+  };
+}
+
 async function mockApi(page: import('@playwright/test').Page, library: unknown[] = []) {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
@@ -186,4 +208,70 @@ test('a 520-track library stays virtualized, searchable, and selectable', async 
   await expect(targetCard).toHaveAttribute('aria-selected', 'true');
   await expect(durationBadge).toHaveCount(0);
   await expect(page.getByText('1 selected', { exact: true })).toBeVisible();
+});
+
+test('video minimizes into fixed chrome above the mobile dock and Library bulk actions', async ({ page }) => {
+  await mockApi(page, [
+    videoFixture('video-first', 'First Light', '2026-07-13T12:00:00Z'),
+    videoFixture('video-second', 'Second Light', '2026-07-13T11:00:00Z'),
+  ]);
+  await login(page);
+  await page.getByRole('tab', { name: 'Library' }).click();
+  await page.getByRole('button', { name: 'First Light, Star Hollow Studio' }).click();
+
+  await expect(page.getByTestId('video-cinema-stage')).toBeVisible();
+  await expect(page.getByText('VIDEO 1 OF 2', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Show video controls' }).click();
+  await expect(page.getByRole('button', { name: 'Minimize video' })).toBeVisible();
+  await page.getByRole('button', { name: 'Minimize video' }).click();
+
+  const strip = page.getByTestId('video-mini-strip');
+  await expect(strip).toBeVisible();
+  await expect(page.getByTestId('video-mini-thumbnail')).toBeVisible();
+  await expect(strip.getByText('First Light', { exact: true })).toBeVisible();
+
+  const libraryTab = page.getByRole('tab', { name: 'Library' });
+  await expect
+    .poll(async () => {
+      const [stripBox, dockBox] = await Promise.all([strip.boundingBox(), libraryTab.boundingBox()]);
+      return !!stripBox && !!dockBox && stripBox.y + stripBox.height <= dockBox.y;
+    })
+    .toBe(true);
+
+  await page.getByRole('button', { name: 'Select tracks' }).click();
+  const bulkBar = page.getByTestId('library-bulk-bar');
+  await expect(bulkBar).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [stripBox, bulkBox] = await Promise.all([strip.boundingBox(), bulkBar.boundingBox()]);
+      return !!stripBox && !!bulkBox && stripBox.y + stripBox.height <= bulkBox.y;
+    })
+    .toBe(true);
+
+  await page.getByRole('button', { name: 'Close video' }).click();
+  await expect(strip).toHaveCount(0);
+});
+
+test('desktop video uses a framed 16:9 cinema stage and rail-aware mini strip', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApi(page, [videoFixture('video-desktop', 'Night Signal', '2026-07-13T12:00:00Z')]);
+  await login(page);
+  await page.getByRole('button', { name: 'Library', exact: true }).last().click();
+  await page.getByRole('button', { name: 'Night Signal, Star Hollow Studio' }).click();
+
+  const stage = page.getByTestId('video-cinema-stage');
+  await expect(stage).toBeVisible();
+  await expect
+    .poll(async () => {
+      const box = await stage.boundingBox();
+      return box ? box.width / box.height : 0;
+    })
+    .toBeCloseTo(16 / 9, 1);
+
+  await page.getByRole('button', { name: 'Show video controls' }).click();
+  await page.getByRole('button', { name: 'Minimize video' }).click();
+  const stripBox = await page.getByTestId('video-mini-strip-content').boundingBox();
+  expect(stripBox).not.toBeNull();
+  expect(stripBox!.x).toBeGreaterThanOrEqual(260);
+  expect(stripBox!.width).toBeLessThanOrEqual(640);
 });
