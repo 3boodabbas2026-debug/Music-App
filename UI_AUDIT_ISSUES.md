@@ -790,7 +790,8 @@ risk:
 
 ## Status
 
-All issues above: **not started**. This file is the source of truth for what
-to fix — update an issue's status inline (e.g. `**Status: fixed in <commit>**`)
-as work lands, rather than deleting resolved issues, so there's a record of
-what's been done.
+All confirmed, bounded fixes are complete on `codex/ui-audit-completion`;
+each completed entry is marked inline above. The items intentionally left
+open are the ones this file says require clarification, reproduction, a
+product/design decision, or separate feasibility work. Deferred items were
+not changed.
