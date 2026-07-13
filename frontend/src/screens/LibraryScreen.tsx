@@ -34,6 +34,7 @@ import {
   PlaylistsPane,
   SheetAction,
 } from '../components/library/LibrarySheets';
+import { useBottomChromeClearance, useDockClearance } from '../hooks/useBottomChromeClearance';
 import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Artwork } from '../components/ui/Artwork';
@@ -57,7 +58,7 @@ import { usePlaylistStore } from '../store/playlistStore';
 import { useVideoPlayerStore } from '../store/videoPlayerStore';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage } from '../utils/apiError';
-import { colors, gradients, layout, radii, spacing, typography } from '../theme/tokens';
+import { colors, gradients, radii, spacing, typography } from '../theme/tokens';
 import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 
 type Tab = 'all' | 'audio' | 'video' | 'favorites' | 'playlists';
@@ -97,6 +98,8 @@ export function LibraryScreen() {
   const { width } = useWindowDimensions();
   const { isDesktop } = useResponsive();
   const insets = useSafeAreaInsets();
+  const bottomChromeClearance = useBottomChromeClearance();
+  const dockClearance = useDockClearance();
   const { items, isLoading, refresh, upsert, remove } = useLibraryStore();
   const playQueue = usePlayerStore((s) => s.playQueue);
   const playNextInQueue = usePlayerStore((s) => s.playNextInQueue);
@@ -457,7 +460,7 @@ export function LibraryScreen() {
   // MiniPlayerBar already clears the mobile dock itself, so do not count that
   // shared dock padding a second time when lifting it above this bar.
   const bulkBarOffset = selectMode
-    ? Math.max(bulkBarHeight - (isDesktop ? 0 : layout.dockClearance), insets.bottom + spacing.xxxl)
+    ? Math.max(bulkBarHeight - dockClearance, insets.bottom + spacing.xxxl)
     : 0;
 
   function resetFilters() {
@@ -636,7 +639,11 @@ export function LibraryScreen() {
           maxToRenderPerBatch={10}
           removeClippedSubviews
           columnWrapperStyle={view === 'grid' ? styles.gridRow : undefined}
-          contentContainerStyle={[styles.listContent, visible.length === 0 && styles.emptyListContent]}
+          contentContainerStyle={[
+            styles.listContent,
+            { paddingBottom: bottomChromeClearance },
+            visible.length === 0 && styles.emptyListContent,
+          ]}
           ListEmptyComponent={
             <EmptyState
               icon={hasActiveFilters ? 'search-outline' : 'albums-outline'}
@@ -681,7 +688,7 @@ export function LibraryScreen() {
           onLayout={(event) => setBulkBarHeight(Math.ceil(event.nativeEvent.layout.height))}
           style={[
             styles.bulkBar,
-            { paddingBottom: insets.bottom + spacing.sm + (isDesktop ? 0 : layout.dockClearance) },
+            { paddingBottom: insets.bottom + spacing.sm + dockClearance },
           ]}
         >
           <Text style={styles.bulkLabel}>
@@ -922,7 +929,7 @@ const styles = StyleSheet.create({
   toolChipActive: { backgroundColor: 'rgba(99,214,181,0.18)' },
   fixNamesChip: { backgroundColor: 'rgba(99,214,181,0.14)', borderWidth: 1, borderColor: 'rgba(99,214,181,0.3)' },
   gridRow: { gap: spacing.md },
-  listContent: { gap: spacing.md, paddingBottom: layout.tabBarClearance },
+  listContent: { gap: spacing.md },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   bulkBar: {
     flexDirection: 'row',

@@ -14,6 +14,7 @@ import {
 
 import { Starwell } from '../components/scene/Starwell';
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
+import { useBottomChromeClearance } from '../hooks/useBottomChromeClearance';
 import { useResponsive } from '../hooks/useResponsive';
 import { RippleField } from '../components/ui/RippleField';
 import { Button } from '../components/ui/Button';
@@ -30,7 +31,7 @@ import { useLibraryStore } from '../store/libraryStore';
 import { useScanHistoryStore } from '../store/scanHistoryStore';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage, friendlyJobError, friendlyJobStage } from '../utils/apiError';
-import { colors, gradients, layout, radii, spacing, typography } from '../theme/tokens';
+import { colors, gradients, radii, spacing, typography } from '../theme/tokens';
 
 const LISTEN_SECONDS = 8;
 
@@ -39,8 +40,6 @@ const RING_SIZE = BUTTON_SIZE + 26;
 const RING_STROKE = 3.5;
 const PULSE_SIZE = BUTTON_SIZE + 26;
 const WAVE_BARS = 26;
-const MINI_PLAYER_CLEARANCE = 84;
-
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 type Phase = 'idle' | 'listening' | 'analyzing' | 'result';
@@ -53,6 +52,7 @@ function meteringToAmplitude(metering: number | undefined): number {
 export function RecognitionScreen() {
   const insets = useSafeAreaInsets();
   const { isDesktop } = useResponsive();
+  const bottomChromeClearance = useBottomChromeClearance();
   // This tab stays mounted when the user switches to Home/Library — without
   // this, its RippleField + Starwell instance keeps animating invisibly.
   const isFocused = useIsFocused();
@@ -256,10 +256,6 @@ export function RecognitionScreen() {
   // Live waveform: re-renders arrive every 100ms from the recorder state poll,
   // so plain Views dance with the real mic level — no extra timers needed.
   const wavePhase = Date.now() / 150;
-  const bottomChromeClearance = isDesktop
-    ? spacing.md + MINI_PLAYER_CLEARANCE + spacing.lg
-    : layout.dockClearance + MINI_PLAYER_CLEARANCE + spacing.md;
-
   return (
     <View style={styles.root}>
       {isFocused && <RippleField />}
@@ -283,7 +279,7 @@ export function RecognitionScreen() {
           isDesktop && styles.contentDesktop,
           {
             paddingTop: insets.top + spacing.lg,
-            paddingBottom: insets.bottom + bottomChromeClearance,
+            paddingBottom: insets.bottom + bottomChromeClearance + spacing.md,
           },
         ]}
       >

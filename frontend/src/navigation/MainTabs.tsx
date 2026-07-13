@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,7 +10,8 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { JobsScreen } from '../screens/JobsScreen';
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { RecognitionScreen } from '../screens/RecognitionScreen';
-import { colors, layout, radii, shadows, spacing, typography } from '../theme/tokens';
+import { useUiStore } from '../store/uiStore';
+import { colors, layout, motion, radii, shadows, spacing, typography } from '../theme/tokens';
 import type { MainTabParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -91,6 +92,30 @@ function DockItem({
 
 function CompactDock({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const dockCollapsed = useUiStore((store) => store.dockCollapsed);
+  const toggleDockCollapsed = useUiStore((store) => store.toggleDockCollapsed);
+  const visibility = useRef(new Animated.Value(dockCollapsed ? 0 : 1)).current;
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReduceMotion(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    Animated.timing(visibility, {
+      toValue: dockCollapsed ? 0 : 1,
+      duration: reduceMotion ? 0 : motion.duration.base,
+      useNativeDriver: true,
+    }).start();
+  }, [dockCollapsed, reduceMotion, visibility]);
 
   function pressRoute(index: number) {
     const route = state.routes[index];
@@ -105,18 +130,62 @@ function CompactDock({ state, navigation }: BottomTabBarProps) {
 
   return (
     <View pointerEvents="box-none" style={[styles.dockWrap, { paddingBottom: insets.bottom + layout.dockBottomGap }]}>
-      <View style={styles.dockSurface}>
-        <View pointerEvents="none" style={styles.dockHighlight} />
-        {state.routes.map((route, index) => (
-          <DockItem
-            key={route.key}
-            presentation={TAB_PRESENTATION[route.name as keyof MainTabParamList]}
-            focused={state.index === index}
-            onPress={() => pressRoute(index)}
-            onLongPress={() => longPressRoute(index)}
-          />
-        ))}
-      </View>
+      <Animated.View
+        pointerEvents={dockCollapsed ? 'none' : 'auto'}
+        accessibilityElementsHidden={dockCollapsed}
+        importantForAccessibility={dockCollapsed ? 'no-hide-descendants' : 'auto'}
+        style={[
+          styles.dockChrome,
+          {
+            opacity: visibility,
+            transform: [{ translateY: visibility.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+          },
+        ]}
+      >
+        <View style={styles.dockSurface}>
+          <View pointerEvents="none" style={styles.dockHighlight} />
+          {state.routes.map((route, index) => (
+            <DockItem
+              key={route.key}
+              presentation={TAB_PRESENTATION[route.name as keyof MainTabParamList]}
+              focused={state.index === index}
+              onPress={() => pressRoute(index)}
+              onLongPress={() => longPressRoute(index)}
+            />
+          ))}
+        </View>
+        <Pressable
+          onPress={toggleDockCollapsed}
+          accessibilityRole="button"
+          accessibilityLabel="Collapse navigation"
+          style={({ pressed }) => [styles.dockToggle, pressed && styles.dockItemPressed]}
+        >
+          <Ionicons name="chevron-down" size={20} color={colors.textSecondary} />
+        </Pressable>
+      </Animated.View>
+
+      <Animated.View
+        pointerEvents={dockCollapsed ? 'auto' : 'none'}
+        accessibilityElementsHidden={!dockCollapsed}
+        importantForAccessibility={dockCollapsed ? 'auto' : 'no-hide-descendants'}
+        style={[
+          styles.expandWrap,
+          { bottom: insets.bottom + layout.dockBottomGap },
+          {
+            opacity: visibility.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+            transform: [{ translateY: visibility.interpolate({ inputRange: [0, 1], outputRange: [0, 14] }) }],
+          },
+        ]}
+      >
+        <Pressable
+          onPress={toggleDockCollapsed}
+          accessibilityRole="button"
+          accessibilityLabel="Expand navigation"
+          style={({ pressed }) => [styles.expandButton, pressed && styles.dockItemPressed]}
+        >
+          <Ionicons name="chevron-up" size={22} color={colors.cyan} />
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }
@@ -166,9 +235,15 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
   },
-  dockSurface: {
+  dockChrome: {
     width: '100%',
     maxWidth: 440,
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: spacing.sm,
+  },
+  dockSurface: {
+    flex: 1,
     height: 68,
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -177,6 +252,33 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(158,181,170,0.16)',
+    backgroundColor: 'rgba(9,17,14,0.96)',
+    ...shadows.card,
+  },
+  dockToggle: {
+    width: 44,
+    minHeight: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(158,181,170,0.16)',
+    backgroundColor: 'rgba(9,17,14,0.96)',
+    ...shadows.card,
+  },
+  expandWrap: {
+    position: 'absolute',
+    bottom: 0,
+    alignSelf: 'center',
+  },
+  expandButton: {
+    width: 48,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: 'rgba(99,214,181,0.28)',
     backgroundColor: 'rgba(9,17,14,0.96)',
     ...shadows.card,
   },

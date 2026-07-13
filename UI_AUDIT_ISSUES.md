@@ -27,6 +27,8 @@ explicit collapse affordance. Respect `prefers-reduced-motion` /
 consistent with how `SanctuaryMode.tsx` and `Starwell.tsx` already gate their
 animations.
 
+**Status: fixed in codex/ui-audit-completion**
+
 ### Issue 1b — Content gets cut off behind the tab bar
 
 **Screen:** Today (Offline shelf card at the bottom of the scroll).
@@ -42,6 +44,8 @@ inset" constant/hook** (there is already a `layout.dockClearance` /
 `layout.tabBarClearance` token in `theme/theme.ts` — audit whether every
 scrollable screen actually uses it, since this keeps recurring) and apply it
 everywhere content can sit near the tab bar or mini player.
+
+**Status: fixed in codex/ui-audit-completion**
 
 ---
 
@@ -474,6 +478,8 @@ since the same root causes keep resurfacing:
   screen. A single shared layout constant/hook, audited across *every*
   scrollable screen, would prevent this from recurring a fourth and fifth
   time as new screens get built.
+
+  **Status: fixed in codex/ui-audit-completion**
 - **No real light theme exists.** Every token in `theme/theme.ts` (`palette`,
   `glass`, `ambient`, `gradients`) is hardcoded dark. If a genuine light mode
   is wanted (Issue 2.3), that's a token-architecture change — a parallel

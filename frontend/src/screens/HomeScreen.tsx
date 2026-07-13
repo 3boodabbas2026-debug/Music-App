@@ -26,6 +26,7 @@ import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SectionHeader } from '../components/ui/SectionHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
+import { useBottomChromeClearance } from '../hooks/useBottomChromeClearance';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useResponsive } from '../hooks/useResponsive';
 import type { MainTabParamList, RootStackParamList } from '../navigation/types';
@@ -41,7 +42,7 @@ import { usePlayerStore } from '../store/playerStore';
 import { usePlayHistoryStore } from '../store/playHistoryStore';
 import { toast } from '../store/toastStore';
 import { useVideoPlayerStore } from '../store/videoPlayerStore';
-import { colors, glass, glassBlur, layout, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, glassBlur, radii, spacing, typography } from '../theme/tokens';
 import { apiErrorMessage, friendlyJobStage } from '../utils/apiError';
 import { displayArtist, displayTitle } from '../utils/mediaDisplay';
 
@@ -141,6 +142,7 @@ export function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
   const { isDesktop } = useResponsive();
+  const bottomChromeClearance = useBottomChromeClearance();
   const user = useAuthStore((state) => state.user);
   const libraryItems = useLibraryStore((state) => state.items);
   const libraryHydrated = useLibraryStore((state) => state.hydrated);
@@ -581,7 +583,7 @@ export function HomeScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={{ paddingBottom: bottomChromeClearance }}
         >
           <Reveal>
             <View style={styles.headerRow}>
@@ -660,7 +662,6 @@ export function HomeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#050A0B' },
-  scroll: { paddingBottom: layout.tabBarClearance },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.md },
   headerCopy: { flex: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

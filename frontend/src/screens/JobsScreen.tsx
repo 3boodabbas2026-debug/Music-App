@@ -12,13 +12,14 @@ import { GlassPanel } from '../components/ui/GlassPanel';
 import { ProgressRing } from '../components/ui/ProgressRing';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
+import { useBottomChromeClearance } from '../hooks/useBottomChromeClearance';
 import type { RootStackParamList } from '../navigation/types';
 import * as downloadsApi from '../services/api/downloads';
 import { watchJob } from '../services/api/jobSocket';
 import type { Job } from '../services/api/types';
 import { useLibraryStore } from '../store/libraryStore';
 import { toast } from '../store/toastStore';
-import { colors, layout, radii, spacing, typography } from '../theme/tokens';
+import { colors, radii, spacing, typography } from '../theme/tokens';
 import { apiErrorMessage, friendlyJobError, friendlyJobStage } from '../utils/apiError';
 import { displayTitle } from '../utils/mediaDisplay';
 
@@ -125,6 +126,7 @@ function JobRow({ job, onCancel, onRetry }: { job: Job; onCancel: () => void; on
 export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
+  const bottomChromeClearance = useBottomChromeClearance();
   const [jobs, setJobs] = useState<Job[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const upsertMedia = useLibraryStore((state) => state.upsert);
@@ -209,7 +211,11 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
       <ScreenContainer maxWidth={760}>
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.scroll, embedded && styles.scrollEmbedded, activityEmpty && styles.scrollEmpty]}
+          contentContainerStyle={[
+            styles.scroll,
+            embedded && { paddingBottom: bottomChromeClearance },
+            activityEmpty && styles.scrollEmpty,
+          ]}
         >
           <View style={styles.headerRow}>
             {!embedded ? (
@@ -328,7 +334,6 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#050A0B' },
   scroll: { paddingBottom: spacing.xxl },
-  scrollEmbedded: { paddingBottom: layout.tabBarClearance },
   scrollEmpty: { flexGrow: 1 },
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.lg },
   headerCopy: { flex: 1 },

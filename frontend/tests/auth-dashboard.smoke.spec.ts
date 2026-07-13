@@ -70,6 +70,23 @@ test('the 390px mobile shell navigates across every primary destination without 
   await expect(page.getByRole('tab', { name: 'Today' })).toHaveAttribute('aria-selected', 'true');
   await expectNoHorizontalOverflow(page);
 
+  await page.getByRole('button', { name: 'Collapse navigation' }).click();
+  await expect(page.getByRole('button', { name: 'Expand navigation' })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.getByRole('tab', { name: 'Today' }).evaluate((element) => {
+        let current: Element | null = element;
+        while (current) {
+          if (Number.parseFloat(window.getComputedStyle(current).opacity) === 0) return true;
+          current = current.parentElement;
+        }
+        return false;
+      }),
+    )
+    .toBe(true);
+  await page.getByRole('button', { name: 'Expand navigation' }).click();
+  await expect(page.getByRole('tab', { name: 'Today' })).toBeVisible();
+
   await page.getByRole('tab', { name: 'Library' }).click();
   await expect(page.getByText('YOUR MUSIC', { exact: true })).toBeVisible();
   await expect(page.getByPlaceholder('Search title or artist')).toBeVisible();

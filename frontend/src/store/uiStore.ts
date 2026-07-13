@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 
 type UiState = {
+  /** Mobile-only bottom navigation state. Kept global so screen clearance can follow the visible dock. */
+  dockCollapsed: boolean;
+  toggleDockCollapsed: () => void;
   sidebarOpen: boolean;
   openSidebar: () => void;
   closeSidebar: () => void;
@@ -11,6 +14,9 @@ type UiState = {
 };
 
 export const useUiStore = create<UiState>((set) => ({
+  dockCollapsed: false,
+  toggleDockCollapsed: () => set((state) => ({ dockCollapsed: !state.dockCollapsed })),
+
   sidebarOpen: false,
   openSidebar: () => set({ sidebarOpen: true }),
   closeSidebar: () => set({ sidebarOpen: false }),
