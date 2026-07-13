@@ -664,6 +664,10 @@ that's answered.
 — ACRCloud Cover Song/Humming Identification is now a separately gated mode;
 live provider verification still requires project credentials.
 
+**Status: Identify UI fixed in codex/forest-and-remaining-audit** — “Playing
+nearby” and “Hum or sing” are explicit modes, and the latter is visibly gated
+when the server has no melody-provider credentials.
+
 ---
 
 ## Issue 18 — Activity screen: functionally fine, just needs the same design pass as everything else

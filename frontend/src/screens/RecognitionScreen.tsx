@@ -22,6 +22,7 @@ import { GlassPanel } from '../components/ui/GlassPanel';
 import { Artwork } from '../components/ui/Artwork';
 import { PressableScale } from '../components/ui/PressableScale';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
 import * as downloadsApi from '../services/api/downloads';
 import { watchJob } from '../services/api/jobSocket';
@@ -31,7 +32,7 @@ import { useLibraryStore } from '../store/libraryStore';
 import { useScanHistoryStore } from '../store/scanHistoryStore';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage, friendlyJobError, friendlyJobStage } from '../utils/apiError';
-import { colors, gradients, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, gradients, radii, spacing, typography } from '../theme/tokens';
 
 const LISTEN_SECONDS = 15;
 
@@ -71,6 +72,8 @@ export function RecognitionScreen() {
   const addScan = useScanHistoryStore((s) => s.add);
   const clearScans = useScanHistoryStore((s) => s.clear);
   const [manualQuery, setManualQuery] = useState('');
+  const [mode, setMode] = useState<recognitionsApi.RecognitionMode>('recording');
+  const [capabilities, setCapabilities] = useState<recognitionsApi.RecognitionCapabilities | null>(null);
 
   const pulseA = useRef(new Animated.Value(0)).current;
   const pulseB = useRef(new Animated.Value(0)).current;
@@ -95,6 +98,23 @@ export function RecognitionScreen() {
     },
     [],
   );
+
+  useEffect(() => {
+    let alive = true;
+    recognitionsApi
+      .getCapabilities()
+      .then((value) => {
+        if (!alive) return;
+        setCapabilities(value);
+        if (!value.humming) setMode('recording');
+      })
+      .catch(() => {
+        if (alive) setCapabilities({ recording: true, humming: false, humming_provider: null });
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Sonar pulses + background drift + the 8s countdown ring. Presentation only.
   useEffect(() => {
@@ -187,7 +207,7 @@ export function RecognitionScreen() {
       await recorder.stop();
       const uri = recorder.uri;
       if (!uri) throw new Error('No recording captured');
-      const job = await recognitionsApi.recognizeClip(uri, 'clip.m4a', 'audio/m4a');
+      const job = await recognitionsApi.recognizeClip(uri, 'clip.m4a', 'audio/m4a', mode);
       setMatch(job);
       setPhase('result');
       addScan({
@@ -285,12 +305,37 @@ export function RecognitionScreen() {
       >
         <View style={styles.header}>
           <Text style={styles.eyebrow}>IDENTIFY MUSIC</Text>
-          {phase === 'idle' && <Text style={styles.megaTitle}>What’s playing?</Text>}
+          {phase === 'idle' && (
+            <Text style={styles.megaTitle}>{mode === 'humming' ? 'Hum a melody' : 'What’s playing?'}</Text>
+          )}
           {phase === 'listening' && <Text style={styles.megaSolid}>Listening…</Text>}
           {phase === 'analyzing' && <Text style={styles.megaSolid}>Analyzing…</Text>}
           {phase === 'result' && (
             <Text style={styles.megaSolid}>{match?.stage_label === 'matched' ? 'Got it.' : 'Hmm…'}</Text>
           )}
+          {phase === 'idle' ? (
+            <View style={styles.modeBlock}>
+              <SegmentedControl
+                accessibilityLabel="Recognition method"
+                value={mode}
+                onValueChange={setMode}
+                options={[
+                  { value: 'recording', label: 'Playing nearby', icon: 'radio-outline' },
+                  {
+                    value: 'humming',
+                    label: 'Hum or sing',
+                    icon: 'mic-outline',
+                    disabled: capabilities?.humming !== true,
+                  },
+                ]}
+              />
+              {capabilities?.humming === false ? (
+                <Text style={styles.capabilityHint}>
+                  Hum or sing becomes available when ACRCloud is connected by the server owner.
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.buttonZone}>
@@ -348,7 +393,7 @@ export function RecognitionScreen() {
           <PressableScale
             onPress={phase === 'idle' ? startListening : phase === 'listening' ? stopAndRecognize : undefined}
             disabled={phase === 'analyzing' || phase === 'result'}
-            accessibilityLabel={phase === 'idle' ? 'Start listening' : phase === 'listening' ? 'Stop and identify song' : phase === 'analyzing' ? 'Identifying song' : 'Recognition result shown'}
+            accessibilityLabel={phase === 'idle' ? (mode === 'humming' ? 'Start recording a hummed melody' : 'Start listening') : phase === 'listening' ? 'Stop and identify song' : phase === 'analyzing' ? 'Identifying song' : 'Recognition result shown'}
             scaleTo={0.96}
           >
             <View style={styles.listenShadow}>
@@ -370,9 +415,11 @@ export function RecognitionScreen() {
           {phase === 'idle' && (
             <>
               <Text style={styles.subtitle}>
-                {isDesktop
-                  ? 'Play the song nearby, then click to listen.'
-                  : 'Hold your phone near the music, then tap to listen.'}
+                {mode === 'humming'
+                  ? 'Hum or sing the clearest part of the melody for up to 15 seconds.'
+                  : isDesktop
+                    ? 'Play the song nearby, then click to listen.'
+                    : 'Hold your phone near the music, then tap to listen.'}
               </Text>
               {error ? <Text style={styles.error}>{error}</Text> : null}
               {scanHistory.length > 0 && (
@@ -462,7 +509,11 @@ export function RecognitionScreen() {
                 </>
               ) : (
                 <>
-                  <Text style={styles.subtitle}>No match — get closer to the source, or search by name:</Text>
+                  <Text style={styles.subtitle}>
+                    {mode === 'humming'
+                      ? 'No melody match — try a clearer chorus, or search by name:'
+                      : 'No match — get closer to the source, or search by name:'}
+                  </Text>
                   <View style={styles.manualRow}>
                     <TextInput
                       value={manualQuery}
@@ -544,6 +595,8 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minHeight: 84,
   },
+  modeBlock: { width: '100%', maxWidth: 440, gap: spacing.xs, marginTop: spacing.sm },
+  capabilityHint: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
   eyebrow: { ...typography.eyebrow, color: colors.cyan },
   megaTitle: { ...typography.mega, color: colors.textPrimary, textAlign: 'center' },
   megaSolid: { ...typography.mega, color: colors.textPrimary, textAlign: 'center' },
@@ -645,7 +698,9 @@ const styles = StyleSheet.create({
     ...typography.body,
     flex: 1,
     color: colors.textPrimary,
-    backgroundColor: 'rgba(17,30,25,0.6)',
+    backgroundColor: glass.fillDeep,
+    borderWidth: 1,
+    borderColor: glass.stroke,
     borderRadius: radii.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md - 6,
@@ -659,7 +714,9 @@ const styles = StyleSheet.create({
   },
   historyBlock: {
     alignSelf: 'stretch',
-    backgroundColor: 'rgba(17,30,25,0.35)',
+    backgroundColor: glass.fill,
+    borderWidth: 1,
+    borderColor: glass.stroke,
     borderRadius: radii.md,
     padding: spacing.md,
     gap: spacing.sm,
