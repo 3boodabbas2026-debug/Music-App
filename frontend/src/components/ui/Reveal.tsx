@@ -7,6 +7,8 @@ type Props = PropsWithChildren<{
   delay?: number;
   style?: StyleProp<ViewStyle>;
   distance?: number;
+  /** Replays the entrance without remounting child state (for focused routes). */
+  resetKey?: string | number | boolean;
 }>;
 
 function initialReducedMotion() {
@@ -16,7 +18,7 @@ function initialReducedMotion() {
 }
 
 /** A single, restrained entrance that becomes immediate with reduced motion. */
-export function Reveal({ children, delay = 0, style, distance = 10 }: Props) {
+export function Reveal({ children, delay = 0, style, distance = 10, resetKey }: Props) {
   const [reducedMotion, setReducedMotion] = useState(initialReducedMotion);
   const progress = useRef(new Animated.Value(0)).current;
 
@@ -47,7 +49,7 @@ export function Reveal({ children, delay = 0, style, distance = 10 }: Props) {
     });
     animation.start();
     return () => animation.stop();
-  }, [delay, progress, reducedMotion]);
+  }, [delay, progress, reducedMotion, resetKey]);
 
   return (
     <Animated.View

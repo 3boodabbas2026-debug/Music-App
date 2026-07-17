@@ -11,7 +11,8 @@
  *  - Media explicitly saved for offline playback lives in a separate cache
  *    (see offlineMedia.ts) that this worker never touches or evicts.
  */
-const CACHE = 'starhollow-shell-v3';
+// Bump with brand/shell assets so installed PWAs do not keep the previous icon.
+const CACHE = 'starhollow-shell-v4';
 const OWNED_SHELL_PREFIX = 'starhollow-shell-';
 const SHELL = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 

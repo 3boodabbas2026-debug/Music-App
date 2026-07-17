@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "backgroundColor": "#0B1411",
+    "backgroundColor": "#07111B",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.starhollow.app",
@@ -18,7 +18,7 @@
     "android": {
       "package": "com.starhollow.app",
       "adaptiveIcon": {
-        "backgroundColor": "#0B1411",
+        "backgroundColor": "#07111B",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -32,8 +32,8 @@
       "favicon": "./assets/favicon.png",
       "name": "Starhollow",
       "shortName": "Starhollow",
-      "themeColor": "#0B1411",
-      "backgroundColor": "#0B1411"
+      "themeColor": "#07111B",
+      "backgroundColor": "#07111B"
     },
     "plugins": [
       [

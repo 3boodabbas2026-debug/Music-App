@@ -2,19 +2,21 @@ import asyncio
 import logging
 import mimetypes
 import re
+from datetime import datetime
 from pathlib import Path
 
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from sqlalchemy import delete, select, update
+from sqlalchemy import and_, delete, exists, func, not_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_stream_user
 from app.db.session import get_db
 from app.models.job import Job
-from app.models.media import Media
-from app.models.playlist import PlaylistItem
+from app.models.media import Media, MediaSource, MediaType
+from app.models.media_state import MediaState
+from app.models.playlist import Playlist, PlaylistItem
 from app.models.user import User
 from app.schemas.media import MediaOut, MediaUpdate
 from app.services import thumbnails
@@ -42,6 +44,14 @@ async def list_library(
     q: str | None = None,
     media_type: str | None = None,
     source: str | None = None,
+    named: bool | None = None,
+    favorite: bool | None = None,
+    min_duration: float | None = None,
+    max_duration: float | None = None,
+    added_after: datetime | None = None,
+    added_before: datetime | None = None,
+    artist: str | None = None,
+    playlist_id: str | None = None,
     sort_by: str = "date",
     sort_order: str = "desc",
     offset: int = 0,
@@ -51,9 +61,77 @@ async def list_library(
 ) -> list[MediaOut]:
     stmt = select(Media).where(Media.user_id == current_user.id)
     if media_type:
+        if media_type not in {value.value for value in MediaType}:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid media_type filter")
         stmt = stmt.where(Media.media_type == media_type)
     if source:
-        stmt = stmt.where(Media.source == source)
+        source = source.strip().lower()
+        if source == "recognized":
+            stmt = stmt.where(func.nullif(func.trim(Media.recognized_title), "").is_not(None))
+        elif source == "uploaded":
+            stmt = stmt.where(Media.source == MediaSource.RECOGNIZED_UPLOAD)
+        elif source in {value.value for value in MediaSource}:
+            stmt = stmt.where(Media.source == source)
+        else:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Invalid source filter")
+
+    recognized_title = func.nullif(func.trim(Media.recognized_title), "")
+    raw_title = func.nullif(func.trim(Media.title), "")
+    effective_title = func.lower(func.coalesce(recognized_title, raw_title, ""))
+    placeholder = effective_title.in_(("untitled", "unknown", "unknown title", "audio", "music", "track"))
+    telegram_filename_noise = and_(
+        recognized_title.is_(None),
+        Media.source == MediaSource.TELEGRAM,
+        func.length(func.coalesce(raw_title, "")) >= 16,
+        ~func.coalesce(raw_title, "").like("% %"),
+    )
+    has_usable_name = and_(effective_title != "", not_(placeholder), not_(telegram_filename_noise))
+    if named is not None:
+        stmt = stmt.where(has_usable_name if named else not_(has_usable_name))
+
+    favorite_exists = exists(
+        select(MediaState.id).where(
+            MediaState.user_id == current_user.id,
+            MediaState.media_id == Media.id,
+            MediaState.favorite.is_(True),
+        )
+    )
+    if favorite is not None:
+        stmt = stmt.where(favorite_exists if favorite else not_(favorite_exists))
+
+    if min_duration is not None:
+        if min_duration < 0:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "min_duration must be non-negative")
+        stmt = stmt.where(Media.duration_seconds >= min_duration)
+    if max_duration is not None:
+        if max_duration < 0:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "max_duration must be non-negative")
+        stmt = stmt.where(Media.duration_seconds <= max_duration)
+    if min_duration is not None and max_duration is not None and min_duration > max_duration:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "min_duration exceeds max_duration")
+
+    if added_after is not None:
+        stmt = stmt.where(Media.created_at >= added_after)
+    if added_before is not None:
+        stmt = stmt.where(Media.created_at <= added_before)
+    if added_after is not None and added_before is not None and added_after > added_before:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "added_after exceeds added_before")
+
+    if artist:
+        artist_like = f"%{artist.strip()[:200]}%"
+        stmt = stmt.where(or_(Media.artist.ilike(artist_like), Media.recognized_artist.ilike(artist_like)))
+
+    if playlist_id:
+        in_playlist = exists(
+            select(PlaylistItem.id)
+            .join(Playlist, Playlist.id == PlaylistItem.playlist_id)
+            .where(
+                PlaylistItem.media_id == Media.id,
+                PlaylistItem.playlist_id == playlist_id,
+                Playlist.user_id == current_user.id,
+            )
+        )
+        stmt = stmt.where(in_playlist)
     if q:
         safe_query = q.strip()[:200]
         like = f"%{safe_query}%"
@@ -62,13 +140,18 @@ async def list_library(
             | (Media.artist.ilike(like))
             | (Media.album.ilike(like))
             | (Media.original_filename.ilike(like))
+            | (Media.recognized_title.ilike(like))
+            | (Media.recognized_artist.ilike(like))
         )
     columns = {
         "date": Media.created_at,
         "size": Media.file_size_bytes,
         "duration": Media.duration_seconds,
         "source": Media.source,
-        "title": Media.title,
+        "title": func.coalesce(Media.recognized_title, Media.title),
+        "artist": func.coalesce(Media.recognized_artist, Media.artist),
+        "genre": Media.genre,
+        "year": Media.release_year,
     }
     sort_column = columns.get(sort_by)
     if sort_column is None or sort_order not in {"asc", "desc"}:
@@ -101,7 +184,9 @@ async def _commit_or_rollback(db: AsyncSession) -> None:
         raise
 
 
-async def _delete_media_files_best_effort(file_path: str, backend: str) -> None:
+async def _delete_media_files_best_effort(
+    file_path: str, backend: str, artwork_path: str | None = None
+) -> None:
     """Remove storage only after the database no longer references it.
 
     Database integrity is authoritative.  A transient storage outage should
@@ -112,6 +197,12 @@ async def _delete_media_files_best_effort(file_path: str, backend: str) -> None:
         await asyncio.to_thread(storage_backend.delete_file, file_path, backend)
     except Exception:
         logger.exception("Media metadata was deleted, but storage cleanup failed")
+
+    if artwork_path:
+        try:
+            await asyncio.to_thread(storage_backend.delete_file, artwork_path, backend)
+        except Exception:
+            logger.exception("Media metadata was deleted, but artwork cleanup failed")
 
     if backend != "local":
         return
@@ -158,6 +249,7 @@ async def delete_media(
     # merely lose their optional result pointer.
     file_path = media.file_path
     backend = media.storage_backend or "local"
+    artwork_path = media.artwork_path
     playlist_ids = list(
         (
             await db.scalars(
@@ -186,7 +278,7 @@ async def delete_media(
     await _commit_or_rollback(db)
 
     # Never destroy the only bytes before the database transaction succeeds.
-    await _delete_media_files_best_effort(file_path, backend)
+    await _delete_media_files_best_effort(file_path, backend, artwork_path)
 
 
 @router.get("/{media_id}/thumbnail", include_in_schema=False)
@@ -202,6 +294,31 @@ async def media_thumbnail(media_id: str, db: AsyncSession = Depends(get_db)) -> 
     if not thumb.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No thumbnail")
     return FileResponse(thumb, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.get("/{media_id}/artwork", include_in_schema=False)
+async def media_artwork(media_id: str, db: AsyncSession = Depends(get_db)) -> Response:
+    """Serve the persisted provider cover from the media's actual backend."""
+    media = await db.get(Media, media_id)
+    if media is None or not media.artwork_path:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No artwork")
+    content_type = media.artwork_mime_type or mimetypes.guess_type(media.artwork_path)[0] or "image/jpeg"
+    if media.storage_backend == "s3":
+        url = await asyncio.to_thread(
+            storage_backend.presigned_url, media.artwork_path, content_type
+        )
+        return RedirectResponse(url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    try:
+        path = local_storage.resolve_path(media.artwork_path)
+    except ValueError:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No artwork") from None
+    if not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No artwork")
+    return FileResponse(
+        path,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=2592000, immutable"},
+    )
 
 
 @router.get("/{media_id}/stream")

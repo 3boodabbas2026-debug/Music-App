@@ -240,6 +240,11 @@ test('a 520-track library stays virtualized, searchable, and selectable', async 
   await expect(targetCard).toHaveAttribute('aria-selected', 'true');
   await expect(durationBadge).toHaveCount(0);
   await expect(page.getByText('1 selected', { exact: true })).toBeVisible();
+
+  // A Library search is screen-local: it must not replace the canonical
+  // collection consumed by Today (or the persisted offline library cache).
+  await page.getByRole('tab', { name: 'Today' }).click();
+  await expect(page.getByText('Track 0', { exact: true })).toBeVisible();
 });
 
 test('video minimizes into fixed chrome above the mobile dock and Library bulk actions', async ({ page }) => {

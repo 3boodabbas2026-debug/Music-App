@@ -91,6 +91,8 @@ async def _add_missing_columns(conn) -> None:
             "mime_type": "VARCHAR(200)",
             "telegram_chat_id": "VARCHAR(100)",
             "telegram_message_id": "VARCHAR(100)",
+            "artwork_path": "TEXT",
+            "artwork_mime_type": "VARCHAR(100)",
         },
     )
     if "storage_backend" in media_added:
@@ -117,12 +119,42 @@ async def _add_missing_columns(conn) -> None:
             "request_payload": "TEXT",
             "attempt_count": "INTEGER DEFAULT 0 NOT NULL",
             "priority": "INTEGER DEFAULT 0 NOT NULL",
+            "batch_total": "INTEGER",
+            "batch_processed": "INTEGER",
+            "batch_matched": "INTEGER",
+            "batch_failed": "INTEGER",
         },
     )
+    await add_columns("playlists", {"system_key": "VARCHAR(50)"})
 
     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_user_created ON media (user_id, created_at)"))
     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_media_user_type ON media (user_id, media_type)"))
     await conn.execute(text("CREATE INDEX IF NOT EXISTS ix_jobs_user_status ON jobs (user_id, status)"))
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_playlist_system_key "
+            "ON playlists (user_id, system_key)"
+        )
+    )
+    # Older clients allowed the same media link to be added repeatedly. Keep
+    # the earliest-positioned link before enforcing idempotent membership.
+    await conn.execute(
+        text(
+            "DELETE FROM playlist_items WHERE id IN ("
+            "SELECT id FROM ("
+            "SELECT id, ROW_NUMBER() OVER ("
+            "PARTITION BY playlist_id, media_id ORDER BY position, id"
+            ") AS duplicate_rank FROM playlist_items"
+            ") ranked WHERE duplicate_rank > 1"
+            ")"
+        )
+    )
+    await conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_playlist_media "
+            "ON playlist_items (playlist_id, media_id)"
+        )
+    )
     await conn.execute(
         text(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_user_telegram_message "

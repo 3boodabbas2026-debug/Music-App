@@ -45,6 +45,12 @@ export type Job = {
   match_title: string | null;
   match_artist: string | null;
   match_thumbnail_url: string | null;
+  /** Present on the single aggregate job returned by POST
+   * /recognitions/library. No-match entries increase processed, not failed. */
+  batch_total?: number | null;
+  batch_processed?: number | null;
+  batch_matched?: number | null;
+  batch_failed?: number | null;
   created_at: string;
   updated_at: string;
 };

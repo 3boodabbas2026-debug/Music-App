@@ -9,7 +9,7 @@ export type LibraryTab = 'all' | 'audio' | 'video' | 'favorites' | 'categories' 
 
 export type MainTabParamList = {
   Home: undefined;
-  Library: { tab?: LibraryTab } | undefined;
+  Library: { tab?: LibraryTab; query?: string; selectId?: string } | undefined;
   Recognize: undefined;
   Activity: undefined;
 };

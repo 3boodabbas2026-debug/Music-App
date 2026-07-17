@@ -51,8 +51,9 @@ export async function getCapabilities(): Promise<RecognitionCapabilities> {
   return data;
 }
 
-/** Queue background recognition for every unnamed audio track (server caps the batch). */
-export async function recognizeWholeLibrary(): Promise<Job[]> {
-  const { data } = await apiClient.post<Job[]>('/recognitions/library');
+/** Queue one aggregate background job for every unnamed audio track. The
+ * worker chunks database reads internally; there is no user-visible ceiling. */
+export async function recognizeWholeLibrary(): Promise<Job> {
+  const { data } = await apiClient.post<Job>('/recognitions/library');
   return data;
 }

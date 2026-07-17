@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, glass, glassBlur, radii, spacing, typography } from '../../theme/tokens';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
+import { colors, glass, glassBlur, motion, radii, spacing, typography } from '../../theme/tokens';
 
 type Props = TextInputProps & {
   label?: string;
@@ -23,12 +24,35 @@ export function TextField({
 }: Props) {
   const [focused, setFocused] = useState(false);
   const [revealed, setRevealed] = useState(false);
+  const reduceMotion = useReducedMotion();
+  const focusProgress = useRef(new Animated.Value(0)).current;
   const isSecure = !!secureTextEntry;
+
+  useEffect(() => {
+    if (reduceMotion) {
+      focusProgress.setValue(0);
+      return;
+    }
+    const animation = Animated.timing(focusProgress, {
+      toValue: focused ? 1 : 0,
+      duration: motion.duration.fast,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [focusProgress, focused, reduceMotion]);
 
   return (
     <View style={styles.wrapper}>
       {label ? <Text style={[styles.label, focused && styles.labelFocused]}>{label}</Text> : null}
-      <View>
+      <Animated.View
+        style={{
+          transform: [
+            { scale: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 1.008] }) },
+            { translateY: focusProgress.interpolate({ inputRange: [0, 1], outputRange: [0, -1] }) },
+          ],
+        }}
+      >
         <TextInput
           {...rest}
           accessibilityLabel={accessibilityLabel ?? label}
@@ -69,7 +93,7 @@ export function TextField({
             />
           </Pressable>
         ) : null}
-      </View>
+      </Animated.View>
       {error ? (
         <Text accessibilityLiveRegion="polite" style={styles.error}>
           {error}

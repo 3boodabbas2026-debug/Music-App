@@ -1,10 +1,25 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Linking, Platform, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import type { Media } from '../../services/api/types';
+import type { RootStackParamList } from '../../navigation/types';
+import * as libraryApi from '../../services/api/library';
+import * as offlineMedia from '../../services/storage/offlineMedia';
+import { tokenStorage } from '../../services/storage/tokenStorage';
+import { useFavoritesStore } from '../../store/favoritesStore';
+import { useLibraryStore } from '../../store/libraryStore';
+import { MAX_PINS, usePinStore } from '../../store/pinStore';
+import { usePlayerStore } from '../../store/playerStore';
+import { toast } from '../../store/toastStore';
+import { apiErrorMessage } from '../../utils/apiError';
 import { colors, glass, radii, spacing, typography } from '../../theme/tokens';
 import { buildMediaDetailSections, type MediaDetailItem } from '../../utils/mediaDetails';
 import { displayArtist, displayTitle } from '../../utils/mediaDisplay';
+import { EditMediaModal, PlaylistPickerModal } from '../library/LibrarySheets';
+import { TrackActionList } from '../library/TrackActions';
 import { Artwork } from '../ui/Artwork';
 
 const DETAIL_ICONS: Record<MediaDetailItem['key'], keyof typeof Ionicons.glyphMap> = {
@@ -41,8 +56,83 @@ function DetailGrid({ items }: { items: MediaDetailItem[] }) {
 }
 
 export function TrackDetails({ media }: { media: Media }) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const details = buildMediaDetailSections(media);
   const artist = displayArtist(media) ?? 'Unknown artist';
+  const favorite = useFavoritesStore((state) => !!state.ids[media.id]);
+  const toggleFavorite = useFavoritesStore((state) => state.toggle);
+  const pinnedIds = usePinStore((state) => state.ids);
+  const togglePin = usePinStore((state) => state.toggle);
+  const upsert = useLibraryStore((state) => state.upsert);
+  const remove = useLibraryStore((state) => state.remove);
+  const play = usePlayerStore((state) => state.play);
+  const playNextInQueue = usePlayerStore((state) => state.playNextInQueue);
+  const addToQueue = usePlayerStore((state) => state.addToQueue);
+  const stop = usePlayerStore((state) => state.stop);
+  const currentMediaId = usePlayerStore((state) => state.currentMedia?.id);
+  const [playlistPicker, setPlaylistPicker] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [offlineSaved, setOfflineSaved] = useState(false);
+  const [savingOffline, setSavingOffline] = useState(false);
+
+  useEffect(() => {
+    if (!offlineMedia.isSupported()) return;
+    void offlineMedia.isSavedOffline(media.id).then(setOfflineSaved);
+  }, [media.id]);
+
+  async function saveFile() {
+    const token = await tokenStorage.getAccessToken();
+    const url = token
+      ? `${libraryApi.streamUrl(media.id)}?token=${encodeURIComponent(token)}`
+      : libraryApi.streamUrl(media.id);
+    try {
+      if (Platform.OS === 'web') window.open(url, '_blank');
+      else await Linking.openURL(url);
+    } catch (err) {
+      toast(apiErrorMessage(err, "Couldn't open that file."), 'error');
+    }
+  }
+
+  async function toggleOffline() {
+    if (savingOffline) return;
+    setSavingOffline(true);
+    try {
+      if (offlineSaved) {
+        await offlineMedia.removeOffline(media.id);
+        setOfflineSaved(false);
+        toast('Removed from offline downloads', 'info');
+      } else {
+        const token = await tokenStorage.getAccessToken();
+        const url = token
+          ? `${libraryApi.streamUrl(media.id)}?proxy=1&token=${encodeURIComponent(token)}`
+          : `${libraryApi.streamUrl(media.id)}?proxy=1`;
+        await offlineMedia.saveOffline(media, url);
+        setOfflineSaved(true);
+        toast('Saved for offline playback', 'success');
+      }
+    } catch (err) {
+      toast(apiErrorMessage(err, "Couldn't update the offline copy."), 'error');
+    } finally {
+      setSavingOffline(false);
+    }
+  }
+
+  async function deleteTrack() {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    try {
+      await remove(media.id);
+      if (currentMediaId === media.id) stop();
+      toast('Removed from your collection', 'success');
+      navigation.goBack();
+    } catch (err) {
+      toast(apiErrorMessage(err, "Couldn't delete that track."), 'error');
+      setConfirmDelete(false);
+    }
+  }
 
   return (
     <View style={styles.root}>
@@ -71,6 +161,33 @@ export function TrackDetails({ media }: { media: Media }) {
       </View>
 
       <View style={styles.section}>
+        <Text accessibilityRole="header" style={styles.sectionTitle}>Track actions</Text>
+        <TrackActionList
+          context={{
+            media,
+            favorite,
+            pinned: pinnedIds.includes(media.id),
+            pinLimitReached: pinnedIds.length >= MAX_PINS,
+            maxPins: MAX_PINS,
+            offlineSaved,
+            confirmDelete,
+            onPlay: () => void play(media),
+            onPlayNext: () => { playNextInQueue(media); toast('Playing next', 'success'); },
+            onAddToQueue: () => { addToQueue(media); toast('Added to queue', 'success'); },
+            onToggleFavorite: () => toggleFavorite(media.id),
+            onTogglePin: () => togglePin(media.id),
+            onAddToPlaylist: () => setPlaylistPicker(true),
+            onMoreByArtist: () => navigation.navigate('Main', { screen: 'Library', params: { tab: 'all', query: artist } }),
+            onEdit: () => setEditing(true),
+            onSelectMultiple: () => navigation.navigate('Main', { screen: 'Library', params: { tab: 'all', selectId: media.id } }),
+            onSaveFile: saveFile,
+            onToggleOffline: offlineMedia.isSupported() && media.media_type === 'audio' ? toggleOffline : undefined,
+            onDelete: deleteTrack,
+          }}
+        />
+      </View>
+
+      <View style={styles.section}>
         <Text accessibilityRole="header" style={styles.sectionTitle}>Music details</Text>
         {details.music.length > 0 ? (
           <DetailGrid items={details.music} />
@@ -86,6 +203,26 @@ export function TrackDetails({ media }: { media: Media }) {
         <Text accessibilityRole="header" style={styles.sectionTitle}>File & source</Text>
         <DetailGrid items={details.archive} />
       </View>
+
+      {playlistPicker && (
+        <PlaylistPickerModal
+          mediaIds={[media.id]}
+          label={displayTitle(media)}
+          onClose={() => setPlaylistPicker(false)}
+          onDone={() => setPlaylistPicker(false)}
+        />
+      )}
+      {editing && (
+        <EditMediaModal
+          media={media}
+          onClose={() => setEditing(false)}
+          onSaved={(updated) => {
+            upsert(updated);
+            setEditing(false);
+            toast('Details saved', 'success');
+          }}
+        />
+      )}
     </View>
   );
 }

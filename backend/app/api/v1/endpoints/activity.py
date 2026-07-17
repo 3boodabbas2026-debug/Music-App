@@ -16,7 +16,7 @@ router = APIRouter(prefix="/activity", tags=["activity"])
 
 
 class PlaybackUpdate(BaseModel):
-    position_seconds: float = Field(ge=0)
+    position_seconds: float | None = Field(default=None, ge=0)
     increment_play_count: bool = False
     favorite: bool | None = None
 
@@ -50,8 +50,11 @@ async def update_media_state(
     if state is None:
         state = MediaState(user_id=current_user.id, media_id=media_id)
         db.add(state)
-    state.last_position_seconds = min(payload.position_seconds, media.duration_seconds or payload.position_seconds)
-    state.last_played_at = datetime.now(timezone.utc)
+    if payload.position_seconds is not None:
+        state.last_position_seconds = min(
+            payload.position_seconds, media.duration_seconds or payload.position_seconds
+        )
+        state.last_played_at = datetime.now(timezone.utc)
     if payload.increment_play_count:
         state.play_count += 1
     if payload.favorite is not None:
@@ -96,7 +99,7 @@ async def favorites(
 ) -> list[MediaStateOut]:
     rows = (await db.execute(
         select(MediaState, Media).join(Media).where(MediaState.user_id == current_user.id, MediaState.favorite.is_(True))
-        .order_by(MediaState.updated_at.desc()).limit(100)
+        .order_by(MediaState.updated_at.desc())
     )).all()
     return [MediaStateOut(media=MediaOut.model_validate(m), favorite=s.favorite,
         last_position_seconds=s.last_position_seconds, play_count=s.play_count, last_played_at=s.last_played_at)

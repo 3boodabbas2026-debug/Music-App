@@ -5,10 +5,19 @@
   "description": "Your private media archive: pull audio and video in from any link or Telegram chat, name any song, and stream your library anywhere.",
   "start_url": "/",
   "scope": "/",
+  "share_target": {
+    "action": "/?share=1",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#0B1411",
-  "theme_color": "#0B1411",
+  "background_color": "#07111B",
+  "theme_color": "#07111B",
   "categories": ["music", "entertainment"],
   "icons": [
     {

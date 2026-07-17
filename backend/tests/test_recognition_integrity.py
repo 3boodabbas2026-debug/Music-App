@@ -4,14 +4,14 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.api.v1.endpoints import recognitions
 from app.db.base import Base
 from app.models.admin_event import AdminEvent  # noqa: F401 - register table metadata
-from app.models.job import Job
+from app.models.job import Job, JobStatus
 from app.models.media import Media, MediaSource, MediaType
 from app.models.playlist import Playlist, PlaylistItem  # noqa: F401 - resolve User relationships
 from app.models.user import User
@@ -240,6 +240,23 @@ class RecognitionIntegrityTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(RecognitionMode.HUMMING, observed["recognition_mode"])
         self.assertTrue(observed["cleanup"])
+
+    async def test_empty_library_returns_terminal_zero_work_batch_job(self) -> None:
+        async with self.sessions() as session:
+            owner = User(email="empty-library@example.com", display_name="Empty", hashed_password="hash")
+            session.add(owner)
+            await session.commit()
+            tasks = BackgroundTasks()
+            result = await recognitions.recognize_library(tasks, owner, session)
+
+        self.assertEqual(JobStatus.COMPLETE, result.status)
+        self.assertEqual(100, result.progress_pct)
+        self.assertEqual("Named 0 of 0", result.stage_label)
+        self.assertEqual(0, result.batch_total)
+        self.assertEqual(0, result.batch_processed)
+        self.assertEqual(0, result.batch_matched)
+        self.assertEqual(0, result.batch_failed)
+        self.assertEqual([], tasks.tasks)
 
 
 if __name__ == "__main__":

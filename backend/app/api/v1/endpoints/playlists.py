@@ -66,11 +66,18 @@ async def add_item(
     if media is None or media.user_id != current_user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
 
-    next_position = await db.scalar(
-        select(func.count()).select_from(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id)
+    existing = await db.scalar(
+        select(PlaylistItem.id).where(
+            PlaylistItem.playlist_id == playlist_id,
+            PlaylistItem.media_id == media.id,
+        )
     )
-    db.add(PlaylistItem(playlist_id=playlist_id, media_id=media.id, position=next_position or 0))
-    await db.commit()
+    if existing is None:
+        next_position = await db.scalar(
+            select(func.count()).select_from(PlaylistItem).where(PlaylistItem.playlist_id == playlist_id)
+        )
+        db.add(PlaylistItem(playlist_id=playlist_id, media_id=media.id, position=next_position or 0))
+        await db.commit()
 
     # `playlist.items` was already loaded (as empty) earlier in this session.
     # db.get() would return that same cached, now-stale collection even with

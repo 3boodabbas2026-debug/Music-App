@@ -3,6 +3,7 @@ import { Animated, Easing, Pressable, ScrollView, StyleSheet, View, useWindowDim
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useUiStore } from '../../store/uiStore';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { glass, spacing } from '../../theme/tokens';
 import { AppSidebar } from './AppSidebar';
 
@@ -19,6 +20,7 @@ export function Sidebar() {
   const insets = useSafeAreaInsets();
   const sidebarOpen = useUiStore((s) => s.sidebarOpen);
   const closeSidebar = useUiStore((s) => s.closeSidebar);
+  const reduceMotion = useReducedMotion();
 
   const panelWidth = Math.min(PANEL_MAX, width * 0.82);
   const slide = useRef(new Animated.Value(0)).current;
@@ -29,21 +31,21 @@ export function Sidebar() {
       setRendered(true);
       Animated.timing(slide, {
         toValue: 1,
-        duration: 260,
+        duration: reduceMotion ? 0 : 260,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }).start();
     } else {
       Animated.timing(slide, {
         toValue: 0,
-        duration: 200,
+        duration: reduceMotion ? 0 : 200,
         easing: Easing.in(Easing.cubic),
         useNativeDriver: true,
       }).start(({ finished }) => {
         if (finished) setRendered(false);
       });
     }
-  }, [sidebarOpen, slide]);
+  }, [reduceMotion, sidebarOpen, slide]);
 
   if (!rendered) return null;
 

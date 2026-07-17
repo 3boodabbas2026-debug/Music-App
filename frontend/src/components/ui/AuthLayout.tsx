@@ -46,7 +46,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
           contentContainerStyle={styles.mobileScroll}
           keyboardShouldPersistTaps="handled"
         >
-          <Reveal>
+          <Reveal resetKey={isFocused}>
             <View style={styles.mobileOrb}>
               {isFocused && <Starwell state="idle" size={150} />}
             </View>
@@ -54,14 +54,14 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
             <GradientText style={styles.mobileTitle}>{title}</GradientText>
             <Text style={styles.subtitle}>{subtitle}</Text>
           </Reveal>
-          <Reveal delay={100}>
+          <Reveal delay={100} resetKey={isFocused}>
             <GlassPanel>
               <View style={styles.form}>{children}</View>
             </GlassPanel>
           </Reveal>
           {/* Phones are the primary install — first-timers deserve the same
               "what is this app" pitch the desktop hero shows. */}
-          <Reveal delay={200}>
+          <Reveal delay={200} resetKey={isFocused}>
             <View style={styles.mobileFeatureList}>
               {FEATURES.map((feature) => (
                 <View key={feature.icon} style={styles.mobileFeatureRow}>
@@ -87,7 +87,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.split}>
-          <Reveal style={styles.heroCol}>
+          <Reveal style={styles.heroCol} resetKey={isFocused}>
             <View style={styles.heroOrbRow}>
               {isFocused && <Starwell state="idle" size={roomy ? 180 : 140} />}
             </View>
@@ -106,7 +106,7 @@ export function AuthLayout({ eyebrow, title, subtitle, children }: Props) {
             </View>
           </Reveal>
 
-          <Reveal delay={120} style={styles.formCol}>
+          <Reveal delay={120} style={styles.formCol} resetKey={isFocused}>
             <GlassPanel intensity={80} overlayColor="rgba(9,17,14,0.62)">
               <View style={[styles.form, styles.formDesktop]}>{children}</View>
             </GlassPanel>

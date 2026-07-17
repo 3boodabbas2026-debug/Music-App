@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Artwork } from '../ui/Artwork';
 import { GlassPanel } from '../ui/GlassPanel';
 import { useDockClearance, usePlayerChromeBottomOffset } from '../../hooks/useBottomChromeClearance';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useTrackAccent } from '../../hooks/useTrackAccent';
 import { usePlayerStore } from '../../store/playerStore';
@@ -121,6 +122,25 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
   const videoMode = useVideoPlayerStore((state) => state.mode);
   const [queueOpen, setQueueOpen] = useState(false);
   const accentColor = useTrackAccent(currentMedia ? thumbnailUri(currentMedia) : null);
+  const reduceMotion = useReducedMotion();
+  const entrance = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const visible = !!currentMedia && isFocused && videoMode === 'closed';
+    if (!visible || reduceMotion) {
+      entrance.setValue(visible ? 1 : 0);
+      return;
+    }
+    entrance.setValue(0);
+    const animation = Animated.spring(entrance, {
+      toValue: 1,
+      speed: 24,
+      bounciness: 2,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [currentMedia?.id, entrance, isFocused, reduceMotion, videoMode]);
 
   if (!currentMedia || !isFocused || videoMode !== 'closed') return null;
 
@@ -134,7 +154,14 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
     contextualBottomOffset;
 
   return (
-    <View pointerEvents="box-none" style={[styles.holder, isDesktop && styles.holderDesktop, { bottom }]}>
+    <Animated.View
+      pointerEvents="box-none"
+      style={[
+        styles.holder,
+        isDesktop && styles.holderDesktop,
+        { bottom, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] },
+      ]}
+    >
       {queueOpen && <QueuePreview onJump={() => setQueueOpen(false)} />}
       <Pressable onPress={() => navigation.navigate('Player')} style={isDesktop ? styles.pressDesktop : undefined}>
         <View style={[playing && styles.glowWrap, playing && accentColor && { shadowColor: accentColor }]}>
@@ -181,7 +208,7 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
           </GlassPanel>
         </View>
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 

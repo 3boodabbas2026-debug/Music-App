@@ -1,9 +1,16 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import {
+  PanGestureHandler,
+  State,
+  type PanGestureHandlerGestureEvent,
+  type PanGestureHandlerStateChangeEvent,
+} from 'react-native-gesture-handler';
 
 import { Artwork } from '../ui/Artwork';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import type { Media } from '../../services/api/types';
 import {
   displayArtist,
@@ -17,8 +24,77 @@ type MediaItemProps = {
   selectMode?: boolean;
   selected?: boolean;
   onPress: () => void;
-  onLongPress: (event: GestureResponderEvent) => void;
+  onLongPress: () => void;
+  onMenuPress: (event: GestureResponderEvent) => void;
+  dragEnabled?: boolean;
+  onDragStart?: (absoluteX: number, absoluteY: number) => void;
+  onDragMove?: (absoluteX: number, absoluteY: number) => void;
+  onDragEnd?: (absoluteX: number, absoluteY: number, cancelled: boolean) => void;
 };
+
+function DragSurface({
+  enabled,
+  children,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+}: {
+  enabled: boolean;
+  children: ReactNode;
+  onDragStart?: (absoluteX: number, absoluteY: number) => void;
+  onDragMove?: (absoluteX: number, absoluteY: number) => void;
+  onDragEnd?: (absoluteX: number, absoluteY: number, cancelled: boolean) => void;
+}) {
+  const lift = useState(() => new Animated.Value(0))[0];
+  const reduceMotion = useReducedMotion();
+
+  function settle() {
+    if (reduceMotion) {
+      lift.setValue(0);
+      return;
+    }
+    Animated.spring(lift, { toValue: 0, speed: 22, bounciness: 1, useNativeDriver: true }).start();
+  }
+
+  function handleStateChange(event: PanGestureHandlerStateChangeEvent) {
+    const { state, oldState, absoluteX, absoluteY } = event.nativeEvent;
+    if (state === State.ACTIVE && oldState !== State.ACTIVE) {
+      if (reduceMotion) lift.setValue(1);
+      else Animated.spring(lift, { toValue: 1, speed: 22, bounciness: 4, useNativeDriver: true }).start();
+      onDragStart?.(absoluteX, absoluteY);
+      return;
+    }
+    if (oldState === State.ACTIVE && state !== State.ACTIVE) {
+      settle();
+      onDragEnd?.(absoluteX, absoluteY, state !== State.END);
+    }
+  }
+
+  function handleGesture(event: PanGestureHandlerGestureEvent) {
+    onDragMove?.(event.nativeEvent.absoluteX, event.nativeEvent.absoluteY);
+  }
+
+  return (
+    <PanGestureHandler
+      enabled={enabled}
+      activateAfterLongPress={280}
+      minDist={2}
+      shouldCancelWhenOutside={false}
+      onGestureEvent={handleGesture}
+      onHandlerStateChange={handleStateChange}
+    >
+      <Animated.View
+        style={{
+          zIndex: enabled ? 5 : 0,
+          opacity: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 0.55] }),
+          transform: [{ scale: lift.interpolate({ inputRange: [0, 1], outputRange: [1, 1.025] }) }],
+        }}
+      >
+        {children}
+      </Animated.View>
+    </PanGestureHandler>
+  );
+}
 
 export function formatDuration(seconds: number | null): string {
   if (!seconds) return '--:--';
@@ -44,13 +120,24 @@ export const GridCard = memo(function GridCard({
   selected,
   onPress,
   onLongPress,
+  onMenuPress,
+  dragEnabled = false,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
 }: MediaItemProps & { size: number }) {
   const [hovered, setHovered] = useState(false);
   const artist = displayArtist(media);
   const metadata = metadataLine(media);
 
   return (
-    <Pressable
+    <DragSurface
+      enabled={dragEnabled}
+      onDragStart={onDragStart}
+      onDragMove={onDragMove}
+      onDragEnd={onDragEnd}
+    >
+      <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       accessibilityRole="button"
@@ -105,7 +192,10 @@ export const GridCard = memo(function GridCard({
 
         {!selectMode && (
           <Pressable
-            onPress={onLongPress}
+            onPress={(event) => {
+              event.stopPropagation();
+              onMenuPress(event);
+            }}
             accessibilityLabel={`More options for ${displayTitle(media)}`}
             style={[styles.moreChip, hovered && styles.moreChipHovered]}
             hitSlop={8}
@@ -132,7 +222,8 @@ export const GridCard = memo(function GridCard({
           {!!metadata && <Text numberOfLines={1} style={styles.cardMetadata}>{metadata}</Text>}
         </View>
       </View>
-    </Pressable>
+      </Pressable>
+    </DragSurface>
   );
 });
 
@@ -143,13 +234,24 @@ export const ListRow = memo(function ListRow({
   selected,
   onPress,
   onLongPress,
+  onMenuPress,
+  dragEnabled = false,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
 }: MediaItemProps) {
   const [hovered, setHovered] = useState(false);
   const artist = displayArtist(media);
   const metadata = metadataLine(media);
 
   return (
-    <Pressable
+    <DragSurface
+      enabled={dragEnabled}
+      onDragStart={onDragStart}
+      onDragMove={onDragMove}
+      onDragEnd={onDragEnd}
+    >
+      <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       accessibilityRole="button"
@@ -190,7 +292,10 @@ export const ListRow = memo(function ListRow({
       {favorite && <Ionicons name="heart" size={14} color={colors.pink} />}
       {!selectMode && (
         <Pressable
-          onPress={onLongPress}
+          onPress={(event) => {
+            event.stopPropagation();
+            onMenuPress(event);
+          }}
           accessibilityLabel={`More options for ${displayTitle(media)}`}
           hitSlop={10}
           style={styles.rowMoreButton}
@@ -199,7 +304,8 @@ export const ListRow = memo(function ListRow({
         </Pressable>
       )}
       <Text style={styles.durationText}>{formatDuration(media.duration_seconds)}</Text>
-    </Pressable>
+      </Pressable>
+    </DragSurface>
   );
 });
 

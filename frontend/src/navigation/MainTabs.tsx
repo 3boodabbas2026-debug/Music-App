@@ -1,10 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { createBottomTabNavigator, type BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AppSidebar } from '../components/ui/AppSidebar';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useResponsive, RAIL_WIDTH } from '../hooks/useResponsive';
 import { HomeScreen } from '../screens/HomeScreen';
 import { JobsScreen } from '../screens/JobsScreen';
@@ -12,7 +16,7 @@ import { LibraryScreen } from '../screens/LibraryScreen';
 import { RecognitionScreen } from '../screens/RecognitionScreen';
 import { useUiStore } from '../store/uiStore';
 import { colors, glass, layout, motion, radii, shadows, spacing, typography } from '../theme/tokens';
-import type { MainTabParamList } from './types';
+import type { MainTabParamList, RootStackParamList } from './types';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
@@ -29,27 +33,35 @@ const TAB_PRESENTATION: Record<keyof MainTabParamList, TabPresentation> = {
   Activity: { active: 'pulse', inactive: 'pulse-outline', label: 'Activity' },
 };
 
+const TAB_ROUTES: Array<keyof MainTabParamList> = ['Home', 'Library', 'Recognize', 'Activity'];
+
 function DockItem({
   presentation,
   focused,
   onPress,
   onLongPress,
+  reduceMotion,
 }: {
   presentation: TabPresentation;
   focused: boolean;
   onPress: () => void;
   onLongPress: () => void;
+  reduceMotion: boolean;
 }) {
   const focus = useRef(new Animated.Value(focused ? 1 : 0)).current;
 
   useEffect(() => {
+    if (reduceMotion) {
+      focus.setValue(focused ? 1 : 0);
+      return;
+    }
     Animated.spring(focus, {
       toValue: focused ? 1 : 0,
       useNativeDriver: true,
       speed: 26,
       bounciness: 4,
     }).start();
-  }, [focus, focused]);
+  }, [focus, focused, reduceMotion]);
 
   return (
     <Pressable
@@ -95,19 +107,7 @@ function CompactDock({ state, navigation }: BottomTabBarProps) {
   const dockCollapsed = useUiStore((store) => store.dockCollapsed);
   const toggleDockCollapsed = useUiStore((store) => store.toggleDockCollapsed);
   const visibility = useRef(new Animated.Value(dockCollapsed ? 0 : 1)).current;
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      if (mounted) setReduceMotion(enabled);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     Animated.timing(visibility, {
@@ -151,6 +151,7 @@ function CompactDock({ state, navigation }: BottomTabBarProps) {
               focused={state.index === index}
               onPress={() => pressRoute(index)}
               onLongPress={() => longPressRoute(index)}
+              reduceMotion={reduceMotion}
             />
           ))}
         </View>
@@ -208,14 +209,71 @@ function NavRail({ state }: BottomTabBarProps) {
 }
 
 export function MainTabs() {
-  const { isDesktop } = useResponsive();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { width, isDesktop } = useResponsive();
+  const reduceMotion = useReducedMotion();
+  const openSidebar = useUiStore((store) => store.openSidebar);
+  const activeIndex = useRef(0);
+  const gestureStartX = useRef(Number.POSITIVE_INFINITY);
 
-  return (
+  const pagingGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(!isDesktop)
+        // A vertical scroll wins if it moves first. A deliberate horizontal
+        // movement must clear this dead zone before tab paging activates.
+        .activeOffsetX([-22, 22])
+        .failOffsetY([-14, 14])
+        .averageTouches(true)
+        .runOnJS(true)
+        .onBegin((event) => {
+          gestureStartX.current = event.absoluteX;
+        })
+        .onEnd((event) => {
+          const horizontalDistance = Math.abs(event.translationX);
+          const verticalDistance = Math.abs(event.translationY);
+          const deliberate = horizontalDistance >= 64 || Math.abs(event.velocityX) >= 650;
+          if (!deliberate || horizontalDistance <= verticalDistance * 1.25) return;
+
+          const swipingRight = event.translationX > 0;
+          const edgeWidth = Math.max(28, Math.min(40, width * 0.08));
+          if (swipingRight && gestureStartX.current <= edgeWidth) {
+            openSidebar();
+            return;
+          }
+
+          const current = activeIndex.current;
+          if (swipingRight) {
+            if (current === 0) {
+              navigation.navigate('Settings');
+              return;
+            }
+            navigation.navigate('Main', { screen: TAB_ROUTES[current - 1] });
+            return;
+          }
+
+          if (current < TAB_ROUTES.length - 1) {
+            navigation.navigate('Main', { screen: TAB_ROUTES[current + 1] });
+          }
+        }),
+    [isDesktop, navigation, openSidebar, width],
+  );
+
+  const tabs = (
     <Tab.Navigator
       tabBar={(props) => (isDesktop ? <NavRail {...props} /> : <CompactDock {...props} />)}
+      screenListeners={{
+        state: (event) => {
+          activeIndex.current = event.data.state.index ?? 0;
+        },
+      }}
       screenOptions={{
         headerShown: false,
-        animation: 'fade',
+        animation: reduceMotion ? 'none' : 'shift',
+        transitionSpec: {
+          animation: 'timing',
+          config: { duration: reduceMotion ? 0 : motion.duration.base },
+        },
         sceneStyle: isDesktop
           ? { paddingLeft: RAIL_WIDTH, backgroundColor: 'transparent' }
           : { backgroundColor: 'transparent' },
@@ -227,9 +285,18 @@ export function MainTabs() {
       <Tab.Screen name="Activity" component={ActivityTabScreen} />
     </Tab.Navigator>
   );
+
+  if (isDesktop) return tabs;
+
+  return (
+    <GestureDetector gesture={pagingGesture}>
+      <View style={styles.gestureSurface}>{tabs}</View>
+    </GestureDetector>
+  );
 }
 
 const styles = StyleSheet.create({
+  gestureSurface: { flex: 1 },
   dockWrap: {
     position: 'absolute',
     left: spacing.md,

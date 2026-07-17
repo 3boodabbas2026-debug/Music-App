@@ -2,7 +2,7 @@
   "appId": "com.starhollow.app",
   "appName": "Starhollow",
   "webDir": "dist",
-  "backgroundColor": "#0B1411",
+  "backgroundColor": "#07111B",
   "android": {
     "allowMixedContent": true
   },

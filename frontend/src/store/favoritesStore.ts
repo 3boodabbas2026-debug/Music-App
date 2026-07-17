@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import * as activityApi from '../services/api/activity';
 import { haptics } from '../utils/haptics';
 
 const STORAGE_KEY = 'sma.favorites';
@@ -27,12 +28,27 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
   hydrated: false,
 
   async hydrate() {
+    let localIds: string[] = [];
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      const list: string[] = raw ? JSON.parse(raw) : [];
-      set({ ids: Object.fromEntries(list.map((id) => [id, true as const])), hydrated: true });
+      localIds = raw ? JSON.parse(raw) : [];
+      set({ ids: Object.fromEntries(localIds.map((id) => [id, true as const])), hydrated: true });
     } catch {
       set({ hydrated: true });
+    }
+
+    try {
+      const remoteIds = await activityApi.listFavoriteIds();
+      const merged = [...new Set([...remoteIds, ...localIds])];
+      const ids = Object.fromEntries(merged.map((id) => [id, true as const]));
+      set({ ids, hydrated: true });
+      void persist(ids);
+      // Preserve favorites created by older app versions that only stored the
+      // flag locally, so the server-side Library favorite filter is truthful.
+      const remote = new Set(remoteIds);
+      await Promise.allSettled(localIds.filter((id) => !remote.has(id)).map((id) => activityApi.setFavorite(id, true)));
+    } catch {
+      // The local snapshot remains usable offline.
     }
   },
 
@@ -44,6 +60,10 @@ export const useFavoritesStore = create<FavoritesState>((set, get) => ({
     haptics.tap();
     set({ ids });
     void persist(ids);
+    void activityApi.setFavorite(mediaId, adding).catch(() => {
+      // Keep the optimistic local flag for offline use; it will be reconciled
+      // with the account on the next hydrate.
+    });
   },
 
   isFavorite(mediaId) {

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   FlatList,
   Linking,
   Platform,
@@ -29,14 +30,30 @@ import {
 } from '../components/library/LibraryMediaView';
 import {
   EditMediaModal,
+  NewPlaylistWithItemsModal,
   PlaylistDetailModal,
   PlaylistPickerModal,
   PlaylistsPane,
-  SheetAction,
 } from '../components/library/LibrarySheets';
+import {
+  EMPTY_LIBRARY_FILTERS,
+  LibraryFilterSheet,
+  activeLibraryFilterChips,
+  advancedFiltersToQuery,
+  libraryFilterCount,
+  type ActiveFilterChip,
+  type LibraryAdvancedFilters,
+} from '../components/library/LibraryFilterSheet';
+import {
+  PlaylistDropStrip,
+  type PlaylistDropStripHandle,
+  type PlaylistDropTarget,
+} from '../components/library/PlaylistDropStrip';
+import { TrackActionList } from '../components/library/TrackActions';
 import { SmartCategoriesPane } from '../components/library/SmartCategoriesPane';
 import { useBottomChromeClearance, useDockClearance } from '../hooks/useBottomChromeClearance';
 import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Artwork } from '../components/ui/Artwork';
 import { Reveal } from '../components/ui/Reveal';
@@ -46,6 +63,7 @@ import { PressableScale } from '../components/ui/PressableScale';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SidebarTrigger } from '../components/ui/SidebarTrigger';
 import * as libraryApi from '../services/api/library';
+import type { LibraryQuery } from '../services/api/library';
 import * as recognitionsApi from '../services/api/recognitions';
 import { watchJob } from '../services/api/jobSocket';
 import type { Media, Playlist } from '../services/api/types';
@@ -102,11 +120,18 @@ export function LibraryScreen() {
   const isFocused = useIsFocused();
   const { width } = useWindowDimensions();
   const { isDesktop } = useResponsive();
+  const reduceMotion = useReducedMotion();
   const insets = useSafeAreaInsets();
   const bottomChromeClearance = useBottomChromeClearance();
   const dockClearance = useDockClearance();
   const setBottomOverlayOffset = useUiStore((state) => state.setBottomOverlayOffset);
-  const { items, isLoading, refresh, upsert, remove } = useLibraryStore();
+  const {
+    items: canonicalItems,
+    isLoading: canonicalLoading,
+    refresh: refreshCanonical,
+    upsert,
+    remove,
+  } = useLibraryStore();
   const playQueue = usePlayerStore((s) => s.playQueue);
   const playNextInQueue = usePlayerStore((s) => s.playNextInQueue);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
@@ -117,6 +142,7 @@ export function LibraryScreen() {
 
   const playlists = usePlaylistStore((s) => s.playlists);
   const refreshPlaylists = usePlaylistStore((s) => s.refresh);
+  const addPlaylistItems = usePlaylistStore((s) => s.addItems);
 
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState<Tab>(route.params?.tab ?? 'all');
@@ -126,7 +152,12 @@ export function LibraryScreen() {
   // initial state above.
   useEffect(() => {
     if (route.params?.tab) setTab(route.params.tab);
-  }, [route.params?.tab]);
+    if (route.params?.query != null) setQuery(route.params.query);
+    if (route.params?.selectId) {
+      setSelectMode(true);
+      setSelectedIds({ [route.params.selectId]: true });
+    }
+  }, [route.params?.query, route.params?.selectId, route.params?.tab]);
   const [sort, setSort] = useState<SortMode>('newest');
   const [genreFilter, setGenreFilter] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<MediaCategoryId | null>(null);
@@ -138,6 +169,11 @@ export function LibraryScreen() {
   const [editMedia, setEditMedia] = useState<Media | null>(null);
   const [playlistDetailId, setPlaylistDetailId] = useState<string | null>(null);
   const [playlistPickTarget, setPlaylistPickTarget] = useState<{ ids: string[]; label: string } | null>(null);
+  const [newPlaylistPrompt, setNewPlaylistPrompt] = useState(false);
+  const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<LibraryAdvancedFilters>(EMPTY_LIBRARY_FILTERS);
+  const [filteredItems, setFilteredItems] = useState<Media[] | null>(null);
+  const [filterLoading, setFilterLoading] = useState(false);
   const [offlineIds, setOfflineIds] = useState<Record<string, boolean>>({});
   const [savingOffline, setSavingOffline] = useState(false);
   const [bulkDownloading, setBulkDownloading] = useState(false);
@@ -148,22 +184,99 @@ export function LibraryScreen() {
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [naming, setNaming] = useState(false);
+  const [namingProgress, setNamingProgress] = useState<{ processed: number; matched: number; total: number } | null>(null);
+  const [draggingMediaId, setDraggingMediaId] = useState<string | null>(null);
+  const [hoveredDropKey, setHoveredDropKey] = useState<string | null>(null);
+  const dragPosition = useRef(new Animated.ValueXY()).current;
+  const dragVisibility = useRef(new Animated.Value(0)).current;
+  const playlistDropStripRef = useRef<PlaylistDropStripHandle>(null);
+  const hoveredDropKeyRef = useRef<string | null>(null);
+  const filterRequestIdRef = useRef(0);
+
+  const serverQuery = useMemo<LibraryQuery>(() => {
+    const filters = advancedFiltersToQuery(advancedFilters);
+    return {
+      ...filters,
+      q: query.trim() || undefined,
+      media_type: tab === 'audio' || tab === 'video' ? tab : filters.media_type,
+      favorite: tab === 'favorites' ? true : filters.favorite,
+    };
+  }, [advancedFilters, query, tab]);
+  const hasServerFilters = useMemo(
+    () => Object.values(serverQuery).some((value) => value !== undefined && value !== ''),
+    [serverQuery],
+  );
+  const items = hasServerFilters ? filteredItems ?? [] : canonicalItems;
+  const isLoading = hasServerFilters ? filterLoading : canonicalLoading;
 
   useEffect(() => {
-    refresh();
+    void refreshCanonical();
+  }, [refreshCanonical]);
+
+  useEffect(() => {
     refreshPlaylists().catch(() => {});
     if (offlineMedia.isSupported()) {
       offlineMedia.listOffline().then((entries) => {
         setOfflineIds(Object.fromEntries(entries.map((e) => [e.id, true])));
       });
     }
-  }, [refresh, refreshPlaylists]);
+  }, [refreshPlaylists]);
 
   useEffect(() => {
-    const timeout = setTimeout(() => refresh(query || undefined), 300);
+    const requestId = ++filterRequestIdRef.current;
+    if (!hasServerFilters) {
+      setFilteredItems(null);
+      setFilterLoading(false);
+      return;
+    }
+    setFilteredItems(null);
+    setFilterLoading(true);
+    const timeout = setTimeout(() => {
+      void libraryApi.listLibrary(serverQuery)
+        .then((result) => {
+          if (filterRequestIdRef.current === requestId) setFilteredItems(result);
+        })
+        .catch(() => {
+          if (filterRequestIdRef.current === requestId) setFilteredItems([]);
+        })
+        .finally(() => {
+          if (filterRequestIdRef.current === requestId) setFilterLoading(false);
+        });
+    }, 300);
     return () => clearTimeout(timeout);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [hasServerFilters, serverQuery]);
+
+  async function refreshFilteredNow() {
+    if (!hasServerFilters) return;
+    const requestId = ++filterRequestIdRef.current;
+    setFilterLoading(true);
+    try {
+      const result = await libraryApi.listLibrary(serverQuery);
+      if (filterRequestIdRef.current === requestId) setFilteredItems(result);
+    } catch {
+      if (filterRequestIdRef.current === requestId) setFilteredItems((current) => current ?? []);
+    } finally {
+      if (filterRequestIdRef.current === requestId) setFilterLoading(false);
+    }
+  }
+
+  async function refreshScreenLibrary() {
+    await refreshCanonical();
+    if (hasServerFilters) await refreshFilteredNow();
+  }
+
+  function upsertInLibraryViews(media: Media) {
+    upsert(media);
+    setFilteredItems((current) => {
+      if (!current) return current;
+      return current.map((item) => (item.id === media.id ? media : item));
+    });
+  }
+
+  async function removeFromLibraryViews(mediaId: string) {
+    await remove(mediaId);
+    setFilteredItems((current) => current?.filter((item) => item.id !== mediaId) ?? current);
+  }
 
   const genres = useMemo(
     () => [...new Set(items.map((m) => m.genre?.trim()).filter((value): value is string => !!value))].sort(),
@@ -365,7 +478,7 @@ export function LibraryScreen() {
   async function handleDelete(media: Media) {
     closeTrackSheet();
     try {
-      await remove(media.id);
+      await removeFromLibraryViews(media.id);
       toast('Removed from your collection', 'success');
     } catch (err) {
       toast(apiErrorMessage(err, "Couldn't delete that track."), 'error');
@@ -378,34 +491,50 @@ export function LibraryScreen() {
     if (naming) return;
     setNaming(true);
     try {
-      const jobs = await recognitionsApi.recognizeWholeLibrary();
-      if (jobs.length === 0) {
+      const job = await recognitionsApi.recognizeWholeLibrary();
+      const initialTotal = job.batch_total ?? unnamedCount;
+      setNamingProgress({
+        processed: job.batch_processed ?? 0,
+        matched: job.batch_matched ?? 0,
+        total: initialTotal,
+      });
+      if (initialTotal === 0) {
         toast('Every track already has a name', 'success');
         setNaming(false);
+        setNamingProgress(null);
         return;
       }
-      toast(`Naming ${jobs.length} track${jobs.length === 1 ? '' : 's'}…`, 'info');
-      let done = 0;
-      let named = 0;
-      jobs.forEach((job) => {
-        const unsubscribe = watchJob(job.id, (update) => {
-          if (update.status === 'complete' || update.status === 'failed' || update.status === 'cancelled') {
-            done += 1;
-            if (update.stage_label === 'matched') {
-              named += 1;
-              if (update.result_media) upsert(update.result_media);
-            }
-            unsubscribe();
-            if (done === jobs.length) {
-              setNaming(false);
-              toast(`Named ${named} of ${jobs.length} tracks`, named > 0 ? 'success' : 'info');
-            }
-          }
-        });
-      });
+      toast(`Naming all ${initialTotal} tracks…`, 'info');
+
+      let unsubscribe: (() => void) | null = null;
+      const handleUpdate = (update: typeof job) => {
+        const total = update.batch_total ?? initialTotal;
+        const processed = update.batch_processed ?? 0;
+        const matched = update.batch_matched ?? 0;
+        setNamingProgress({ processed, matched, total });
+        if (update.status !== 'complete' && update.status !== 'failed' && update.status !== 'cancelled') return;
+
+        unsubscribe?.();
+        setNaming(false);
+        setNamingProgress(null);
+        void refreshScreenLibrary();
+        const genuineFailures = update.batch_failed ?? 0;
+        if (update.status === 'complete') {
+          toast(
+            `Named ${matched} of ${total} tracks${genuineFailures ? ` · ${genuineFailures} failed` : ''}`,
+            matched > 0 ? 'success' : 'info',
+          );
+        } else {
+          toast(`Naming stopped after ${processed} of ${total} · ${matched} named`, 'error');
+        }
+      };
+
+      if (job.status === 'complete' || job.status === 'failed' || job.status === 'cancelled') handleUpdate(job);
+      else unsubscribe = watchJob(job.id, handleUpdate);
     } catch (err) {
       toast(apiErrorMessage(err, "Couldn't start naming."), 'error');
       setNaming(false);
+      setNamingProgress(null);
     }
   }
 
@@ -418,10 +547,75 @@ export function LibraryScreen() {
     });
   }
 
+  function enterSelection(mediaId: string) {
+    setSelectMode(true);
+    setSelectedIds((current) => ({ ...current, [mediaId]: true }));
+    closeTrackSheet();
+  }
+
+  function clearSelection() {
+    setSelectedIds({});
+    setConfirmBulkDelete(false);
+  }
+
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds({});
     setConfirmBulkDelete(false);
+    setNewPlaylistPrompt(false);
+  }
+
+  function dropTargetKey(target: PlaylistDropTarget | null): string | null {
+    if (!target) return null;
+    return target.kind === 'new' ? 'new' : target.playlist.id;
+  }
+
+  function setDropHover(target: PlaylistDropTarget | null) {
+    const key = dropTargetKey(target);
+    if (hoveredDropKeyRef.current === key) return;
+    hoveredDropKeyRef.current = key;
+    setHoveredDropKey(key);
+  }
+
+  async function handlePlaylistTarget(target: PlaylistDropTarget) {
+    const ids = Object.keys(selectedIds);
+    if (ids.length === 0) return;
+    if (target.kind === 'new') {
+      setNewPlaylistPrompt(true);
+      return;
+    }
+    try {
+      await addPlaylistItems(target.playlist.id, ids);
+      toast(`Added ${ids.length} track${ids.length === 1 ? '' : 's'} to “${target.playlist.name}”`, 'success');
+    } catch (err) {
+      toast(apiErrorMessage(err, "Couldn't add every selected track."), 'error');
+    }
+  }
+
+  function beginPlaylistDrag(mediaId: string, absoluteX: number, absoluteY: number) {
+    if (!selectedIds[mediaId]) return;
+    setDraggingMediaId(mediaId);
+    dragPosition.setValue({ x: absoluteX - 34, y: absoluteY - 34 });
+    if (reduceMotion) dragVisibility.setValue(1);
+    else {
+      dragVisibility.setValue(0);
+      Animated.spring(dragVisibility, { toValue: 1, speed: 24, bounciness: 5, useNativeDriver: true }).start();
+    }
+    void playlistDropStripRef.current?.measureTargets();
+  }
+
+  function movePlaylistDrag(absoluteX: number, absoluteY: number) {
+    dragPosition.setValue({ x: absoluteX - 34, y: absoluteY - 34 });
+    setDropHover(playlistDropStripRef.current?.hitTest(absoluteX, absoluteY) ?? null);
+  }
+
+  function endPlaylistDrag(absoluteX: number, absoluteY: number, cancelled: boolean) {
+    const target = cancelled ? null : playlistDropStripRef.current?.hitTest(absoluteX, absoluteY) ?? null;
+    setDropHover(null);
+    Animated.timing(dragVisibility, { toValue: 0, duration: reduceMotion ? 0 : 140, useNativeDriver: true }).start(() => {
+      setDraggingMediaId(null);
+    });
+    if (target) void handlePlaylistTarget(target);
   }
 
   // A newly opened (or closed) sheet always starts with the delete un-armed.
@@ -439,7 +633,7 @@ export function LibraryScreen() {
     }
     setConfirmBulkDelete(false);
     try {
-      await Promise.all(ids.map((id) => remove(id)));
+      for (const id of ids) await removeFromLibraryViews(id);
       toast(`Removed ${ids.length} track${ids.length === 1 ? '' : 's'}`, 'success');
     } catch (err) {
       toast(apiErrorMessage(err, "Couldn't remove every selected track."), 'error');
@@ -450,11 +644,37 @@ export function LibraryScreen() {
 
   const unnamedCount = useMemo(
     () =>
-      items.filter(
+      canonicalItems.filter(
         (m) => m.media_type === 'audio' && !m.recognized_title && looksLikeGarbageTitle(m.title),
       ).length,
-    [items],
+    [canonicalItems],
   );
+  const selectedCount = Object.keys(selectedIds).length;
+  const allVisibleSelected = visible.length > 0 && visible.every((media) => selectedIds[media.id]);
+  const selectedMedia = useMemo(
+    () => items.filter((media) => selectedIds[media.id]),
+    [items, selectedIds],
+  );
+  const activeAdvancedChips = useMemo(
+    () => activeLibraryFilterChips(advancedFilters, playlists),
+    [advancedFilters, playlists],
+  );
+  const advancedFilterCount = libraryFilterCount(advancedFilters);
+
+  function selectAllVisible() {
+    if (allVisibleSelected) {
+      clearSelection();
+      return;
+    }
+    setSelectedIds(Object.fromEntries(visible.map((media) => [media.id, true as const])));
+  }
+
+  function clearAdvancedFilter(chip: ActiveFilterChip) {
+    setAdvancedFilters((current) => ({
+      ...current,
+      [chip.key]: EMPTY_LIBRARY_FILTERS[chip.key],
+    }));
+  }
 
   // Grid geometry: 2 columns on phones, as many ~220px cards as fit on desktop.
   const containerWidth = isDesktop
@@ -462,7 +682,7 @@ export function LibraryScreen() {
     : width - spacing.lg * 2;
   const columns = view === 'grid' ? (isDesktop ? Math.max(3, Math.floor(containerWidth / 224)) : 2) : 1;
   const cellSize = (containerWidth - spacing.md * (columns - 1)) / columns;
-  const hasActiveFilters = !!query || !!categoryFilter || !!genreFilter || !!yearFilter || remixFilter !== 'all' || tab === 'favorites';
+  const hasActiveFilters = !!query || advancedFilterCount > 0 || !!categoryFilter || !!genreFilter || !!yearFilter || remixFilter !== 'all' || tab === 'favorites';
   // The bar includes safe-area padding and can grow with font scaling. Measure
   // its rendered height so the absolutely positioned player clears it exactly.
   // MiniPlayerBar already clears the mobile dock itself, so do not count that
@@ -478,6 +698,7 @@ export function LibraryScreen() {
 
   function resetFilters() {
     setQuery('');
+    setAdvancedFilters(EMPTY_LIBRARY_FILTERS);
     setCategoryFilter(null);
     setGenreFilter(null);
     setYearFilter(null);
@@ -489,21 +710,57 @@ export function LibraryScreen() {
     <View style={styles.root}>
       <ScreenContainer maxWidth={LIBRARY_MAX_WIDTH}>
         <Reveal>
-          <View style={styles.headerRow}>
-            <View style={styles.headerText}>
-              <Text style={styles.eyebrow}>YOUR MUSIC</Text>
-              <Text style={styles.megaTitle}>Library</Text>
-              <Text style={styles.librarySummary}>
-                {items.length === 0
-                  ? 'A private collection, ready when you are.'
-                  : `${items.length} item${items.length === 1 ? '' : 's'} · ${Object.keys(offlineIds).length} offline`}
-              </Text>
+          {selectMode ? (
+            <View style={styles.selectionContext}>
+              <View style={styles.selectionTopRow}>
+                <Pressable
+                  onPress={exitSelectMode}
+                  accessibilityRole="button"
+                  accessibilityLabel="Exit selection mode"
+                  style={styles.selectionClose}
+                >
+                  <Ionicons name="close" size={20} color={colors.textPrimary} />
+                </Pressable>
+                <View style={styles.selectionTitleWrap}>
+                  <Text accessibilityRole="header" style={styles.selectionTitle}>
+                    {selectedCount} selected
+                  </Text>
+                  <Text style={styles.selectionSubtitle}>Hold a selected song, then drag the stack below.</Text>
+                </View>
+                <View style={styles.selectionHeaderActions}>
+                  <Pressable onPress={selectAllVisible} style={styles.selectionHeaderButton}>
+                    <Text style={styles.selectionHeaderLabel}>{allVisibleSelected ? 'Unselect all' : 'Select all'}</Text>
+                  </Pressable>
+                  <Pressable onPress={clearSelection} disabled={selectedCount === 0} style={styles.selectionHeaderButton}>
+                    <Text style={[styles.selectionHeaderLabel, selectedCount === 0 && styles.disabledLabel]}>Clear</Text>
+                  </Pressable>
+                </View>
+              </View>
+              <PlaylistDropStrip
+                ref={playlistDropStripRef}
+                playlists={playlists}
+                selectedCount={selectedCount}
+                hoveredKey={hoveredDropKey}
+                onPick={(target) => void handlePlaylistTarget(target)}
+              />
             </View>
-            <SidebarTrigger />
-          </View>
+          ) : (
+            <View style={styles.headerRow}>
+              <View style={styles.headerText}>
+                <Text style={styles.eyebrow}>YOUR MUSIC</Text>
+                <Text style={styles.megaTitle}>Library</Text>
+                <Text style={styles.librarySummary}>
+                  {canonicalItems.length === 0
+                    ? 'A private collection, ready when you are.'
+                    : `${canonicalItems.length} item${canonicalItems.length === 1 ? '' : 's'} · ${Object.keys(offlineIds).length} offline`}
+                </Text>
+              </View>
+              <SidebarTrigger />
+            </View>
+          )}
         </Reveal>
 
-        <Reveal delay={70}>
+        {!selectMode && <Reveal delay={70}>
         <View style={styles.searchCapsule}>
           <Ionicons name="search" size={17} color={colors.textMuted} />
           <TextInput
@@ -521,9 +778,9 @@ export function LibraryScreen() {
             </Pressable>
           )}
         </View>
-        </Reveal>
+        </Reveal>}
 
-        <Reveal delay={120}>
+        {!selectMode && <Reveal delay={120}>
         <View style={styles.controlsRow}>
           <ScrollView
             horizontal
@@ -537,6 +794,12 @@ export function LibraryScreen() {
                 onPress={() => {
                   setTab(t.key);
                   setCategoryFilter(null);
+                  if (t.key === 'audio' || t.key === 'video') {
+                    setAdvancedFilters((current) => ({ ...current, mediaType: null }));
+                  }
+                  if (t.key === 'favorites') {
+                    setAdvancedFilters((current) => ({ ...current, favorite: null }));
+                  }
                 }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: tab === t.key }}
@@ -561,7 +824,17 @@ export function LibraryScreen() {
                   </Text>
                 </Pressable>
               ) : null}
-              {unnamedCount > 0 && (
+              <Pressable
+                onPress={() => setFilterSheetOpen(true)}
+                accessibilityRole="button"
+                accessibilityLabel={`Advanced filters${advancedFilterCount ? `, ${advancedFilterCount} active` : ''}`}
+                style={[styles.toolChip, advancedFilterCount > 0 && styles.toolChipActive]}
+              >
+                <Ionicons name="options" size={13} color={advancedFilterCount > 0 ? colors.cyan : colors.textSecondary} />
+                <Text style={[styles.toolLabel, advancedFilterCount > 0 && { color: colors.cyan }]}>Filters</Text>
+                {advancedFilterCount > 0 && <Text style={styles.filterCount}>{advancedFilterCount}</Text>}
+              </Pressable>
+              {(unnamedCount > 0 || naming) && (
                 <Pressable
                   onPress={handleFixNames}
                   disabled={naming}
@@ -575,7 +848,11 @@ export function LibraryScreen() {
                     <Ionicons name="sparkles" size={13} color={colors.cyan} />
                   )}
                   <Text style={[styles.toolLabel, { color: colors.cyan }]}>
-                    {naming ? 'Naming…' : `Fix ${unnamedCount} name${unnamedCount === 1 ? '' : 's'}`}
+                    {naming && namingProgress
+                      ? `Named ${namingProgress.matched} of ${namingProgress.total}`
+                      : naming
+                        ? 'Naming…'
+                        : `Fix ${unnamedCount} name${unnamedCount === 1 ? '' : 's'}`}
                   </Text>
                 </Pressable>
               )}
@@ -643,8 +920,27 @@ export function LibraryScreen() {
               )}
             </ScrollView>
           )}
+          {activeAdvancedChips.length > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activeFilterRow}>
+              {activeAdvancedChips.map((chip) => (
+                <Pressable
+                  key={chip.key}
+                  onPress={() => clearAdvancedFilter(chip)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove filter ${chip.label}`}
+                  style={styles.activeFilterChip}
+                >
+                  <Text numberOfLines={1} style={styles.activeFilterLabel}>{chip.label}</Text>
+                  <Ionicons name="close" size={13} color={colors.cyan} />
+                </Pressable>
+              ))}
+              <Pressable onPress={() => setAdvancedFilters(EMPTY_LIBRARY_FILTERS)} style={styles.resetFiltersChip}>
+                <Text style={styles.resetFiltersLabel}>Reset</Text>
+              </Pressable>
+            </ScrollView>
+          )}
         </View>
-        </Reveal>
+        </Reveal>}
 
         {tab === 'playlists' ? (
           <PlaylistsPane
@@ -668,7 +964,7 @@ export function LibraryScreen() {
               keyExtractor={(item) => item.id}
               numColumns={columns}
               refreshing={isLoading}
-              onRefresh={() => refresh(query || undefined)}
+              onRefresh={() => void refreshScreenLibrary()}
               showsVerticalScrollIndicator={false}
               // A 100+ item library rendered all at once is real jank in the
               // WebView — window it so offscreen cards don't exist in the DOM.
@@ -704,7 +1000,15 @@ export function LibraryScreen() {
                     selectMode={selectMode}
                     selected={!!selectedIds[item.id]}
                     onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
-                    onLongPress={(event) => (selectMode ? toggleSelect(item.id) : openTrackSheet(item, event))}
+                    onLongPress={() => {
+                      if (!selectMode) enterSelection(item.id);
+                      else if (!selectedIds[item.id]) toggleSelect(item.id);
+                    }}
+                    onMenuPress={(event) => openTrackSheet(item, event)}
+                    dragEnabled={selectMode && !!selectedIds[item.id]}
+                    onDragStart={(x, y) => beginPlaylistDrag(item.id, x, y)}
+                    onDragMove={movePlaylistDrag}
+                    onDragEnd={endPlaylistDrag}
                   />
                 ) : (
                   <ListRow
@@ -713,7 +1017,15 @@ export function LibraryScreen() {
                     selectMode={selectMode}
                     selected={!!selectedIds[item.id]}
                     onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
-                    onLongPress={(event) => (selectMode ? toggleSelect(item.id) : openTrackSheet(item, event))}
+                    onLongPress={() => {
+                      if (!selectMode) enterSelection(item.id);
+                      else if (!selectedIds[item.id]) toggleSelect(item.id);
+                    }}
+                    onMenuPress={(event) => openTrackSheet(item, event)}
+                    dragEnabled={selectMode && !!selectedIds[item.id]}
+                    onDragStart={(x, y) => beginPlaylistDrag(item.id, x, y)}
+                    onDragMove={movePlaylistDrag}
+                    onDragEnd={endPlaylistDrag}
                   />
                 )
               }
@@ -721,6 +1033,43 @@ export function LibraryScreen() {
           </Reveal>
         )}
       </ScreenContainer>
+
+      {draggingMediaId && selectedMedia.length > 0 && (
+        <Animated.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[
+            styles.dragCluster,
+            {
+              opacity: dragVisibility,
+              transform: [
+                ...dragPosition.getTranslateTransform(),
+                { scale: dragVisibility.interpolate({ inputRange: [0, 1], outputRange: [0.82, 1] }) },
+              ],
+            },
+          ]}
+        >
+          {selectedMedia.slice(0, 3).reverse().map((media, index) => (
+            <View
+              key={media.id}
+              style={[
+                styles.dragArtwork,
+                {
+                  left: index * 4,
+                  top: (2 - index) * 3,
+                  transform: [{ rotate: `${(index - 1) * 5}deg` }],
+                },
+              ]}
+            >
+              <Artwork media={media} size={58} borderRadius={radii.md} />
+            </View>
+          ))}
+          <View style={styles.dragCountBadge}>
+            <Text style={styles.dragCountLabel}>{selectedCount}</Text>
+          </View>
+        </Animated.View>
+      )}
 
       {selectMode && (
         <View
@@ -731,12 +1080,12 @@ export function LibraryScreen() {
             { paddingBottom: insets.bottom + spacing.sm + dockClearance },
           ]}
         >
-          <Text style={styles.bulkLabel}>
-            {Object.keys(selectedIds).length === 0
-              ? 'Tap items to select'
-              : `${Object.keys(selectedIds).length} selected`}
-          </Text>
-          <View style={styles.bulkActions}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.bulkActions}
+            accessibilityLabel="Selected track actions"
+          >
             <Pressable onPress={exitSelectMode} style={styles.bulkButton}>
               <Text style={styles.bulkButtonLabel}>Cancel</Text>
             </Pressable>
@@ -746,16 +1095,16 @@ export function LibraryScreen() {
                 if (ids.length === 0) return;
                 setPlaylistPickTarget({ ids, label: `${ids.length} track${ids.length === 1 ? '' : 's'}` });
               }}
-              disabled={Object.keys(selectedIds).length === 0}
-              style={[styles.bulkButton, Object.keys(selectedIds).length === 0 && { opacity: 0.4 }]}
+              disabled={selectedCount === 0}
+              style={[styles.bulkButton, selectedCount === 0 && { opacity: 0.4 }]}
             >
               <Ionicons name="list" size={15} color={colors.textSecondary} />
               <Text style={styles.bulkButtonLabel}>Move to playlist</Text>
             </Pressable>
             <Pressable
               onPress={() => handleDownloadMany(visible.filter((m) => selectedIds[m.id]))}
-              disabled={Object.keys(selectedIds).length === 0 || bulkDownloading}
-              style={[styles.bulkButton, Object.keys(selectedIds).length === 0 && { opacity: 0.4 }]}
+              disabled={selectedCount === 0 || bulkDownloading}
+              style={[styles.bulkButton, selectedCount === 0 && { opacity: 0.4 }]}
             >
               {bulkDownloading ? (
                 <ActivityIndicator size="small" color={colors.textSecondary} />
@@ -768,15 +1117,15 @@ export function LibraryScreen() {
             </Pressable>
             <Pressable
               onPress={handleDeleteSelected}
-              disabled={Object.keys(selectedIds).length === 0}
-              style={[styles.bulkButton, styles.bulkButtonDanger, Object.keys(selectedIds).length === 0 && { opacity: 0.4 }]}
+              disabled={selectedCount === 0}
+              style={[styles.bulkButton, styles.bulkButtonDanger, selectedCount === 0 && { opacity: 0.4 }]}
             >
               <Ionicons name={confirmBulkDelete ? 'alert-circle' : 'trash-outline'} size={15} color={colors.danger} />
               <Text style={[styles.bulkButtonLabel, { color: colors.danger }]}>
                 {confirmBulkDelete ? 'Sure? Tap again' : 'Delete'}
               </Text>
             </Pressable>
-          </View>
+          </ScrollView>
         </View>
       )}
       <MiniPlayerBar />
@@ -809,76 +1158,34 @@ export function LibraryScreen() {
         ) : null}
       >
         {sheetMedia && (
-          <>
-            <SheetAction icon="play" label="Play" onPress={() => { closeTrackSheet(); handlePlay(sheetMedia); }} />
-            <SheetAction
-                icon="return-down-forward"
-                label="Play next"
-                onPress={() => { playNextInQueue(sheetMedia); closeTrackSheet(); toast('Playing next', 'success'); }}
-            />
-            <SheetAction
-                icon="add"
-                label="Add to queue"
-                onPress={() => { addToQueue(sheetMedia); closeTrackSheet(); toast('Added to queue', 'success'); }}
-            />
-            <SheetAction
-                icon={favoriteIds[sheetMedia.id] ? 'heart' : 'heart-outline'}
-                label={favoriteIds[sheetMedia.id] ? 'Remove from favorites' : 'Add to favorites'}
-                tint={colors.pink}
-                onPress={() => toggleFavorite(sheetMedia.id)}
-              />
-              <SheetAction
-                icon={pinnedIds.includes(sheetMedia.id) ? 'bookmark' : 'bookmark-outline'}
-                label={
-                  pinnedIds.includes(sheetMedia.id)
-                    ? 'Unpin'
-                    : pinnedIds.length >= MAX_PINS
-                      ? `Pin (replaces oldest of ${MAX_PINS})`
-                      : 'Pin for quick access'
-                }
-                tint={colors.gold}
-                onPress={() => togglePin(sheetMedia.id)}
-              />
-              <SheetAction
-                icon="list"
-                label="Add to playlist"
-                onPress={() => { setPlaylistPickTarget({ ids: [sheetMedia.id], label: displayTitle(sheetMedia) }); closeTrackSheet(); }}
-              />
-              <SheetAction
-                icon="person-outline"
-                label={`More by ${displayArtist(sheetMedia)}`}
-                onPress={() => { setQuery(displayArtist(sheetMedia)); setTab('all'); closeTrackSheet(); }}
-              />
-              <SheetAction
-                icon="pencil"
-                label="Rename / edit details"
-                onPress={() => { setEditMedia(sheetMedia); closeTrackSheet(); }}
-              />
-              <SheetAction
-                icon="checkmark-circle-outline"
-                label="Select multiple…"
-                onPress={() => {
-                  setSelectMode(true);
-                  setSelectedIds({ [sheetMedia.id]: true });
-                  closeTrackSheet();
-                }}
-              />
-              <SheetAction icon="download-outline" label="Save file" onPress={() => handleSaveFile(sheetMedia)} />
-              {offlineMedia.isSupported() && sheetMedia.media_type === 'audio' && (
-                <SheetAction
-                  icon={offlineIds[sheetMedia.id] ? 'checkmark-circle' : 'cloud-download-outline'}
-                  label={offlineIds[sheetMedia.id] ? 'Saved for offline · tap to remove' : 'Save for offline playback'}
-                  tint={offlineIds[sheetMedia.id] ? colors.success : undefined}
-                  onPress={() => handleToggleOffline(sheetMedia)}
-                />
-              )}
-              <SheetAction
-                icon={confirmDelete ? 'alert-circle' : 'trash-outline'}
-                label={confirmDelete ? 'Sure? Tap again to delete' : 'Delete'}
-                tint={colors.danger}
-                onPress={() => (confirmDelete ? handleDelete(sheetMedia) : setConfirmDelete(true))}
-            />
-          </>
+          <TrackActionList
+            context={{
+              media: sheetMedia,
+              favorite: !!favoriteIds[sheetMedia.id],
+              pinned: pinnedIds.includes(sheetMedia.id),
+              pinLimitReached: pinnedIds.length >= MAX_PINS,
+              maxPins: MAX_PINS,
+              offlineSaved: !!offlineIds[sheetMedia.id],
+              confirmDelete,
+              onPlay: () => { closeTrackSheet(); void handlePlay(sheetMedia); },
+              onPlayNext: () => { playNextInQueue(sheetMedia); closeTrackSheet(); toast('Playing next', 'success'); },
+              onAddToQueue: () => { addToQueue(sheetMedia); closeTrackSheet(); toast('Added to queue', 'success'); },
+              onToggleFavorite: () => toggleFavorite(sheetMedia.id),
+              onTogglePin: () => togglePin(sheetMedia.id),
+              onAddToPlaylist: () => {
+                setPlaylistPickTarget({ ids: [sheetMedia.id], label: displayTitle(sheetMedia) });
+                closeTrackSheet();
+              },
+              onMoreByArtist: () => { setQuery(displayArtist(sheetMedia)); setTab('all'); closeTrackSheet(); },
+              onEdit: () => { setEditMedia(sheetMedia); closeTrackSheet(); },
+              onSelectMultiple: () => enterSelection(sheetMedia.id),
+              onSaveFile: () => void handleSaveFile(sheetMedia),
+              onToggleOffline: offlineMedia.isSupported() && sheetMedia.media_type === 'audio'
+                ? () => void handleToggleOffline(sheetMedia)
+                : undefined,
+              onDelete: () => (confirmDelete ? void handleDelete(sheetMedia) : setConfirmDelete(true)),
+            }}
+          />
         )}
       </CompactGlassSheet>
 
@@ -887,8 +1194,9 @@ export function LibraryScreen() {
           media={editMedia}
           onClose={() => setEditMedia(null)}
           onSaved={(updated) => {
-            upsert(updated);
+            upsertInLibraryViews(updated);
             setEditMedia(null);
+            if (hasServerFilters) void refreshFilteredNow();
             toast('Details saved', 'success');
           }}
         />
@@ -905,6 +1213,30 @@ export function LibraryScreen() {
           }}
         />
       )}
+
+      {newPlaylistPrompt && (
+        <NewPlaylistWithItemsModal
+          mediaIds={Object.keys(selectedIds)}
+          onClose={() => setNewPlaylistPrompt(false)}
+          onDone={() => {
+            setNewPlaylistPrompt(false);
+            exitSelectMode();
+          }}
+        />
+      )}
+
+      <LibraryFilterSheet
+        visible={filterSheetOpen}
+        value={advancedFilters}
+        playlists={playlists}
+        onClose={() => setFilterSheetOpen(false)}
+        onApply={(filters) => {
+          setAdvancedFilters(filters);
+          // Advanced media/favorite choices are explicit and should not be
+          // silently overridden by the legacy quick tabs.
+          if (filters.mediaType || filters.favorite != null) setTab('all');
+        }}
+      />
 
       {playlistDetailId && (
         <PlaylistDetailModal
@@ -930,6 +1262,37 @@ const styles = StyleSheet.create({
   eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.xs },
   megaTitle: { ...typography.mega, color: colors.textPrimary },
   librarySummary: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.md },
+  selectionContext: {
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: glass.fillHeavy,
+    borderWidth: 1,
+    borderColor: glass.tintPrimaryStroke,
+  },
+  selectionTopRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+  selectionClose: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.pill,
+    backgroundColor: glass.fillDeep,
+  },
+  selectionTitleWrap: { flex: 1, minWidth: 150 },
+  selectionTitle: { ...typography.title, fontSize: 18, lineHeight: 23, color: colors.textPrimary },
+  selectionSubtitle: { ...typography.caption, fontSize: 11, color: colors.textMuted },
+  selectionHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  selectionHeaderButton: {
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: glass.fill,
+  },
+  selectionHeaderLabel: { ...typography.caption, color: colors.cyan },
+  disabledLabel: { color: colors.textMuted, opacity: 0.5 },
   searchCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -969,24 +1332,78 @@ const styles = StyleSheet.create({
   },
   toolLabel: { ...typography.caption, fontSize: 12, color: colors.textSecondary },
   toolChipActive: { backgroundColor: glass.tintPrimary },
+  filterCount: {
+    ...typography.caption,
+    minWidth: 18,
+    textAlign: 'center',
+    fontSize: 10,
+    color: colors.textInverse,
+    backgroundColor: colors.cyan,
+    borderRadius: radii.pill,
+    paddingHorizontal: 4,
+  },
   fixNamesChip: { backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke },
+  activeFilterRow: { flexDirection: 'row', gap: spacing.xs, paddingRight: spacing.lg },
+  activeFilterChip: {
+    minHeight: 32,
+    maxWidth: 210,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: glass.tintPrimary,
+    borderWidth: 1,
+    borderColor: glass.tintPrimaryStroke,
+  },
+  activeFilterLabel: { ...typography.caption, fontSize: 11, color: colors.cyan },
+  resetFiltersChip: { minHeight: 32, justifyContent: 'center', paddingHorizontal: spacing.sm },
+  resetFiltersLabel: { ...typography.caption, fontSize: 11, color: colors.textSecondary },
   gridRow: { gap: spacing.md },
   listReveal: { flex: 1 },
   list: { flex: 1 },
   listContent: { gap: spacing.md },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
-  bulkBar: {
-    flexDirection: 'row',
+  dragCluster: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: 72,
+    height: 72,
+    zIndex: 100,
+    elevation: 20,
+  },
+  dragArtwork: {
+    position: 'absolute',
+    width: 58,
+    height: 58,
+    borderRadius: radii.md,
+    backgroundColor: colors.bgElevated,
+    borderWidth: 1,
+    borderColor: colors.cyan,
+  },
+  dragCountBadge: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    minWidth: 26,
+    height: 26,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    paddingHorizontal: 5,
+    borderRadius: radii.pill,
+    backgroundColor: colors.cyan,
+  },
+  dragCountLabel: { ...typography.caption, fontFamily: 'Sora_700Bold', color: colors.textInverse },
+  bulkBar: {
+    gap: spacing.xs,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
     backgroundColor: glass.fillHeavy,
     borderTopWidth: 1,
     borderTopColor: glass.stroke,
   },
-  bulkLabel: { ...typography.subtitle, fontSize: 14, color: colors.textPrimary },
-  bulkActions: { flexDirection: 'row', gap: spacing.sm },
+  bulkActions: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.lg },
   bulkButton: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -55,6 +55,59 @@ class YoutubeDlServiceTests(unittest.TestCase):
                 self.assertTrue(ytdlp_service._has_cookie_settings())
                 self.assertFalse(temp_path.exists())
 
+    def test_media_url_validation_accepts_only_public_http_addresses(self) -> None:
+        public_address = [
+            (
+                ytdlp_service.socket.AF_INET,
+                ytdlp_service.socket.SOCK_STREAM,
+                6,
+                "",
+                ("8.8.8.8", 443),
+            )
+        ]
+        with patch.object(ytdlp_service.socket, "getaddrinfo", return_value=public_address) as resolve:
+            result = ytdlp_service.validate_media_url(" https://media.example/song ")
+
+        self.assertEqual("https://media.example/song", result)
+        resolve.assert_called_once_with("media.example", 443, type=ytdlp_service.socket.SOCK_STREAM)
+
+    def test_media_url_validation_rejects_private_link_local_and_mixed_dns(self) -> None:
+        for address in ("127.0.0.1", "10.0.0.4", "169.254.10.2", "::1", "fe80::1"):
+            family = ytdlp_service.socket.AF_INET6 if ":" in address else ytdlp_service.socket.AF_INET
+            resolved = [(family, ytdlp_service.socket.SOCK_STREAM, 6, "", (address, 80))]
+            with (
+                self.subTest(address=address),
+                patch.object(ytdlp_service.socket, "getaddrinfo", return_value=resolved),
+                self.assertRaisesRegex(ValueError, "private or local"),
+            ):
+                ytdlp_service.validate_media_url("http://media.example/song")
+
+        mixed = [
+            (ytdlp_service.socket.AF_INET, ytdlp_service.socket.SOCK_STREAM, 6, "", ("8.8.8.8", 443)),
+            (ytdlp_service.socket.AF_INET, ytdlp_service.socket.SOCK_STREAM, 6, "", ("10.1.2.3", 443)),
+        ]
+        with (
+            patch.object(ytdlp_service.socket, "getaddrinfo", return_value=mixed),
+            self.assertRaisesRegex(ValueError, "private or local"),
+        ):
+            ytdlp_service.validate_media_url("https://media.example/song")
+
+    def test_media_url_validation_rejects_non_http_and_localhost(self) -> None:
+        for url in ("file:///etc/passwd", "ftp://media.example/song", "javascript:alert(1)"):
+            with self.subTest(url=url), self.assertRaisesRegex(ValueError, "http or https"):
+                ytdlp_service.validate_media_url(url)
+        with self.assertRaisesRegex(ValueError, "public host"):
+            ytdlp_service.validate_media_url("http://localhost/admin")
+
+    def test_media_url_validation_preserves_strict_ytsearch_queries_without_dns(self) -> None:
+        with patch.object(ytdlp_service.socket, "getaddrinfo") as resolve:
+            result = ytdlp_service.validate_media_url("ytsearch5: artist song title ")
+        self.assertEqual("ytsearch5:artist song title", result)
+        resolve.assert_not_called()
+
+        with self.assertRaisesRegex(ValueError, "http or https"):
+            ytdlp_service.validate_media_url("ytsearch-evil:anything")
+
     def test_uses_render_secret_cookie_file_before_local_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             render_cookie_path = Path(tmp) / "render-youtube-cookies.txt"
@@ -256,6 +309,66 @@ class YoutubeDlServiceTests(unittest.TestCase):
         self.assertEqual(result.file_path.name, "video-id.webm")
         self.assertEqual(len(calls), 1)
         self.assertIn("cookiefile", calls[0])
+
+    def test_full_playlist_keeps_successful_entries_and_reports_partial_failure(self) -> None:
+        observed_opts: dict = {}
+
+        def fake_extract(_url: str, opts: dict, *, download: bool) -> dict:
+            observed_opts.update(opts)
+            self.assertTrue(download)
+            (output_dir / "first.webm").write_bytes(b"first")
+            (output_dir / "third.webm").write_bytes(b"third")
+            return {
+                "_type": "playlist",
+                "playlist_count": 3,
+                "entries": [
+                    {"id": "first", "title": "First", "thumbnail": "https://img/first.jpg"},
+                    None,
+                    {"id": "third", "title": "Third", "artist": "Artist"},
+                ],
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            with patch.object(ytdlp_service, "_extract_with_cookie_retry", side_effect=fake_extract):
+                result = ytdlp_service.download_media_batch(
+                    "https://www.youtube.com/playlist?list=test",
+                    "audio",
+                    output_dir,
+                    audio_format="source",
+                    download_playlist=True,
+                )
+
+        self.assertEqual(["First", "Third"], [item.title for item in result.items])
+        self.assertEqual(3, result.total_count)
+        self.assertEqual(1, result.failed_count)
+        self.assertFalse(observed_opts["noplaylist"])
+        self.assertTrue(observed_opts["ignoreerrors"])
+
+    def test_inspection_detects_playlist_without_downloading(self) -> None:
+        observed: dict[str, object] = {}
+
+        def fake_extract(_url: str, opts: dict, *, download: bool) -> dict:
+            observed.update(opts=opts, download=download)
+            return {
+                "_type": "playlist",
+                "extractor_key": "YoutubeTab",
+                "title": "Road trip",
+                "playlist_count": 2,
+                "entries": [{"id": "one"}, {"id": "two"}],
+            }
+
+        with (
+            patch.object(ytdlp_service, "validate_media_url", side_effect=lambda url: url),
+            patch.object(ytdlp_service, "_extract_with_cookie_retry", side_effect=fake_extract),
+        ):
+            result = ytdlp_service.inspect_url("https://youtube.com/watch?v=one&list=test")
+
+        self.assertTrue(result.is_playlist)
+        self.assertEqual("Road trip", result.playlist_title)
+        self.assertEqual(2, result.entry_count)
+        self.assertFalse(observed["download"])
+        self.assertTrue(observed["opts"]["skip_download"])
 
 
 if __name__ == "__main__":

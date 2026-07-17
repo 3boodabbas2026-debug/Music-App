@@ -32,7 +32,7 @@ const track = {
   created_at: '2026-07-13T10:30:00Z',
 };
 
-test('More exposes persisted playback settings and rich track details', async ({ page }) => {
+test('More exposes full track actions, rich details, and persisted playback settings', async ({ page }) => {
   await page.route('**/api/v1/**', async (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith('/auth/login')) {
@@ -67,14 +67,11 @@ test('More exposes persisted playback settings and rich track details', async ({
   await expect(page.getByText('NOW PLAYING', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'More player options' }).last().click();
 
-  await expect(page.getByRole('tab', { name: 'Playback' })).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByLabel('Smooth transitions')).toBeChecked();
-  await expect(page.getByLabel('Keep the music going')).toBeChecked();
-  await page.getByLabel('Smooth transitions').click();
-  await expect(page.getByLabel('Smooth transitions')).not.toBeChecked();
-
-  await page.getByRole('tab', { name: 'Details' }).click();
-  await expect(page.getByRole('tab', { name: 'Details' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tab', { name: 'Track' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('button', { name: 'Play next for Midnight Signal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add to playlist for Midnight Signal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Add to favorites for Midnight Signal' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Delete for Midnight Signal' })).toBeVisible();
   await expect(page.getByLabel('Album: Afterglow')).toBeVisible();
   await expect(page.getByLabel('Genre: Ambient')).toBeVisible();
   await expect(page.getByLabel('Released: 2025')).toBeVisible();
@@ -82,4 +79,11 @@ test('More exposes persisted playback settings and rich track details', async ({
   await expect(page.getByLabel('Source: Telegram')).toBeVisible();
   await expect(page.getByLabel('File: MP3 · 8.0 MB')).toBeVisible();
   await expect(page.getByText('Remix', { exact: true })).toBeVisible();
+
+  await page.getByRole('tab', { name: 'Playback' }).click();
+  await expect(page.getByRole('tab', { name: 'Playback' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByLabel('Smooth transitions')).toBeChecked();
+  await expect(page.getByLabel('Keep the music going')).toBeChecked();
+  await page.getByLabel('Smooth transitions').click();
+  await expect(page.getByLabel('Smooth transitions')).not.toBeChecked();
 });

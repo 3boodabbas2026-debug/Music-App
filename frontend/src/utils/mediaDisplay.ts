@@ -9,6 +9,7 @@ import type { Media } from '../services/api/types';
  * (job_engine.py), which decides when to auto-run recognition.
  */
 const GARBAGE_TITLE_RE = /^[A-Za-z0-9_-]{16,}$/;
+const PLACEHOLDER_TITLE_RE = /^(?:untitled(?:\s+(?:track|audio))?|unknown(?:\s+(?:track|title|audio))?|no\s+title|audio\s*file|track)$/i;
 const TRAILING_HASHTAGS_RE = /(?:\s+#[^\s#]+)+\s*$/u;
 const SOCIAL_TAG_RE = /^(?:fyp|viral|tiktok|shorts?|lyrics?|lyricsongs?|lyricsedit|music|songs?|pianocover|popmusic)$/i;
 const BRACKET_SOURCE_NOISE_RE = /^(?:(?:official\s+)?(?:(?:music|lyric)\s+)?(?:video|audio)|lyrics?|visuali[sz]er|(?:(?:beginner|intermediate|advanced)\s+)?(?:piano\s+)?tutorial|(?:official\s+)?(?:music\s+)?cover|karaoke|hd|4k|shorts?)(?:\s+(?:hd|4k))?$/i;
@@ -57,6 +58,7 @@ export function cleanMediaArtist(artist: string | null | undefined): string | nu
 export function looksLikeGarbageTitle(title: string | null | undefined): boolean {
   if (!title) return true;
   const t = title.trim();
+  if (PLACEHOLDER_TITLE_RE.test(t)) return true;
   if (t.includes(' ') || !GARBAGE_TITLE_RE.test(t)) return false;
   const hasDigit = /\d/.test(t);
   let caseFlips = 0;

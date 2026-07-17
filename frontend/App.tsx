@@ -1,6 +1,6 @@
 import 'react-native-gesture-handler';
-import { useEffect, useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Platform, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +12,7 @@ import { Sora_700Bold } from '@expo-google-fonts/sora/700Bold';
 
 import { BrandMark } from './src/components/ui/BrandMark';
 import { Toaster } from './src/components/ui/Toaster';
+import { useReducedMotion } from './src/hooks/useReducedMotion';
 import { getInitialWebTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { applyWebTheme } from './src/theme/theme';
 
@@ -61,18 +62,72 @@ import { usePinStore } from './src/store/pinStore';
 import { usePlayerStore } from './src/store/playerStore';
 import { usePlayHistoryStore } from './src/store/playHistoryStore';
 import { useScanHistoryStore } from './src/store/scanHistoryStore';
-import { colors } from './src/theme/tokens';
+import { colors, motion } from './src/theme/tokens';
 
 /** Quiet branded boot while fonts, auth and audio settle. */
 function BootScreen() {
+  const reduceMotion = useReducedMotion();
+  const entrance = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  const breath = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (reduceMotion) {
+      entrance.setValue(1);
+      breath.setValue(0);
+      return;
+    }
+
+    const reveal = Animated.timing(entrance, {
+      toValue: 1,
+      duration: motion.duration.slow,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    const breathe = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breath, {
+          toValue: 1,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breath, {
+          toValue: 0,
+          duration: 1100,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    reveal.start();
+    breathe.start();
+    return () => {
+      reveal.stop();
+      breathe.stop();
+    };
+  }, [breath, entrance, reduceMotion]);
+
   return (
-    <View style={bootStyles.root}>
-      <View style={bootStyles.core}>
+    <Animated.View
+      style={[
+        bootStyles.root,
+        {
+          opacity: entrance,
+          transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }],
+        },
+      ]}
+    >
+      <Animated.View
+        style={[
+          bootStyles.core,
+          { transform: [{ scale: breath.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] }) }] },
+        ]}
+      >
         <BrandMark size={56} />
-      </View>
+      </Animated.View>
       <Text style={bootStyles.wordmark}>STARHOLLOW</Text>
       <Text style={bootStyles.tagline}>Preparing your library…</Text>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -161,6 +216,9 @@ function AppContent() {
   // short grace period rather than leaving the user at boot indefinitely.
   const [fontTimedOut, setFontTimedOut] = useState(false);
   const { scheme } = useTheme();
+  const reduceMotion = useReducedMotion();
+  const readyEntrance = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  const ready = (fontsLoaded || fontTimedOut) && !isBootstrapping && audioReady;
 
   useKeyboardShortcuts();
 
@@ -191,17 +249,44 @@ function AppContent() {
     ]);
   }, [isAuthenticated]);
 
-  if ((!fontsLoaded && !fontTimedOut) || isBootstrapping || !audioReady) {
+  useEffect(() => {
+    if (!ready) {
+      readyEntrance.setValue(0);
+      return;
+    }
+    if (reduceMotion) {
+      readyEntrance.setValue(1);
+      return;
+    }
+    const animation = Animated.timing(readyEntrance, {
+      toValue: 1,
+      duration: motion.duration.slow,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [ready, readyEntrance, reduceMotion]);
+
+  if (!ready) {
     return <BootScreen />;
   }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-        <RootNavigator />
-        <Toaster />
-      </SafeAreaProvider>
+      <Animated.View
+        style={{
+          flex: 1,
+          opacity: readyEntrance,
+          transform: [{ scale: readyEntrance.interpolate({ inputRange: [0, 1], outputRange: [0.995, 1] }) }],
+        }}
+      >
+        <SafeAreaProvider>
+          <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+          <RootNavigator />
+          <Toaster />
+        </SafeAreaProvider>
+      </Animated.View>
     </GestureHandlerRootView>
   );
 }

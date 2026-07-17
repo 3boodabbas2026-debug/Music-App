@@ -72,6 +72,7 @@ if (html.includes('data-starhollow-pwa')) {
 const headSnippet = `
     <!-- data-starhollow-pwa -->
     <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -80,16 +81,13 @@ const headSnippet = `
     <meta name="application-name" content="Starhollow" />
     <meta name="description" content="Your private media archive: pull audio and video in from any link or Telegram chat, name any song, stream your library anywhere." />
     <style data-starhollow-boot>
-      html, body, #root { min-height: 100%; margin: 0; background: #0B1411; }
-      #starhollow-html-splash { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #0B1411; color: #EFF5F1; font-family: system-ui, sans-serif; }
-      /* A four-point star: two crossed, rotated squares with a warm core glow. */
-      #starhollow-html-splash .sh-star { position: relative; width: 74px; height: 74px; animation: sh-breathe 2s ease-in-out infinite; filter: drop-shadow(0 0 26px rgba(233,205,126,.55)) drop-shadow(0 0 60px rgba(99,214,181,.3)); }
-      #starhollow-html-splash .sh-star::before, #starhollow-html-splash .sh-star::after { content: ''; position: absolute; inset: 0; background: #E9CD7E; clip-path: polygon(50% 0%, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0% 50%, 40% 40%); }
-      #starhollow-html-splash .sh-star::after { transform: scale(.42) rotate(45deg); background: #FFF7DE; }
+      html, body, #root { min-height: 100%; margin: 0; background: #07111B; }
+      #starhollow-html-splash { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: radial-gradient(circle at 50% 42%, #143333 0, #07111B 52%, #03080F 100%); color: #EFF5F1; font-family: system-ui, sans-serif; }
+      #starhollow-html-splash .sh-mark { display: block; width: 112px; height: 112px; margin: 0 auto; border-radius: 24px; animation: sh-breathe 2s ease-in-out infinite; filter: drop-shadow(0 0 30px rgba(99,214,181,.25)); }
       #starhollow-html-splash .sh-name { margin-top: 24px; font-size: 12px; font-weight: 700; letter-spacing: 6px; text-align: center; }
       #starhollow-html-splash .sh-note { margin-top: 10px; color: #7E948A; font-size: 11px; text-align: center; }
       @keyframes sh-breathe { 50% { transform: scale(1.08); opacity: .85; } }
-      @media (prefers-reduced-motion: reduce) { #starhollow-html-splash .sh-star { animation: none; } }
+      @media (prefers-reduced-motion: reduce) { #starhollow-html-splash .sh-mark { animation: none; } }
     </style>
     <script>
       if ('serviceWorker' in navigator) {
@@ -108,7 +106,7 @@ html = html.replace(
 html = html.replace('</head>', `${headSnippet}</head>`);
 html = html.replace(
   '<div id="root"></div>',
-  '<div id="root"><div id="starhollow-html-splash" role="status" aria-label="Starhollow is loading"><div><div class="sh-star" style="margin:0 auto"></div><div class="sh-name">STARHOLLOW</div><div class="sh-note">Opening your hollow…</div></div></div></div>',
+  '<div id="root"><div id="starhollow-html-splash" role="status" aria-label="Starhollow is loading"><div><img class="sh-mark" src="/icons/icon-192.png" alt="" /><div class="sh-name">STARHOLLOW</div><div class="sh-note">Opening your hollow…</div></div></div></div>',
 );
 
 fs.writeFileSync(indexPath, html);

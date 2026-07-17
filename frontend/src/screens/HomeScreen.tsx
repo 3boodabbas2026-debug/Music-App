@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -47,6 +49,9 @@ import { apiErrorMessage, friendlyJobStage } from '../utils/apiError';
 import { displayArtist, displayTitle } from '../utils/mediaDisplay';
 
 type MediaKind = 'audio' | 'video';
+type SubmittedLink = { url: string; jobId: string };
+
+const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"']+/gi;
 
 const AUDIO_FORMATS: { key: downloadsApi.AudioFormat; label: string }[] = [
   { key: 'mp3-192', label: 'MP3 · 192' },
@@ -81,6 +86,60 @@ function formatBytes(bytes: number): string {
   return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+/** Accept shared prose as well as newline/space-separated raw URLs. */
+function extractMediaLinks(input: string): string[] {
+  const matches = input.match(HTTP_URL_PATTERN) ?? [];
+  const normalized = matches
+    .map((match) => match.replace(/[),.;!?\]}]+$/g, ''))
+    .filter((candidate) => {
+      try {
+        const parsed = new URL(candidate);
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    });
+  return [...new Set(normalized)];
+}
+
+function sharedLinksFromIncomingUrl(incoming: string): string[] {
+  try {
+    const parsed = new URL(incoming);
+    const nativeShare = parsed.protocol === 'starhollow:' && (parsed.hostname === 'share' || parsed.pathname === '/share');
+    const pwaShare = parsed.searchParams.get('share') === '1';
+    if (!nativeShare && !pwaShare) return [];
+
+    return extractMediaLinks(
+      [
+        ...parsed.searchParams.getAll('url'),
+        ...parsed.searchParams.getAll('urls'),
+        ...parsed.searchParams.getAll('text'),
+      ].join('\n'),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function hasPlaylistShape(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.searchParams.has('list') || /\b(?:playlist|sets?)\b/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function compactLinkLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname === '/' ? '' : parsed.pathname;
+    return `${parsed.hostname.replace(/^www\./, '')}${path}`;
+  } catch {
+    return url;
+  }
+}
+
 function ActiveJobRow({ job, accent, onCancel }: { job: Job; accent: string; onCancel: () => void }) {
   const label = job.result_media ? displayTitle(job.result_media) : job.match_title ?? 'Adding to your library';
   const stage = friendlyJobStage(job.stage_label, job.status === 'pending' ? 'Waiting to start' : 'Preparing media');
@@ -108,6 +167,61 @@ function ActiveJobRow({ job, accent, onCancel }: { job: Job; accent: string; onC
       >
         <Ionicons name="close" size={18} color={colors.textSecondary} />
       </Pressable>
+    </View>
+  );
+}
+
+function SubmittedLinkRow({
+  url,
+  job,
+  accent,
+  onCancel,
+}: {
+  url: string;
+  job: Job;
+  accent: string;
+  onCancel: () => void;
+}) {
+  const active = job.status === 'pending' || job.status === 'in_progress';
+  const complete = job.status === 'complete';
+  const failed = job.status === 'failed' || job.status === 'cancelled';
+  const progress = complete ? 100 : Math.max(0, Math.min(100, job.progress_pct));
+  const status = failed
+    ? job.error_message ?? (job.status === 'cancelled' ? 'Cancelled' : 'This link could not be imported')
+    : friendlyJobStage(job.stage_label, job.status === 'pending' ? 'Waiting to start' : complete ? 'Added to library' : 'Preparing media');
+  const statusColor = failed ? colors.danger : complete ? colors.success : accent;
+
+  return (
+    <View
+      style={styles.batchLinkRow}
+      accessibilityLabel={`${compactLinkLabel(url)}, ${status}, ${Math.round(progress)} percent`}
+    >
+      <View style={[styles.batchStatusIcon, { borderColor: `${statusColor}45` }]}>
+        <Ionicons
+          name={failed ? 'alert' : complete ? 'checkmark' : 'arrow-down'}
+          size={14}
+          color={statusColor}
+        />
+      </View>
+      <View style={styles.batchLinkBody}>
+        <View style={styles.batchLinkHeading}>
+          <Text numberOfLines={1} style={styles.batchLinkTitle}>{compactLinkLabel(url)}</Text>
+          <Text style={[styles.batchLinkPercent, { color: statusColor }]}>{Math.round(progress)}%</Text>
+        </View>
+        <Text numberOfLines={2} style={[styles.batchLinkStage, failed && styles.batchLinkStageFailed]}>{status}</Text>
+        <ProgressBar progress={progress / 100} />
+      </View>
+      {active ? (
+        <Pressable
+          onPress={onCancel}
+          accessibilityRole="button"
+          accessibilityLabel={`Cancel ${compactLinkLabel(url)}`}
+          hitSlop={4}
+          style={({ pressed }) => [styles.batchCancelButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="close" size={17} color={colors.textSecondary} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -141,7 +255,7 @@ function StatTile({ icon, value, label, accent }: { icon: keyof typeof Ionicons.
 export function HomeScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const isFocused = useIsFocused();
-  const { isDesktop } = useResponsive();
+  const { width, isDesktop } = useResponsive();
   const bottomChromeClearance = useBottomChromeClearance();
   const user = useAuthStore((state) => state.user);
   const libraryItems = useLibraryStore((state) => state.items);
@@ -168,14 +282,23 @@ export function HomeScreen() {
   const [mediaKind, setMediaKind] = useState<MediaKind>('audio');
   const [audioFormat, setAudioFormat] = useState<downloadsApi.AudioFormat>('mp3-192');
   const [videoQuality, setVideoQuality] = useState<downloadsApi.VideoQuality>('1080p');
+  const [downloadPlaylist, setDownloadPlaylist] = useState(false);
+  const [playlistInspection, setPlaylistInspection] = useState<downloadsApi.DownloadInspection | null>(null);
+  const [inspectingPlaylist, setInspectingPlaylist] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [submittedLinks, setSubmittedLinks] = useState<SubmittedLink[]>([]);
   const [customizing, setCustomizing] = useState(false);
   const [offlineEntries, setOfflineEntries] = useState<OfflineEntry[]>([]);
 
   const accent = accentStyle === 'cosmic' ? colors.violet : colors.cyan;
   const compact = density === 'compact';
+  const smallPhone = !isDesktop && width < 390;
+  const parsedUrls = useMemo(() => extractMediaLinks(url), [url]);
+  const singleUrl = parsedUrls.length === 1 ? parsedUrls[0] : null;
+  const playlistHint = parsedUrls.some(hasPlaylistShape);
+  const playlistDetected = playlistInspection?.is_playlist === true || (!playlistInspection && playlistHint);
 
   const firstName = user?.display_name?.trim().split(/\s+/)[0];
   const recentItems = useMemo(
@@ -191,6 +314,15 @@ export function HomeScreen() {
     [jobs],
   );
   const activeJobIds = activeJobs.map((job) => job.id).join('|');
+  const submittedJobs = useMemo(
+    () => submittedLinks
+      .map((submitted) => {
+        const job = jobs.find((item) => item.id === submitted.jobId);
+        return job ? { ...submitted, job } : null;
+      })
+      .filter((item): item is SubmittedLink & { job: Job } => !!item),
+    [jobs, submittedLinks],
+  );
   const stats = useMemo(() => {
     const tracks = libraryItems.filter((item) => item.media_type === 'audio').length;
     const videos = libraryItems.filter((item) => item.media_type === 'video').length;
@@ -210,6 +342,52 @@ export function HomeScreen() {
     void hydrateDashboard();
     void refreshLibrary();
   }, [hydrateDashboard, refreshLibrary]);
+
+  useEffect(() => {
+    const acceptSharedUrl = (incoming: string) => {
+      const incomingLinks = sharedLinksFromIncomingUrl(incoming);
+      if (incomingLinks.length === 0) return;
+      setUrl((current) => [...new Set([...extractMediaLinks(current), ...incomingLinks])].join('\n'));
+      setError(null);
+    };
+
+    void Linking.getInitialURL().then((incoming) => {
+      if (incoming) acceptSharedUrl(incoming);
+    });
+    const subscription = Linking.addEventListener('url', ({ url: incoming }) => acceptSharedUrl(incoming));
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
+    setPlaylistInspection(null);
+    setInspectingPlaylist(false);
+    setDownloadPlaylist(false);
+    if (!singleUrl) return undefined;
+
+    let active = true;
+    const timer = setTimeout(() => {
+      setInspectingPlaylist(true);
+      void downloadsApi
+        .inspectDownload(singleUrl)
+        .then((inspection) => {
+          if (!active) return;
+          setPlaylistInspection(inspection);
+          if (!inspection.is_playlist) setDownloadPlaylist(false);
+        })
+        .catch(() => {
+          // A playlist-looking URL can still expose the opt-in while offline;
+          // the create endpoint remains the final source of truth.
+        })
+        .finally(() => {
+          if (active) setInspectingPlaylist(false);
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [singleUrl]);
 
   useFocusEffect(
     useCallback(() => {
@@ -248,17 +426,31 @@ export function HomeScreen() {
   }
 
   async function handleSubmit() {
-    const sourceUrl = url.trim();
-    if (!sourceUrl || submitting) return;
+    if (submitting) return;
+    if (parsedUrls.length === 0) {
+      setError('Paste at least one complete http:// or https:// media link.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      const job = await downloadsApi.createDownload(sourceUrl, mediaKind, { audioFormat, videoQuality });
-      updateJob(job);
+      const created = await downloadsApi.createDownloads(parsedUrls, mediaKind, {
+        audioFormat,
+        videoQuality,
+        downloadPlaylist,
+      });
+      created.forEach(updateJob);
+      setSubmittedLinks(
+        created.map((job, index) => ({ url: job.source_url ?? parsedUrls[index] ?? parsedUrls[0], jobId: job.id })),
+      );
       setUrl('');
-      toast('Import started.', 'success');
+      setDownloadPlaylist(false);
+      toast(
+        created.length === 1 ? 'Import started.' : `${created.length} links queued. Each will keep its own progress.`,
+        'success',
+      );
     } catch (caught) {
-      setError(apiErrorMessage(caught, "Couldn't start this import."));
+      setError(apiErrorMessage(caught, "Couldn't start these imports."));
     } finally {
       setSubmitting(false);
     }
@@ -312,49 +504,87 @@ export function HomeScreen() {
   const offline = !networkOnline || backendOnline === false;
   const offlineBytes = offlineEntries.reduce((sum, entry) => sum + entry.sizeBytes, 0);
   const offlineShelfEmpty = offlineSupported() && offlineEntries.length === 0 && !offline;
+  const submittedComplete = submittedJobs.filter(({ job }) => job.status === 'complete').length;
+  const submittedFinished = submittedJobs.filter(
+    ({ job }) => job.status === 'complete' || job.status === 'failed' || job.status === 'cancelled',
+  ).length;
 
   const widgetRenderers: Record<WidgetId, () => ReactElement | null> = {
     import: () => (
       <GlassPanel style={styles.importPanel} edgeColor={accentStyle === 'cosmic' ? 'rgba(169,155,219,0.24)' : 'rgba(99,214,181,0.24)'}>
-        <View style={[styles.importContent, { padding: panelPadding }]}>
+        <View style={[styles.importContent, { padding: smallPhone ? spacing.md : panelPadding }]}>
           <View style={styles.importHeading}>
             <View style={styles.importIcon}>
               <Ionicons name="link" size={18} color={accent} />
             </View>
             <View style={styles.importHeadingCopy}>
-              <Text style={[styles.importEyebrow, { color: accent }]}>IMPORT A LINK</Text>
-              <Text style={styles.importTitle}>Bring a track home.</Text>
+              <Text style={[styles.importEyebrow, { color: accent }]}>IMPORT LINKS</Text>
+              <Text style={[styles.importTitle, smallPhone && styles.importTitleSmall]}>Bring a track home.</Text>
             </View>
           </View>
 
-          <View style={[styles.inputRow, glassBlur]}>
+          <View style={[styles.inputRow, styles.inputRowMultiline, glassBlur]}>
             <TextInput
               value={url}
               onChangeText={(value) => {
                 setUrl(value);
                 if (error) setError(null);
               }}
-              onSubmitEditing={() => void handleSubmit()}
               accessibilityLabel="Media link"
-              placeholder="Paste a media link"
+              accessibilityHint="Paste one or more links separated by spaces or new lines"
+              placeholder="Paste links — one per line or space-separated"
               placeholderTextColor={colors.textMuted}
               selectionColor={accent}
               keyboardType="url"
               autoCapitalize="none"
               autoCorrect={false}
-              returnKeyType="go"
+              multiline
+              textAlignVertical="top"
               style={styles.input}
             />
             <Pressable
               onPress={() => void handlePaste()}
               accessibilityRole="button"
               accessibilityLabel="Paste link"
-              style={({ pressed }) => [styles.pasteButton, glassBlur, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.pasteButton,
+                smallPhone && styles.pasteButtonSmall,
+                glassBlur,
+                pressed && styles.pressed,
+              ]}
             >
               <Ionicons name="clipboard-outline" size={16} color={colors.textSecondary} />
-              <Text style={styles.pasteLabel}>Paste</Text>
+              {!smallPhone ? <Text style={styles.pasteLabel}>Paste</Text> : null}
             </Pressable>
           </View>
+
+          {playlistDetected ? (
+            <View style={styles.playlistToggleRow}>
+              <View style={styles.playlistToggleCopy}>
+                <View style={styles.playlistToggleHeading}>
+                  <Ionicons name="list" size={16} color={accent} />
+                  <Text style={styles.playlistToggleTitle}>Download full playlist</Text>
+                </View>
+                <Text numberOfLines={2} style={styles.playlistToggleHint}>
+                  {playlistInspection?.playlist_title
+                    ? `${playlistInspection.playlist_title}${playlistInspection.entry_count ? ` · ${playlistInspection.entry_count} entries` : ''}`
+                    : inspectingPlaylist
+                      ? 'Playlist detected · checking its details…'
+                      : parsedUrls.length > 1
+                        ? 'Off keeps only the shared tracks; on expands playlist links in this batch.'
+                        : 'Off keeps only the shared track.'}
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="Download full playlist"
+                accessibilityHint="Off downloads only the shared track. On downloads every playlist entry."
+                value={downloadPlaylist}
+                onValueChange={setDownloadPlaylist}
+                trackColor={{ false: colors.surfaceBorderStrong, true: accent }}
+                thumbColor={downloadPlaylist ? colors.textInverse : colors.textSecondary}
+              />
+            </View>
+          ) : null}
 
           <SegmentedControl
             options={MEDIA_KINDS}
@@ -395,17 +625,43 @@ export function HomeScreen() {
           ) : null}
 
           <Button
-            label="Add to library"
+            label={parsedUrls.length > 1 ? `Add ${parsedUrls.length} links to library` : 'Add to library'}
             onPress={() => void handleSubmit()}
-            disabled={!url.trim()}
+            disabled={parsedUrls.length === 0}
             loading={submitting}
             style={styles.importButton}
           />
           <Text style={styles.helperText}>
-            {url.trim()
-              ? `${mediaKind === 'audio' ? 'Audio' : 'Video'} · ${mediaKind === 'audio' ? AUDIO_FORMATS.find((item) => item.key === audioFormat)?.label : VIDEO_QUALITIES.find((item) => item.key === videoQuality)?.label}`
-              : 'Paste a link to continue.'}
+            {parsedUrls.length > 0
+              ? `${parsedUrls.length} ${parsedUrls.length === 1 ? 'link' : 'links'} · ${mediaKind === 'audio' ? 'Audio' : 'Video'} · ${mediaKind === 'audio' ? AUDIO_FORMATS.find((item) => item.key === audioFormat)?.label : VIDEO_QUALITIES.find((item) => item.key === videoQuality)?.label}`
+              : url.trim()
+                ? 'No complete http:// or https:// link found yet.'
+                : 'Paste a link to continue.'}
           </Text>
+
+          {submittedJobs.length > 0 ? (
+            <View style={styles.batchProgressBlock} accessibilityLiveRegion="polite">
+              <View style={styles.batchProgressHeading}>
+                <Text style={styles.batchProgressEyebrow}>LATEST IMPORT</Text>
+                <Text style={styles.batchProgressSummary}>
+                  {submittedFinished === submittedJobs.length
+                    ? `${submittedComplete}/${submittedJobs.length} added`
+                    : `${submittedFinished}/${submittedJobs.length} finished`}
+                </Text>
+              </View>
+              {submittedJobs.map(({ url: submittedUrl, job }, index) => (
+                <View key={job.id}>
+                  {index > 0 ? <View style={styles.batchDivider} /> : null}
+                  <SubmittedLinkRow
+                    url={submittedUrl}
+                    job={job}
+                    accent={accent}
+                    onCancel={() => void handleCancel(job)}
+                  />
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
       </GlassPanel>
     ),
@@ -687,6 +943,7 @@ const styles = StyleSheet.create({
   importHeadingCopy: { flex: 1 },
   importEyebrow: { ...typography.eyebrow, fontSize: 9, lineHeight: 12, letterSpacing: 2 },
   importTitle: { ...typography.title, fontSize: 22, lineHeight: 28, color: colors.textPrimary },
+  importTitleSmall: { fontSize: 19, lineHeight: 25 },
   inputRow: {
     minHeight: 54,
     flexDirection: 'row',
@@ -699,7 +956,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.stroke,
   },
-  input: { ...typography.body, flex: 1, minWidth: 0, color: colors.textPrimary, paddingVertical: 0 },
+  inputRowMultiline: { alignItems: 'flex-start', paddingVertical: 5 },
+  input: {
+    ...typography.body,
+    flex: 1,
+    minWidth: 0,
+    minHeight: 62,
+    maxHeight: 112,
+    color: colors.textPrimary,
+    paddingVertical: 10,
+  },
   pasteButton: {
     minWidth: 72,
     minHeight: 44,
@@ -712,7 +978,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.stroke,
   },
+  pasteButtonSmall: { minWidth: 44, width: 44, paddingHorizontal: 0 },
   pasteLabel: { ...typography.caption, fontFamily: 'Sora_500Medium', color: colors.textSecondary },
+  playlistToggleRow: {
+    minHeight: 66,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.sm + 2,
+    borderRadius: radii.md,
+    backgroundColor: glass.tintPrimary,
+    borderWidth: 1,
+    borderColor: glass.tintPrimaryStroke,
+  },
+  playlistToggleCopy: { flex: 1, minWidth: 0, gap: 3 },
+  playlistToggleHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  playlistToggleTitle: { ...typography.subtitle, flex: 1, fontSize: 13, color: colors.textPrimary },
+  playlistToggleHint: { ...typography.caption, fontSize: 11, color: colors.textMuted },
   formatLabel: { ...typography.eyebrow, fontSize: 9, lineHeight: 12, letterSpacing: 1.8, color: colors.textMuted, marginBottom: spacing.sm },
   formatRow: { gap: spacing.sm, paddingRight: spacing.sm },
   formatChip: {
@@ -738,6 +1020,40 @@ const styles = StyleSheet.create({
   errorText: { ...typography.caption, flex: 1, color: colors.danger },
   importButton: { width: '100%' },
   helperText: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: -spacing.sm },
+  batchProgressBlock: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: glass.stroke,
+  },
+  batchProgressHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  batchProgressEyebrow: { ...typography.eyebrow, fontSize: 9, letterSpacing: 1.6, color: colors.textMuted },
+  batchProgressSummary: { ...typography.caption, fontSize: 11, color: colors.textSecondary },
+  batchLinkRow: { minHeight: 74, flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, paddingVertical: spacing.sm },
+  batchStatusIcon: {
+    width: 30,
+    height: 30,
+    marginTop: 2,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    backgroundColor: glass.fillDeep,
+  },
+  batchLinkBody: { flex: 1, minWidth: 0, gap: 4 },
+  batchLinkHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  batchLinkTitle: { ...typography.caption, flex: 1, fontFamily: 'Sora_500Medium', color: colors.textPrimary },
+  batchLinkPercent: { ...typography.caption, fontFamily: 'Sora_600SemiBold', fontSize: 10 },
+  batchLinkStage: { ...typography.caption, fontSize: 11, color: colors.textMuted },
+  batchLinkStageFailed: { color: colors.danger },
+  batchCancelButton: { width: 36, height: 36, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  batchDivider: { height: 1, backgroundColor: glass.stroke },
   sectionHeader: { marginBottom: spacing.sm },
   activityPanel: { paddingHorizontal: spacing.md },
   activeJobRow: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },

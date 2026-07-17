@@ -10,11 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db.base import Base
 from app.models.admin_event import AdminEvent  # noqa: F401 - register table metadata
-from app.models.job import Job
+from app.models.job import Job, JobStatus, JobType
 from app.models.media import Media, MediaSource, MediaType
 from app.models.playlist import Playlist, PlaylistItem  # noqa: F401 - resolve User relationships
 from app.models.user import User
 from app.services.recognition import shazam_service
+from app.services.recognition.types import RecognitionMatch, RecognitionMode
 from app.workers import job_engine
 
 
@@ -168,6 +169,134 @@ class AutoNameMediaTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(1, peak_active)
+
+    async def test_recognition_writes_placeholder_name_to_canonical_and_recognized_fields(self) -> None:
+        media_path = Path(self.temp_dir.name) / "untitled.mp3"
+        media_path.write_bytes(b"audio")
+        async with self.sessions() as session:
+            media = Media(
+                user_id=self.user_id,
+                media_type=MediaType.AUDIO,
+                source=MediaSource.TELEGRAM,
+                title="Untitled",
+                artist="Unknown Artist",
+                file_path=str(media_path),
+                storage_backend="local",
+            )
+            job = Job(user_id=self.user_id, job_type=JobType.RECOGNIZE)
+            session.add_all([media, job])
+            await session.commit()
+            media_id, job_id = media.id, job.id
+
+        match = RecognitionMatch(
+            title="The Real Song",
+            artist="The Real Artist",
+            album="The Album",
+            thumbnail_url="https://img.example/cover.jpg",
+            provider_key="key",
+            genre="Pop",
+            release_year=2024,
+            provider="shazam",
+            match_kind=RecognitionMode.RECORDING,
+        )
+        with (
+            patch.object(job_engine.recognition_service, "recognize_file", AsyncMock(return_value=match)),
+            patch.object(job_engine, "ensure_media_artwork", AsyncMock(return_value=True)) as persist_art,
+        ):
+            await job_engine.run_recognition_job(
+                job_id, self.user_id, media_path, media_id, cleanup=False
+            )
+
+        async with self.sessions() as session:
+            media = await session.get(Media, media_id)
+            job = await session.get(Job, job_id)
+        self.assertEqual("The Real Song", media.title)
+        self.assertEqual("The Real Artist", media.artist)
+        self.assertEqual("The Real Song", media.recognized_title)
+        self.assertEqual("The Real Artist", media.recognized_artist)
+        self.assertEqual("https://img.example/cover.jpg", media.thumbnail_url)
+        self.assertEqual(JobStatus.COMPLETE, job.status)
+        persist_art.assert_awaited_once_with(media_id, "https://img.example/cover.jpg")
+
+    async def test_whole_library_job_processes_beyond_chunk_size_and_no_match_is_not_failure(self) -> None:
+        media_ids = await self._seed_media(30)
+        async with self.sessions() as session:
+            job = Job(
+                user_id=self.user_id,
+                job_type=JobType.RECOGNIZE,
+                source_url="library",
+                batch_total=len(media_ids),
+                batch_processed=0,
+                batch_matched=0,
+                batch_failed=0,
+            )
+            session.add(job)
+            await session.commit()
+            job_id = job.id
+
+        with patch.object(job_engine, "_recognize_existing_media", AsyncMock(return_value=None)) as recognize:
+            await job_engine.run_library_recognition_job(job_id, self.user_id)
+
+        async with self.sessions() as session:
+            job = await session.get(Job, job_id)
+        self.assertEqual(30, recognize.await_count)
+        self.assertEqual(JobStatus.COMPLETE, job.status)
+        self.assertEqual(30, job.batch_processed)
+        self.assertEqual(0, job.batch_matched)
+        self.assertEqual(0, job.batch_failed)
+        self.assertEqual("Named 0 of 30", job.stage_label)
+
+    async def test_whole_library_freezes_candidates_after_waiting_for_shared_recognizer(self) -> None:
+        media_ids = await self._seed_media(3)
+        async with self.sessions() as session:
+            job = Job(
+                user_id=self.user_id,
+                job_type=JobType.RECOGNIZE,
+                source_url="library",
+                batch_total=3,  # endpoint estimate before the worker gets the lock
+                batch_processed=0,
+                batch_matched=0,
+                batch_failed=0,
+            )
+            session.add(job)
+            await session.commit()
+            job_id = job.id
+
+        semaphore = asyncio.Semaphore(1)
+        with (
+            patch.object(job_engine, "_auto_name_semaphore", semaphore),
+            patch.object(
+                job_engine, "_recognize_existing_media", AsyncMock(return_value=None)
+            ) as recognize,
+        ):
+            await semaphore.acquire()
+            released = False
+            try:
+                task = asyncio.create_task(
+                    job_engine.run_library_recognition_job(job_id, self.user_id)
+                )
+                await asyncio.sleep(0)
+                async with self.sessions() as session:
+                    already_named = await session.get(Media, media_ids[0])
+                    already_named.recognized_title = "Named while batch waited"
+                    await session.commit()
+                semaphore.release()
+                released = True
+                await task
+            finally:
+                if not released:
+                    semaphore.release()
+
+        async with self.sessions() as session:
+            job = await session.get(Job, job_id)
+        self.assertEqual(2, recognize.await_count)
+        self.assertEqual(2, job.batch_total)
+        self.assertEqual(2, job.batch_processed)
+        self.assertEqual(0, job.batch_failed)
+        self.assertEqual("Named 0 of 2", job.stage_label)
+
+    def test_untitled_is_eligible_for_auto_naming(self) -> None:
+        self.assertTrue(job_engine.looks_like_garbage_title("Untitled"))
 
     def test_recognition_fallback_extracts_audio_from_video_container(self) -> None:
         commands: list[list[str]] = []

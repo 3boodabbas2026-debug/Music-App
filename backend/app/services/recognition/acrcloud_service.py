@@ -195,6 +195,49 @@ def _score(candidate: dict[str, Any]) -> float:
         return -1.0
 
 
+def _external_artwork(candidate: dict[str, Any]) -> str | None:
+    """Extract a real album image from ACRCloud's optional provider metadata."""
+    external = candidate.get("external_metadata")
+    if not isinstance(external, dict):
+        return None
+
+    spotify = external.get("spotify") if isinstance(external.get("spotify"), dict) else {}
+    spotify_album = spotify.get("album") if isinstance(spotify.get("album"), dict) else {}
+    spotify_images = spotify_album.get("images") if isinstance(spotify_album.get("images"), list) else []
+    ranked_images: list[tuple[int, str]] = []
+    for image in spotify_images:
+        if not isinstance(image, dict):
+            continue
+        url = _clean_text(image.get("url"))
+        if not url or not url.startswith(("https://", "http://")):
+            continue
+        try:
+            area = int(image.get("width") or 0) * int(image.get("height") or 0)
+        except (TypeError, ValueError):
+            area = 0
+        ranked_images.append((area, url))
+    if ranked_images:
+        return max(ranked_images, key=lambda value: value[0])[1]
+
+    deezer = external.get("deezer") if isinstance(external.get("deezer"), dict) else {}
+    deezer_album = deezer.get("album") if isinstance(deezer.get("album"), dict) else {}
+    for key in ("cover_xl", "cover_big", "cover_medium", "cover", "cover_url"):
+        url = _clean_text(deezer_album.get(key))
+        if url and url.startswith(("https://", "http://")):
+            return url
+
+    # A few ACRCloud integrations flatten the provider's artwork onto its
+    # metadata object instead of nesting it under album.
+    for provider in external.values():
+        if not isinstance(provider, dict):
+            continue
+        for key in ("artwork_url", "thumbnail_url", "image_url", "cover_url"):
+            url = _clean_text(provider.get(key))
+            if url and url.startswith(("https://", "http://")):
+                return url
+    return None
+
+
 def _extract_match(raw: dict[str, Any]) -> RecognitionMatch | None:
     status = raw.get("status") if isinstance(raw.get("status"), dict) else {}
     try:
@@ -240,7 +283,7 @@ def _extract_match(raw: dict[str, Any]) -> RecognitionMatch | None:
         title=title,
         artist=artist,
         album=_clean_text(album_data.get("name")),
-        thumbnail_url=None,
+        thumbnail_url=_external_artwork(candidate),
         provider_key=_clean_text(candidate.get("acrid")),
         genre=genre,
         release_year=None,

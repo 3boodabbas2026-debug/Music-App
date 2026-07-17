@@ -36,6 +36,12 @@ class Media(Base):
     artist: Mapped[str | None] = mapped_column(String(255), nullable=True)
     album: Mapped[str | None] = mapped_column(String(255), nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # A provider thumbnail is downloaded once and adopted into the same
+    # durable storage backend as the media.  thumbnail_url then points at our
+    # stable serving endpoint instead of making every client re-fetch a
+    # third-party CDN URL.
+    artwork_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    artwork_mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     recognized_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     recognized_artist: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -85,8 +91,8 @@ class Media(Base):
 
     @property
     def display_title(self) -> str:
-        return self.title or self.recognized_title or "Untitled"
+        return self.recognized_title or self.title or "Untitled"
 
     @property
     def display_artist(self) -> str:
-        return self.artist or self.recognized_artist or "Unknown Artist"
+        return self.recognized_artist or self.artist or "Unknown Artist"

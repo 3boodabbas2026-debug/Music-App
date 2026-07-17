@@ -18,18 +18,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from yt_dlp.utils import DownloadCancelled
 
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.job import Job, JobStatus, JobType
 from app.models.media import Media, MediaSource, MediaType
+from app.models.playlist import Playlist, PlaylistItem
 from app.schemas.job import JobOut
 from app.services import audio_analysis, thumbnails
 from app.services.downloader import ytdlp_service
 from app.services.recognition import service as recognition_service
-from app.services.recognition.types import RecognitionMode
+from app.services.recognition.types import RecognitionMatch, RecognitionMode
 from app.services.admin_events import log_event
 from app.services.storage import backend as storage_backend
 from app.services.storage import local_storage
@@ -45,6 +47,15 @@ _auto_name_semaphore = asyncio.Semaphore(1)
 # blobs, hex hashes, and numeric IDs that Telegram/yt-dlp sometimes hand back
 # as "titles" when the file has no real metadata.
 _GARBAGE_TITLE_RE = re.compile(r"^[A-Za-z0-9_-]{16,}$")
+_PLACEHOLDER_TITLES = {
+    "untitled",
+    "unknown",
+    "unknown title",
+    "audio",
+    "music",
+    "track",
+}
+_PLACEHOLDER_ARTISTS = {"unknown", "unknown artist", "untitled"}
 
 
 def clean_job_error(error: object, fallback: str = "That job could not be completed. Try again.") -> str:
@@ -84,6 +95,9 @@ def looks_like_garbage_title(title: str | None) -> bool:
     if not title:
         return True
     t = title.strip()
+    normalized = re.sub(r"\s+", " ", t).casefold()
+    if normalized in _PLACEHOLDER_TITLES or re.fullmatch(r"telegram\s+\d+", normalized):
+        return True
     if " " in t or not _GARBAGE_TITLE_RE.match(t):
         return False
     has_digit = any(c.isdigit() for c in t)
@@ -91,6 +105,10 @@ def looks_like_garbage_title(title: str | None) -> bool:
     # single capitalized real word ("Supercalifragilistic…") has none.
     case_flips = sum(1 for a, b in zip(t, t[1:]) if a.islower() and b.isupper())
     return has_digit or case_flips >= 2
+
+
+def looks_like_missing_artist(artist: str | None) -> bool:
+    return not artist or artist.strip().casefold() in _PLACEHOLDER_ARTISTS
 
 
 # Shazam doesn't hand back a boolean "is this a remix" field — this is a
@@ -139,6 +157,57 @@ async def ensure_video_thumbnail(media_id: str) -> None:
             return
         media.thumbnail_url = f"/api/v1/library/{media.id}/thumbnail"
         await session.commit()
+
+
+async def ensure_media_artwork(media_id: str, artwork_url: str | None) -> bool:
+    """Persist one provider cover and replace its remote URL with our stable endpoint.
+
+    Artwork enrichment is deliberately best-effort: a CDN outage must not turn
+    an otherwise successful download or recognition into a failed media job.
+    """
+    if not artwork_url or artwork_url.startswith("/"):
+        return False
+    try:
+        async with SessionLocal() as session:
+            media = await session.get(Media, media_id)
+            if media is None or media.artwork_path:
+                return bool(media and media.artwork_path)
+            if media.thumbnail_url and media.thumbnail_url != artwork_url:
+                return False
+            user_id = media.user_id
+            backend = media.storage_backend or await _resolve_user_backend(media.user_id)
+
+        with tempfile.TemporaryDirectory(prefix="sma_artwork_") as raw_dir:
+            downloaded = await asyncio.to_thread(
+                thumbnails.download_remote_artwork, artwork_url, Path(raw_dir)
+            )
+            if downloaded is None:
+                return False
+            local_path, mime_type = downloaded
+            stored = await asyncio.to_thread(
+                storage_backend.adopt_file,
+                user_id,
+                local_path,
+                local_path.suffix,
+                backend,
+            )
+
+        try:
+            async with SessionLocal() as session:
+                media = await session.get(Media, media_id)
+                if media is None or media.artwork_path:
+                    await asyncio.to_thread(storage_backend.delete_file, stored.key, backend)
+                    return bool(media and media.artwork_path)
+                media.artwork_path = stored.key
+                media.artwork_mime_type = mime_type
+                media.thumbnail_url = f"/api/v1/library/{media.id}/artwork"
+                await session.commit()
+        except Exception:
+            await asyncio.to_thread(storage_backend.delete_file, stored.key, backend)
+            raise
+        return True
+    except Exception:  # noqa: BLE001 - optional enrichment never fails the media job
+        return False
 
 
 async def backfill_video_thumbnails() -> None:
@@ -333,10 +402,13 @@ async def run_download_job(
     media_type: str,
     audio_format: str = "mp3-192",
     video_quality: str = "1080p",
+    download_playlist: bool = False,
 ) -> None:
     await _touch_job(job_id, status=JobStatus.PENDING, stage_label="queued")
     async with _download_semaphore:
-        await _run_download_job(job_id, user_id, url, media_type, audio_format, video_quality)
+        await _run_download_job(
+            job_id, user_id, url, media_type, audio_format, video_quality, download_playlist
+        )
 
 
 async def _run_download_job(
@@ -346,6 +418,7 @@ async def _run_download_job(
     media_type: str,
     audio_format: str,
     video_quality: str,
+    download_playlist: bool,
 ) -> None:
     if job_id in _cancelled_job_ids:
         await _touch_job(job_id, status=JobStatus.CANCELLED, stage_label="cancelled")
@@ -370,59 +443,100 @@ async def _run_download_job(
 
     tmp_dir = settings.media_storage_dir / "_tmp" / job_id
     try:
-        result = await asyncio.to_thread(
-            ytdlp_service.download_media, url, media_type, tmp_dir, on_progress, audio_format, video_quality
+        # Jobs may sit queued and retries reuse persisted payloads. Re-resolve
+        # immediately before yt-dlp so an initially public hostname cannot
+        # later rebinding-resolve into the backend's private network.
+        url = await asyncio.to_thread(ytdlp_service.validate_media_url, url)
+        batch = await asyncio.to_thread(
+            ytdlp_service.download_media_batch,
+            url,
+            media_type,
+            tmp_dir,
+            on_progress,
+            audio_format,
+            video_quality,
+            download_playlist,
         )
-
-        content_hash = await asyncio.to_thread(local_storage.sha1_file, result.file_path)
-
-        async with SessionLocal() as session:
-            existing = await session.scalar(
-                select(Media).where(Media.user_id == user_id, Media.content_hash == content_hash)
-            )
-            if existing is not None:
+        backend = await _resolve_user_backend(user_id)
+        media_ids: list[str] = []
+        created_media_ids: list[str] = []
+        failed_count = batch.failed_count
+        for result in batch.items:
+            try:
+                content_hash = await asyncio.to_thread(local_storage.sha1_file, result.file_path)
+                async with SessionLocal() as session:
+                    existing = await session.scalar(
+                        select(Media).where(Media.user_id == user_id, Media.content_hash == content_hash)
+                    )
+                    if existing is not None:
+                        result.file_path.unlink(missing_ok=True)
+                        media_id = existing.id
+                    else:
+                        original_filename = result.file_path.name
+                        mime_type = mimetypes.guess_type(original_filename)[0]
+                        stored = await asyncio.to_thread(
+                            storage_backend.adopt_file,
+                            user_id,
+                            result.file_path,
+                            result.file_path.suffix,
+                            backend,
+                        )
+                        media = Media(
+                            user_id=user_id,
+                            media_type=MediaType.AUDIO if media_type == "audio" else MediaType.VIDEO,
+                            source=_guess_source(url),
+                            source_url=url,
+                            title=result.title,
+                            artist=result.artist,
+                            thumbnail_url=result.thumbnail_url,
+                            duration_seconds=result.duration_seconds,
+                            file_path=stored.key,
+                            file_size_bytes=stored.size_bytes,
+                            content_hash=content_hash,
+                            original_filename=original_filename,
+                            mime_type=mime_type,
+                            storage_backend=backend,
+                        )
+                        session.add(media)
+                        await session.commit()
+                        await session.refresh(media)
+                        media_id = media.id
+                        created_media_ids.append(media_id)
+                media_ids.append(media_id)
+                if result.thumbnail_url:
+                    await ensure_media_artwork(media_id, result.thumbnail_url)
+            except Exception:  # noqa: BLE001 - keep successful playlist entries
+                failed_count += 1
                 result.file_path.unlink(missing_ok=True)
-                media_id = existing.id
-            else:
-                backend = await _resolve_user_backend(user_id)
-                stored = await asyncio.to_thread(
-                    storage_backend.adopt_file, user_id, result.file_path, result.file_path.suffix, backend
-                )
-                media = Media(
-                    user_id=user_id,
-                    media_type=MediaType.AUDIO if media_type == "audio" else MediaType.VIDEO,
-                    source=_guess_source(url),
-                    source_url=url,
-                    title=result.title,
-                    artist=result.artist,
-                    thumbnail_url=result.thumbnail_url,
-                    duration_seconds=result.duration_seconds,
-                    file_path=stored.key,
-                    file_size_bytes=stored.size_bytes,
-                    content_hash=content_hash,
-                    original_filename=result.file_path.name,
-                    mime_type=mimetypes.guess_type(result.file_path.name)[0],
-                    storage_backend=backend,
-                )
-                session.add(media)
-                await session.commit()
-                await session.refresh(media)
-                media_id = media.id
+
+        if not media_ids:
+            raise RuntimeError("No media from that URL could be saved")
+
+        media_id = media_ids[-1]
+        total_count = max(batch.total_count, len(media_ids) + failed_count)
+        stage_label = "complete"
+        warning: str | None = None
+        if download_playlist:
+            stage_label = f"downloaded {len(media_ids)} of {total_count} playlist entries"
+        if failed_count:
+            warning = f"{failed_count} entr{'y' if failed_count == 1 else 'ies'} could not be downloaded"
 
         await _touch_job(
             job_id,
             status=JobStatus.COMPLETE,
             progress_pct=100,
-            stage_label="complete",
+            stage_label=stage_label,
+            error_message=warning,
             result_media_id=media_id,
         )
         if media_type == "video":
-            await ensure_video_thumbnail(media_id)
+            for created_media_id in created_media_ids:
+                await ensure_video_thumbnail(created_media_id)
         else:
-            asyncio.create_task(analyze_track_fades([media_id]))
+            asyncio.create_task(analyze_track_fades(created_media_ids))
         # Fire-and-forget: naming shouldn't hold the download job's COMPLETE
         # status hostage to a slow Shazam lookup or ffmpeg probe.
-        asyncio.create_task(auto_name_media(user_id, [media_id]))
+        asyncio.create_task(auto_name_media(user_id, created_media_ids))
     except DownloadCancelled:
         await _touch_job(job_id, status=JobStatus.CANCELLED, stage_label="cancelled")
     except Exception as exc:  # noqa: BLE001 - cleaned before it reaches job.error_message
@@ -445,6 +559,63 @@ _UNBOUNDED_IMPORT_CEILING = 20000
 # long Telegram wants us to back off; anything longer than this is not worth
 # blocking a single job on, so the job just gives up on that one call.
 _MAX_FLOOD_WAIT_SECONDS = 300
+
+
+async def ensure_telegram_playlist_item(user_id: str, media_id: str) -> None:
+    """Create/adopt the dedicated Telegram playlist and append once."""
+    for attempt in range(2):
+        async with SessionLocal() as session:
+            try:
+                playlist = await session.scalar(
+                    select(Playlist).where(
+                        Playlist.user_id == user_id,
+                        Playlist.system_key == "telegram",
+                    )
+                )
+                if playlist is None:
+                    # Preserve an existing user-visible Telegram collection by
+                    # adopting it instead of creating a look-alike duplicate.
+                    playlist = await session.scalar(
+                        select(Playlist)
+                        .where(
+                            Playlist.user_id == user_id,
+                            func.lower(Playlist.name) == "telegram",
+                            Playlist.system_key.is_(None),
+                        )
+                        .order_by(Playlist.created_at, Playlist.id)
+                    )
+                    if playlist is None:
+                        playlist = Playlist(user_id=user_id, name="Telegram", system_key="telegram")
+                        session.add(playlist)
+                        await session.flush()
+                    else:
+                        playlist.system_key = "telegram"
+
+                exists = await session.scalar(
+                    select(PlaylistItem.id).where(
+                        PlaylistItem.playlist_id == playlist.id,
+                        PlaylistItem.media_id == media_id,
+                    )
+                )
+                if exists is None:
+                    last_position = await session.scalar(
+                        select(func.max(PlaylistItem.position)).where(
+                            PlaylistItem.playlist_id == playlist.id
+                        )
+                    )
+                    session.add(
+                        PlaylistItem(
+                            playlist_id=playlist.id,
+                            media_id=media_id,
+                            position=(last_position + 1) if last_position is not None else 0,
+                        )
+                    )
+                await session.commit()
+                return
+            except IntegrityError:
+                await session.rollback()
+                if attempt:
+                    raise
 
 
 async def run_telegram_import_job(
@@ -544,6 +715,8 @@ async def run_telegram_import_job(
                     )
                 if already_imported is not None:
                     last_media_id = already_imported
+                    if media_kind == "music":
+                        await ensure_telegram_playlist_item(user_id, already_imported)
                     continue
                 tmp_path = tmp_dir / f"{chat_ref}_{message.id}{suffix}"
                 try:
@@ -609,6 +782,9 @@ async def run_telegram_import_job(
                         last_media_id = media.id
                         created_media_ids.append(media.id)
 
+                if media_kind == "music" and last_media_id is not None:
+                    await ensure_telegram_playlist_item(user_id, last_media_id)
+
                 imported += 1
                 progress_denominator = effective_limit if limit is not None else max(imported, 1)
                 await _touch_job(
@@ -648,6 +824,194 @@ async def run_telegram_import_job(
         _download_semaphore.release()
 
 
+async def _recognize_existing_media(
+    user_id: str,
+    media_id: str,
+    prepared_path: Path | None = None,
+) -> RecognitionMatch | None:
+    """Recognize one owned media row and atomically write back real metadata."""
+    async with SessionLocal() as session:
+        media = await session.get(Media, media_id)
+        if media is None or media.user_id != user_id:
+            raise RuntimeError("Media is no longer available")
+        storage_kind = media.storage_backend or "local"
+        stored_key = media.file_path
+        suffix = Path(media.original_filename or stored_key).suffix or ".bin"
+
+    temporary_path: Path | None = None
+    if prepared_path is not None and prepared_path.is_file():
+        file_path = prepared_path
+    elif storage_kind == "s3":
+        handle, raw_path = tempfile.mkstemp(prefix="sma_recognize_", suffix=suffix)
+        os.close(handle)
+        temporary_path = Path(raw_path)
+        await asyncio.to_thread(
+            storage_backend.copy_to_path, stored_key, storage_kind, temporary_path
+        )
+        file_path = temporary_path
+    else:
+        file_path = Path(stored_key)
+
+    try:
+        if not file_path.is_file():
+            raise RuntimeError("The track file is missing")
+        match = await asyncio.wait_for(
+            recognition_service.recognize_file(file_path, RecognitionMode.RECORDING),
+            timeout=settings.recognition_timeout_seconds,
+        )
+        if match is None:
+            return None
+
+        should_cache_artwork = False
+        async with SessionLocal() as session:
+            media = await session.get(Media, media_id)
+            if media is None or media.user_id != user_id:
+                raise RuntimeError("Media is no longer available")
+            media.recognized_title = match.title
+            media.recognized_artist = match.artist
+            # Canonical fields are what older clients render first. Replace
+            # placeholders/file-name noise but preserve a deliberate edit.
+            if looks_like_garbage_title(media.title):
+                media.title = match.title
+            if looks_like_missing_artist(media.artist):
+                media.artist = match.artist
+            if not media.thumbnail_url and match.thumbnail_url:
+                media.thumbnail_url = match.thumbnail_url
+                should_cache_artwork = True
+            if not media.album and match.album:
+                media.album = match.album
+            if match.genre:
+                media.genre = match.genre
+            if match.release_year:
+                media.release_year = match.release_year
+            media.is_remix = looks_like_remix_title(match.title)
+            await session.commit()
+
+        # Only missing art is filled: an existing real yt-dlp/provider cover
+        # is never replaced by a later recognition candidate.
+        if should_cache_artwork:
+            await ensure_media_artwork(media_id, match.thumbnail_url)
+        return match
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+LIBRARY_RECOGNITION_CHUNK_SIZE = 25
+
+
+async def _snapshot_library_recognition_candidates(user_id: str) -> list[str]:
+    """Freeze eligible IDs in bounded reads while holding the recognizer lock."""
+    candidate_ids: list[str] = []
+    last_id: str | None = None
+    while True:
+        async with SessionLocal() as session:
+            stmt = (
+                select(Media.id)
+                .where(
+                    Media.user_id == user_id,
+                    Media.media_type == MediaType.AUDIO,
+                    Media.recognized_title.is_(None),
+                )
+                .order_by(Media.id)
+                .limit(LIBRARY_RECOGNITION_CHUNK_SIZE)
+            )
+            if last_id is not None:
+                stmt = stmt.where(Media.id > last_id)
+            chunk = list((await session.scalars(stmt)).all())
+        if not chunk:
+            return candidate_ids
+        candidate_ids.extend(chunk)
+        last_id = chunk[-1]
+
+
+async def run_library_recognition_job(job_id: str, user_id: str) -> None:
+    """Recognize the whole eligible library in bounded DB/provider chunks."""
+    processed = 0
+    matched = 0
+    failed = 0
+    total = 0
+    last_match_id: str | None = None
+
+    await _touch_job(job_id, status=JobStatus.PENDING, stage_label="waiting for recognizer")
+    await _auto_name_semaphore.acquire()
+    try:
+        candidate_ids = await _snapshot_library_recognition_candidates(user_id)
+        total = len(candidate_ids)
+        if total == 0:
+            await _touch_job(
+                job_id,
+                status=JobStatus.COMPLETE,
+                progress_pct=100,
+                stage_label="Named 0 of 0",
+                batch_total=0,
+                batch_processed=0,
+                batch_matched=0,
+                batch_failed=0,
+            )
+            return
+
+        await _touch_job(
+            job_id,
+            status=JobStatus.IN_PROGRESS,
+            progress_pct=0,
+            stage_label=f"Named 0 of {total}",
+            batch_total=total,
+            batch_processed=0,
+            batch_matched=0,
+            batch_failed=0,
+        )
+        for start in range(0, total, LIBRARY_RECOGNITION_CHUNK_SIZE):
+            for media_id in candidate_ids[start : start + LIBRARY_RECOGNITION_CHUNK_SIZE]:
+                try:
+                    match = await _recognize_existing_media(user_id, media_id)
+                    if match is not None:
+                        matched += 1
+                        last_match_id = media_id
+                except Exception:  # noqa: BLE001 - one unreadable/noisy file must not abort the library
+                    failed += 1
+                processed += 1
+                await _touch_job(
+                    job_id,
+                    progress_pct=min(99, int(processed / total * 100)),
+                    stage_label=f"Named {matched} of {total}",
+                    batch_total=total,
+                    batch_processed=processed,
+                    batch_matched=matched,
+                    batch_failed=failed,
+                    result_media_id=last_match_id,
+                )
+
+        warning = None
+        if failed:
+            warning = f"{failed} track{'s' if failed != 1 else ''} could not be checked"
+        await _touch_job(
+            job_id,
+            status=JobStatus.COMPLETE,
+            progress_pct=100,
+            stage_label=f"Named {matched} of {total}",
+            error_message=warning,
+            batch_total=total,
+            batch_processed=processed,
+            batch_matched=matched,
+            batch_failed=failed,
+            result_media_id=last_match_id,
+        )
+    except Exception as exc:  # noqa: BLE001 - cleaned before reaching clients
+        await _touch_job(
+            job_id,
+            status=JobStatus.FAILED,
+            stage_label=f"Named {matched} of {total}",
+            error_message=clean_job_error(exc),
+            batch_total=total,
+            batch_processed=processed,
+            batch_matched=matched,
+            batch_failed=failed + 1,
+        )
+    finally:
+        _auto_name_semaphore.release()
+
+
 async def run_recognition_job(
     job_id: str,
     user_id: str,
@@ -658,27 +1022,16 @@ async def run_recognition_job(
 ) -> None:
     await _touch_job(job_id, status=JobStatus.IN_PROGRESS, stage_label="listening")
     try:
-        match = await recognition_service.recognize_file(tmp_audio_path, recognition_mode)
+        if existing_media_id:
+            match = await _recognize_existing_media(user_id, existing_media_id, tmp_audio_path)
+        else:
+            match = await recognition_service.recognize_file(tmp_audio_path, recognition_mode)
 
         if match is None:
             await _touch_job(job_id, status=JobStatus.COMPLETE, progress_pct=100, stage_label="no_match")
             return
 
         if existing_media_id:
-            async with SessionLocal() as session:
-                media = await session.get(Media, existing_media_id)
-                if media is not None and media.user_id == user_id:
-                    media.recognized_title = match.title
-                    media.recognized_artist = match.artist
-                    if not media.thumbnail_url:
-                        media.thumbnail_url = match.thumbnail_url
-                    if not media.album and match.album:
-                        media.album = match.album
-                    media.genre = match.genre
-                    media.release_year = match.release_year
-                    media.is_remix = looks_like_remix_title(match.title)
-                    await session.commit()
-
             await _touch_job(
                 job_id,
                 status=JobStatus.COMPLETE,

@@ -1,57 +1,95 @@
-import Svg, { Circle, Defs, Path, RadialGradient, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop } from 'react-native-svg';
 
 import { palette } from '../../theme/theme';
 
 type Props = {
   size?: number;
-  /** Render the mark as a single flat colour (Android monochrome adaptive icon, dark UI chrome). */
+  /** Render the mark as a single flat colour for themed Android/UI surfaces. */
   monochrome?: string;
 };
 
 /**
- * The Starhollow mark: one radiant star settling into a hollow — a dark
- * clearing ringed by two pine ridges, with an aurora pool glowing where the
- * ridges part. The big four-point star is what survives favicon size; the
- * V-notch treeline is what keeps it from reading as a generic sparkle.
+ * A radiant star settling into a record-like signal disc above two pine
+ * ridges. The star survives favicon size, the grooves establish the music
+ * cue, and the V-notch keeps the silhouette specific to Starhollow.
+ * Geometry mirrors scripts/generate-brand-assets.js so native and web launch
+ * surfaces stay pixel-consistent with the in-app mark.
  */
 export function BrandMark({ size = 32, monochrome }: Props) {
   const star = monochrome ?? palette.gold;
-  const ridgeNear = monochrome ?? '#04120C';
-  const ridgeFar = monochrome ?? '#0A2018';
+  const ridgeNear = monochrome ?? '#03120F';
+  const ridgeFar = monochrome ?? '#0B3028';
 
   return (
     <Svg width={size} height={size} viewBox="0 0 100 100">
       {!monochrome && (
         <Defs>
-          <RadialGradient id="sh-pool" cx="50%" cy="78%" r="46%">
-            <Stop offset="0%" stopColor={palette.primary} stopOpacity={0.5} />
-            <Stop offset="60%" stopColor={palette.primary} stopOpacity={0.16} />
-            <Stop offset="100%" stopColor={palette.primary} stopOpacity={0} />
-          </RadialGradient>
-          <RadialGradient id="sh-glow" cx="50%" cy="36%" r="40%">
-            <Stop offset="0%" stopColor={palette.gold} stopOpacity={0.4} />
+          <LinearGradient id="sh-disc" x1={16} y1={12} x2={82} y2={90} gradientUnits="userSpaceOnUse">
+            <Stop offset="0%" stopColor="#173A3B" stopOpacity={0.94} />
+            <Stop offset="55%" stopColor="#0A1B24" stopOpacity={0.97} />
+            <Stop offset="100%" stopColor="#050B12" stopOpacity={0.99} />
+          </LinearGradient>
+          <LinearGradient id="sh-rim" x1={14} y1={12} x2={86} y2={90} gradientUnits="userSpaceOnUse">
+            <Stop offset="0%" stopColor="#FFF7DE" stopOpacity={0.3} />
+            <Stop offset="42%" stopColor={palette.primary} stopOpacity={0.68} />
+            <Stop offset="100%" stopColor={palette.primary} stopOpacity={0.12} />
+          </LinearGradient>
+          <LinearGradient id="sh-star" x1={50} y1={10} x2={50} y2={67} gradientUnits="userSpaceOnUse">
+            <Stop offset="0%" stopColor="#FFF7DE" />
+            <Stop offset="44%" stopColor={palette.gold} />
+            <Stop offset="100%" stopColor="#C9953F" />
+          </LinearGradient>
+          <RadialGradient id="sh-glow" cx="50%" cy="39%" r="44%">
+            <Stop offset="0%" stopColor={palette.gold} stopOpacity={0.42} />
             <Stop offset="100%" stopColor={palette.gold} stopOpacity={0} />
           </RadialGradient>
         </Defs>
       )}
-      {/* Aurora pool rising out of the hollow. */}
-      {!monochrome && <Circle cx={50} cy={78} r={44} fill="url(#sh-pool)" />}
-      {/* Far ridge — parts in the middle to form the hollow. */}
-      <Path d="M-2,74 L16,48 L30,66 L40,52 L50,68 L60,52 L70,66 L84,48 L102,74 L102,102 L-2,102 Z" fill={ridgeFar} opacity={monochrome ? 0.55 : 1} />
-      {/* Near ridge — lower, darker, framing the pool. */}
-      <Path d="M-2,88 L14,68 L28,82 L42,70 L58,70 L72,82 L86,68 L102,88 L102,102 L-2,102 Z" fill={ridgeNear} />
-      {/* Star glow halo. */}
-      {!monochrome && <Circle cx={50} cy={36} r={32} fill="url(#sh-glow)" />}
-      {/* The star: long four-point with a slim second cross. */}
-      <Path
-        d="M50,10 L54,30 L72,36 L54,42 L50,62 L46,42 L28,36 L46,30 Z"
-        fill={star}
+
+      <Circle
+        cx={50}
+        cy={50}
+        r={monochrome ? 40 : 42}
+        fill={monochrome ? 'none' : 'url(#sh-disc)'}
+        stroke={monochrome ?? 'url(#sh-rim)'}
+        strokeWidth={monochrome ? 3 : 1.35}
+        opacity={monochrome ? 0.72 : 1}
       />
-      <Path d="M50,26 L51.6,34.4 L60,36 L51.6,37.6 L50,46 L48.4,37.6 L40,36 L48.4,34.4 Z" fill={monochrome ?? '#FFF7DE'} opacity={monochrome ? 0 : 0.9} />
-      {/* Companion stars. */}
-      <Circle cx={22} cy={20} r={1.9} fill={star} opacity={0.85} />
-      <Circle cx={79} cy={16} r={1.4} fill={star} opacity={0.65} />
-      <Circle cx={87} cy={34} r={1.2} fill={star} opacity={0.55} />
+      {!monochrome && <Circle cx={50} cy={39} r={31} fill="url(#sh-glow)" />}
+      {[32, 25, 18].map((radius, index) => (
+        <Circle
+          key={radius}
+          cx={50}
+          cy={50}
+          r={radius}
+          fill="none"
+          stroke={monochrome ?? palette.primary}
+          strokeWidth={index === 0 ? 0.8 : index === 1 ? 0.7 : 0.6}
+          opacity={monochrome ? [0.34, 0.24, 0.18][index] : [0.18, 0.13, 0.1][index]}
+        />
+      ))}
+      <Path
+        d="M11,77 L27,54 L39,68 L50,57 L61,68 L73,54 L89,77 L89,89 L11,89 Z"
+        fill={ridgeFar}
+        opacity={monochrome ? 0.68 : 1}
+      />
+      <Path
+        d="M11,84 L28,67 L42,80 L50,73 L58,80 L72,67 L89,84 L89,91 L11,91 Z"
+        fill={ridgeNear}
+      />
+      <Path
+        d="M50,10 C51.4,21 52.7,28 55.5,32 C61,34.3 68.5,35.8 78,37 C68.5,38.4 61,39.8 55.5,42 C52.8,47 51.5,55 50,67 C48.5,55 47.2,47 44.5,42 C39,39.8 31.5,38.4 22,37 C31.5,35.8 39,34.3 44.5,32 C47.3,28 48.6,21 50,10 Z"
+        fill={monochrome ? star : 'url(#sh-star)'}
+      />
+      {!monochrome && (
+        <Path
+          d="M50,27 C50.7,32.2 51.3,34.4 53,36.5 C55.6,37.3 57.8,37.8 61,38.5 C57.8,39.2 55.6,39.7 53,40.5 C51.4,42.7 50.8,45 50,50 C49.2,45 48.6,42.7 47,40.5 C44.4,39.7 42.2,39.2 39,38.5 C42.2,37.8 44.4,37.3 47,36.5 C48.7,34.4 49.3,32.2 50,27 Z"
+          fill="#FFF7DE"
+          opacity={0.92}
+        />
+      )}
+      <Circle cx={24} cy={24} r={1.45} fill={star} opacity={0.72} />
+      <Circle cx={76} cy={20} r={1.05} fill={star} opacity={0.5} />
     </Svg>
   );
 }

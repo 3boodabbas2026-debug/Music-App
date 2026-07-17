@@ -1,10 +1,11 @@
 import asyncio
+import json
 import uuid
 from pathlib import Path
 
 import aiofiles
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -24,7 +25,6 @@ router = APIRouter(prefix="/recognitions", tags=["recognitions"])
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # a mic/clip sample, not a full song library
 UPLOAD_CHUNK_BYTES = 1024 * 1024
-MAX_BATCH_TRACKS = 25  # cap one batch pass; the client can call again for the rest
 
 
 async def _stage_recognition_upload(file: UploadFile) -> Path:
@@ -139,43 +139,60 @@ async def recognize(
     return JobOut.model_validate(job)
 
 
-@router.post("/library", response_model=list[JobOut], status_code=status.HTTP_202_ACCEPTED)
+@router.post("/library", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED)
 async def recognize_library(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> list[JobOut]:
-    """Batch-name the library: queue recognition for every audio track that has
-    no recognized title yet (capped per call). Jobs run sequentially in the
-    background; progress streams over the normal per-job websocket."""
-    result = await db.scalars(
-        select(Media)
+) -> JobOut:
+    """Queue one durable job that names every eligible audio track in chunks."""
+    active = await db.scalar(
+        select(Job)
         .where(
-            Media.user_id == current_user.id,
-            Media.media_type == MediaType.AUDIO,
-            Media.recognized_title.is_(None),
+            Job.user_id == current_user.id,
+            Job.job_type == JobType.RECOGNIZE,
+            Job.source_url == "library",
+            Job.status.in_([JobStatus.PENDING, JobStatus.IN_PROGRESS]),
         )
-        .order_by(Media.created_at.desc())
-        .limit(MAX_BATCH_TRACKS)
+        .options(selectinload(Job.result_media))
+        .order_by(Job.created_at.desc())
     )
-    pending = result.all()
+    if active is not None:
+        return JobOut.model_validate(active)
 
-    jobs: list[JobOut] = []
-    for media in pending:
-        job = Job(user_id=current_user.id, job_type=JobType.RECOGNIZE)
-        db.add(job)
-        await db.commit()
-        await db.refresh(job)
+    total = int(
+        await db.scalar(
+            select(func.count(Media.id)).where(
+                Media.user_id == current_user.id,
+                Media.media_type == MediaType.AUDIO,
+                Media.recognized_title.is_(None),
+            )
+        )
+        or 0
+    )
+    job = Job(
+        user_id=current_user.id,
+        job_type=JobType.RECOGNIZE,
+        status=JobStatus.COMPLETE if total == 0 else JobStatus.PENDING,
+        progress_pct=100 if total == 0 else 0,
+        stage_label=f"Named 0 of {total}",
+        source_url="library",
+        request_payload=json.dumps({"kind": "recognition_library"}),
+        batch_total=total,
+        batch_processed=0,
+        batch_matched=0,
+        batch_failed=0,
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    if total:
         background_tasks.add_task(
-            job_engine.run_recognition_job,
+            job_engine.run_library_recognition_job,
             job.id,
             current_user.id,
-            Path(media.file_path),
-            media.id,
-            False,
         )
-        jobs.append(JobOut.model_validate(job))
-    return jobs
+    return JobOut.model_validate(job)
 
 
 @router.get("/capabilities", response_model=RecognitionCapabilities)

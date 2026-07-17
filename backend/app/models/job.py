@@ -39,6 +39,15 @@ class Job(Base):
     attempt_count: Mapped[int] = mapped_column(default=0)
     priority: Mapped[int] = mapped_column(default=0, index=True)
 
+    # Aggregate counters for long-running library recognition.  Keeping them
+    # on the durable Job row makes progress honest after reconnects: the UI
+    # does not have to infer a batch result from a collection of transient
+    # websocket subscriptions.
+    batch_total: Mapped[int | None] = mapped_column(nullable=True)
+    batch_processed: Mapped[int | None] = mapped_column(nullable=True)
+    batch_matched: Mapped[int | None] = mapped_column(nullable=True)
+    batch_failed: Mapped[int | None] = mapped_column(nullable=True)
+
     # A completed job is historical activity, not an ownership relationship.
     # Deleting the resulting library item must therefore keep the job and only
     # clear this optional pointer.  The endpoint also performs this update

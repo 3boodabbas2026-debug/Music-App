@@ -8,11 +8,13 @@ import { BrandMark } from '../components/ui/BrandMark';
 import { Button } from '../components/ui/Button';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { IconButton } from '../components/ui/IconButton';
+import { Reveal } from '../components/ui/Reveal';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SectionHeader } from '../components/ui/SectionHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { TextField } from '../components/ui/TextField';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { useResponsive } from '../hooks/useResponsive';
 import * as feedbackApi from '../services/api/feedback';
 import * as recognitionsApi from '../services/api/recognitions';
 import * as telegramApi from '../services/api/telegram';
@@ -34,14 +36,16 @@ function SettingSwitch({
   hint,
   value,
   onChange,
+  compact,
 }: {
   label: string;
   hint: string;
   value: boolean;
   onChange: (next: boolean) => void;
+  compact?: boolean;
 }) {
   return (
-    <View style={styles.switchRow}>
+    <View style={[styles.switchRow, compact && styles.switchRowSmall]}>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={styles.fieldLabel}>{label}</Text>
         <Text style={styles.hint}>{hint}</Text>
@@ -110,6 +114,8 @@ const STORAGE_OPTIONS: Array<{ value: 'auto' | 'local' | 'cloud'; label: string;
 
 export function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { width } = useResponsive();
+  const smallPhone = width < 390;
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const setStoragePreference = useAuthStore((s) => s.setStoragePreference);
@@ -129,6 +135,7 @@ export function SettingsScreen() {
   }
   const items = useLibraryStore((s) => s.items);
   const upsertMedia = useLibraryStore((s) => s.upsert);
+  const refreshLibrary = useLibraryStore((s) => s.refresh);
   const { networkOnline, backendOnline } = useOnlineStatus();
   const crossfadeEnabled = usePlayerStore((s) => s.crossfadeEnabled);
   const setCrossfadeEnabled = usePlayerStore((s) => s.setCrossfadeEnabled);
@@ -139,6 +146,7 @@ export function SettingsScreen() {
   const [offlineEntries, setOfflineEntries] = useState<OfflineEntry[]>([]);
   const [clearing, setClearing] = useState(false);
   const [naming, setNaming] = useState(false);
+  const [namingProgress, setNamingProgress] = useState<{ named: number; processed: number; total: number } | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [sendingFeedback, setSendingFeedback] = useState(false);
 
@@ -160,35 +168,40 @@ export function SettingsScreen() {
   async function nameLibrary() {
     if (naming) return;
     setNaming(true);
+    setNamingProgress(null);
     try {
-      const jobs = await recognitionsApi.recognizeWholeLibrary();
-      if (jobs.length === 0) {
+      const job = await recognitionsApi.recognizeWholeLibrary();
+      const initialTotal = job.batch_total ?? 0;
+      if (job.status === 'complete' && initialTotal === 0) {
         toast('Every track already has a name', 'success');
         setNaming(false);
         return;
       }
-      toast(`Naming ${jobs.length} track${jobs.length === 1 ? '' : 's'}…`, 'info');
-      let done = 0;
-      let named = 0;
-      jobs.forEach((job) => {
-        const unsubscribe = watchJob(job.id, (update) => {
-          if (update.status === 'complete' || update.status === 'failed' || update.status === 'cancelled') {
-            done += 1;
-            if (update.stage_label === 'matched') {
-              named += 1;
-              if (update.result_media) upsertMedia(update.result_media);
-            }
-            unsubscribe();
-            if (done === jobs.length) {
-              setNaming(false);
-              toast(`Named ${named} of ${jobs.length} tracks`, named > 0 ? 'success' : 'info');
-            }
+      setNamingProgress({ named: job.batch_matched ?? 0, processed: job.batch_processed ?? 0, total: initialTotal });
+      toast(`Naming ${initialTotal} track${initialTotal === 1 ? '' : 's'}…`, 'info');
+      const unsubscribe = watchJob(job.id, (update) => {
+        const total = update.batch_total ?? initialTotal;
+        const named = update.batch_matched ?? 0;
+        const processed = update.batch_processed ?? 0;
+        setNamingProgress({ named, processed, total });
+        if (update.result_media) upsertMedia(update.result_media);
+
+        if (update.status === 'complete' || update.status === 'failed' || update.status === 'cancelled') {
+          unsubscribe();
+          setNaming(false);
+          setNamingProgress(null);
+          void refreshLibrary();
+          if (update.status === 'complete') {
+            toast(`Named ${named} of ${total} tracks`, named > 0 ? 'success' : 'info');
+          } else {
+            toast(update.error_message ?? `Naming stopped after checking ${processed} of ${total} tracks`, 'error');
           }
-        });
+        }
       });
     } catch (err) {
       toast(apiErrorMessage(err, "Couldn't start library naming."), 'error');
       setNaming(false);
+      setNamingProgress(null);
     }
   }
 
@@ -253,20 +266,25 @@ export function SettingsScreen() {
   return (
     <View style={styles.root}>
       <ScreenContainer maxWidth={720}>
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-          <View style={styles.headerRow}>
-            <IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" />
-            <SectionHeader
-              eyebrow="Preferences"
-              title="Settings"
-              subtitle="Shape playback, storage, and the way Starhollow works for you."
-              style={styles.screenHeading}
-            />
-          </View>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.scroll, smallPhone && styles.scrollSmall]}
+        >
+          <Reveal>
+            <View style={[styles.headerRow, smallPhone && styles.headerRowSmall]}>
+              <IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" />
+              <SectionHeader
+                eyebrow="Preferences"
+                title="Settings"
+                subtitle="Shape playback, storage, and the way Starhollow works for you."
+                style={styles.screenHeading}
+              />
+            </View>
+          </Reveal>
 
           <SectionHeader title="Connection" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
-            <View style={styles.panelBody}>
+            <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
               <StatusRow label="Network" ok={networkOnline} />
               <StatusRow label="Starhollow API" ok={backendOnline} pending={backendOnline === null} />
               <StatusRow
@@ -287,42 +305,44 @@ export function SettingsScreen() {
 
           <SectionHeader title="Account" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
-            <View style={styles.panelBody}>
-              <View style={styles.fieldRow}>
+            <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
+              <View style={[styles.fieldRow, smallPhone && styles.fieldRowSmall]}>
                 <Text style={styles.fieldLabel}>Name</Text>
-                <Text style={styles.fieldValue}>{user?.display_name ?? '—'}</Text>
+                <Text style={[styles.fieldValue, smallPhone && styles.fieldValueSmall]}>{user?.display_name ?? '—'}</Text>
               </View>
-              <View style={styles.fieldRow}>
+              <View style={[styles.fieldRow, smallPhone && styles.fieldRowSmall]}>
                 <Text style={styles.fieldLabel}>Email</Text>
-                <Text style={styles.fieldValue}>{user?.email ?? '—'}</Text>
+                <Text style={[styles.fieldValue, smallPhone && styles.fieldValueSmall]}>{user?.email ?? '—'}</Text>
               </View>
             </View>
           </GlassPanel>
 
           <SectionHeader title="Playback" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
-            <View style={styles.panelBody}>
+            <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
               <SettingSwitch
                 label="Smooth transitions"
                 hint="Blend the end of one track into the start of the next instead of a hard cut."
                 value={crossfadeEnabled}
                 onChange={setCrossfadeEnabled}
+                compact={smallPhone}
               />
               <SettingSwitch
                 label="Keep the music going"
                 hint="When your queue runs out, keep playing from your library instead of stopping."
                 value={autoplayContinuation}
                 onChange={setAutoplayContinuation}
+                compact={smallPhone}
               />
             </View>
           </GlassPanel>
 
           <SectionHeader title="Library & storage" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
-            <View style={styles.panelBody}>
-              <View style={styles.fieldRow}>
+            <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
+              <View style={[styles.fieldRow, smallPhone && styles.fieldRowSmall]}>
                 <Text style={styles.fieldLabel}>In your archive</Text>
-                <Text style={styles.fieldValue}>
+                <Text style={[styles.fieldValue, smallPhone && styles.fieldValueSmall]}>
                   {items.length} tracks · {audioCount} audio · {videoCount} video
                 </Text>
               </View>
@@ -346,9 +366,9 @@ export function SettingsScreen() {
 
               {offlineSupported ? (
                 <>
-                  <View style={styles.fieldRow}>
+                  <View style={[styles.fieldRow, smallPhone && styles.fieldRowSmall]}>
                     <Text style={styles.fieldLabel}>Saved offline</Text>
-                    <Text style={styles.fieldValue}>
+                    <Text style={[styles.fieldValue, smallPhone && styles.fieldValueSmall]}>
                       {offlineEntries.length} tracks · {formatBytes(offlineBytes)}
                     </Text>
                   </View>
@@ -377,9 +397,15 @@ export function SettingsScreen() {
 
           <SectionHeader title="Library tools" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
-            <View style={styles.panelBody}>
+            <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
               <Button
-                label={naming ? 'Naming your tracks…' : 'Name untitled tracks'}
+                label={
+                  namingProgress
+                    ? `Named ${namingProgress.named} of ${namingProgress.total} · checked ${namingProgress.processed}`
+                    : naming
+                      ? 'Preparing your tracks…'
+                      : 'Name untitled tracks'
+                }
                 icon="sparkles-outline"
                 variant="secondary"
                 disabled={naming}
@@ -392,7 +418,7 @@ export function SettingsScreen() {
 
           <SectionHeader title="Feedback" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
-            <View style={styles.panelBody}>
+            <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
               <Text style={styles.hint}>Found a bug, or want something changed? Tell us directly.</Text>
               <TextField
                 label="Message"
@@ -415,7 +441,7 @@ export function SettingsScreen() {
 
           <SectionHeader title="About" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
           <GlassPanel style={styles.panel}>
-            <View style={[styles.panelBody, styles.aboutRow]}>
+            <View style={[styles.panelBody, smallPhone && styles.panelBodySmall, styles.aboutRow]}>
               <BrandMark size={28} />
               <View>
                 <Text style={styles.fieldValue}>Starhollow</Text>
@@ -439,12 +465,14 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
   scroll: { paddingBottom: spacing.xxl },
+  scrollSmall: { paddingBottom: spacing.xl },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.md,
     marginBottom: spacing.xl,
   },
+  headerRowSmall: { gap: spacing.sm, marginBottom: spacing.lg },
   screenHeading: { flex: 1 },
   sectionHeader: {
     marginTop: spacing.lg,
@@ -453,16 +481,19 @@ const styles = StyleSheet.create({
   sectionHeading: { ...typography.title, fontSize: 17, lineHeight: 23, color: colors.textPrimary },
   panel: { borderRadius: radii.lg },
   panelBody: { padding: spacing.lg, gap: spacing.md },
+  panelBodySmall: { padding: spacing.md },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusDot: { width: 8, height: 8, borderRadius: radii.pill, backgroundColor: colors.textMuted },
   statusDotGood: { backgroundColor: colors.success },
   statusDotBad: { backgroundColor: colors.danger },
   statusLabel: { ...typography.body, color: colors.textPrimary, flex: 1 },
-  statusValue: { ...typography.caption, color: colors.textMuted },
+  statusValue: { ...typography.caption, color: colors.textMuted, flexShrink: 1, textAlign: 'right' },
   statusValueBad: { color: colors.danger },
   inlineButton: { marginTop: spacing.xs },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  fieldRowSmall: { flexDirection: 'column', alignItems: 'flex-start', gap: spacing.xs },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  switchRowSmall: { alignItems: 'flex-start', gap: spacing.sm },
   fieldLabel: { ...typography.body, color: colors.textMuted },
   controlBusy: { opacity: 0.5 },
   feedbackInput: {
@@ -470,6 +501,7 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   fieldValue: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary, textAlign: 'right', flexShrink: 1 },
+  fieldValueSmall: { alignSelf: 'stretch', textAlign: 'left' },
   hint: { ...typography.caption, color: colors.textSecondary, lineHeight: 18 },
   aboutRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   signOutButton: { marginTop: spacing.xl },

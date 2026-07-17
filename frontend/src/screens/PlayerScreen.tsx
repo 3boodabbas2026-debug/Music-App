@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +14,8 @@ import { QueueList } from '../components/player/QueueList';
 import { TrackDetails } from '../components/player/TrackDetails';
 import { WaveformScrubber } from '../components/player/WaveformScrubber';
 import { CompactGlassSheet } from '../components/ui/CompactGlassSheet';
+import { PressableScale } from '../components/ui/PressableScale';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useResponsive } from '../hooks/useResponsive';
 import { useTrackAccent } from '../hooks/useTrackAccent';
 import { useFavoritesStore } from '../store/favoritesStore';
@@ -56,16 +58,16 @@ function ModeButton({
   badge?: string;
 }) {
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
-      accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ selected: !!active }}
-      style={({ pressed }) => [styles.modeButton, active && styles.modeButtonActive, pressed && styles.pressed]}
+      scaleTo={0.9}
+      style={[styles.modeButton, active && styles.modeButtonActive]}
     >
       <Ionicons name={icon} size={20} color={active ? colors.cyan : colors.textSecondary} />
       {badge ? <Text style={[styles.modeBadge, active && styles.modeBadgeActive]}>{badge}</Text> : null}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -97,7 +99,7 @@ function MoreTabs({ active, onChange }: { active: MoreTab; onChange: (next: More
     <View style={styles.sheetTabs} accessibilityRole="tablist">
       {(['playback', 'details'] as const).map((item) => {
         const selected = active === item;
-        const label = item === 'playback' ? 'Playback' : 'Details';
+        const label = item === 'playback' ? 'Playback' : 'Track';
         return (
           <Pressable
             key={item}
@@ -124,7 +126,7 @@ export function PlayerScreen() {
   const [sheetTab, setSheetTab] = useState<'queue' | 'lyrics'>('queue');
   const [moreTab, setMoreTab] = useState<MoreTab>('playback');
   const [sanctuary, setSanctuary] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const reduceMotion = useReducedMotion();
   const artworkEntrance = useRef(new Animated.Value(0)).current;
   const listeningPulse = useRef(new Animated.Value(0)).current;
 
@@ -164,17 +166,13 @@ export function PlayerScreen() {
 
   const coverUri = currentMedia ? thumbnailUri(currentMedia) : null;
   const accent = useTrackAccent(coverUri) ?? colors.cyan;
-  const artworkSize = Math.min(isDesktop ? 440 : width - spacing.lg * 2, isDesktop ? height * 0.58 : height * 0.39, 440);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => mounted && setReduceMotion(enabled));
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
+  const smallPhone = !isDesktop && width < 390;
+  const compactControls = !isDesktop && width < 440;
+  const artworkSize = Math.min(
+    isDesktop ? 440 : width - (smallPhone ? spacing.md : spacing.lg) * 2,
+    isDesktop ? height * 0.58 : height * (smallPhone ? 0.34 : 0.39),
+    440,
+  );
 
   useEffect(() => {
     if (!currentMedia) {
@@ -186,12 +184,14 @@ export function PlayerScreen() {
       artworkEntrance.setValue(1);
       return;
     }
-    Animated.spring(artworkEntrance, {
+    const animation = Animated.spring(artworkEntrance, {
       toValue: 1,
       speed: 18,
       bounciness: 3,
       useNativeDriver: true,
-    }).start();
+    });
+    animation.start();
+    return () => animation.stop();
   }, [artworkEntrance, currentMedia?.id, navigation, reduceMotion]);
 
   useEffect(() => {
@@ -244,7 +244,7 @@ export function PlayerScreen() {
   };
 
   const openMore = () => {
-    setMoreTab('playback');
+    setMoreTab('details');
     setSheet('options');
   };
 
@@ -328,7 +328,7 @@ export function PlayerScreen() {
     >
       <View style={styles.identityRow}>
         <View style={styles.identityText}>
-          <Text numberOfLines={2} style={styles.title}>{displayTitle(currentMedia)}</Text>
+          <Text numberOfLines={2} style={[styles.title, smallPhone && styles.titleSmall]}>{displayTitle(currentMedia)}</Text>
           <Text numberOfLines={1} style={styles.artist}>{displayArtist(currentMedia) ?? 'Unknown artist'}</Text>
           {!!metadata && <Text numberOfLines={1} style={styles.metadata}>{metadata}</Text>}
         </View>
@@ -362,30 +362,30 @@ export function PlayerScreen() {
         <Pressable onPress={() => void playPrev()} accessibilityRole="button" accessibilityLabel="Previous track" style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}>
           <Ionicons name="play-skip-back" size={29} color={colors.textPrimary} />
         </Pressable>
-        <Pressable
+        <PressableScale
           onPress={toggle}
-          accessibilityRole="button"
           accessibilityLabel={playing ? 'Pause' : 'Play'}
-          style={({ pressed }) => [styles.playButton, { backgroundColor: accent }, pressed && styles.playButtonPressed]}
+          scaleTo={0.94}
+          style={[styles.playButton, { backgroundColor: accent }]}
         >
           {isBuffering ? (
             <ActivityIndicator color={colors.bg} />
           ) : (
             <Ionicons name={playing ? 'pause' : 'play'} size={34} color={colors.bg} style={playing ? undefined : styles.playNudge} />
           )}
-        </Pressable>
+        </PressableScale>
         <Pressable onPress={() => void playNext()} accessibilityRole="button" accessibilityLabel="Next track" style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}>
           <Ionicons name="play-skip-forward" size={29} color={colors.textPrimary} />
         </Pressable>
         <ModeButton label={`Repeat mode: ${repeat}`} icon="repeat" active={repeat !== 'off'} badge={repeat === 'one' ? '1' : undefined} onPress={toggleRepeat} />
       </View>
 
-      <View style={styles.secondaryRow}>
-        <Pressable onPress={() => openPanel('queue')} accessibilityRole="button" accessibilityLabel="Open queue" style={styles.secondaryAction}>
+      <View style={[styles.secondaryRow, compactControls && styles.secondaryRowCompact]}>
+        <Pressable onPress={() => openPanel('queue')} accessibilityRole="button" accessibilityLabel="Open queue" style={[styles.secondaryAction, compactControls && styles.secondaryActionCompact]}>
           <Ionicons name="list" size={19} color={colors.textSecondary} />
           <Text style={styles.secondaryLabel}>Up next</Text>
         </Pressable>
-        <Pressable onPress={() => openPanel('lyrics')} accessibilityRole="button" accessibilityLabel="Open lyrics" style={styles.secondaryAction}>
+        <Pressable onPress={() => openPanel('lyrics')} accessibilityRole="button" accessibilityLabel="Open lyrics" style={[styles.secondaryAction, compactControls && styles.secondaryActionCompact]}>
           <Ionicons name="text" size={18} color={colors.textSecondary} />
           <Text style={styles.secondaryLabel}>Lyrics</Text>
         </Pressable>
@@ -393,12 +393,12 @@ export function PlayerScreen() {
           onPress={() => setSanctuary(true)}
           accessibilityRole="button"
           accessibilityLabel="Enter Sanctuary Mode"
-          style={[styles.secondaryAction, styles.sanctuaryAction]}
+          style={[styles.secondaryAction, styles.sanctuaryAction, compactControls && styles.secondaryActionCompact]}
         >
           <Ionicons name="moon" size={17} color={accent} />
           <Text style={[styles.secondaryLabel, { color: accent }]}>Sanctuary</Text>
         </Pressable>
-        <Pressable onPress={openMore} accessibilityRole="button" accessibilityLabel="More player options" style={styles.secondaryAction}>
+        <Pressable onPress={openMore} accessibilityRole="button" accessibilityLabel="More player options" style={[styles.secondaryAction, compactControls && styles.secondaryActionCompact]}>
           <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
           <Text style={styles.secondaryLabel}>More</Text>
         </Pressable>
@@ -459,7 +459,11 @@ export function PlayerScreen() {
       ) : (
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.mobileContent, { paddingTop: insets.top + 70, paddingBottom: insets.bottom + spacing.lg }]}
+          contentContainerStyle={[
+            styles.mobileContent,
+            smallPhone && styles.mobileContentSmall,
+            { paddingTop: insets.top + 70, paddingBottom: insets.bottom + spacing.lg },
+          ]}
         >
           {artwork}
           {detailsAndControls}
@@ -552,6 +556,7 @@ const styles = StyleSheet.create({
   stateDot: { width: 6, height: 6, borderRadius: 3 },
   playingStateLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 1.8, color: colors.textSecondary },
   mobileContent: { alignItems: 'center', paddingHorizontal: spacing.lg, gap: spacing.lg },
+  mobileContentSmall: { paddingHorizontal: spacing.md, gap: spacing.md },
   desktopLayout: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxl, paddingHorizontal: spacing.xxl },
   desktopArtworkColumn: { flex: 1, alignItems: 'flex-end' },
   artworkShadow: { borderRadius: radii.lg, shadowOpacity: 0.3, shadowRadius: 38, shadowOffset: { width: 0, height: 20 }, elevation: 16 },
@@ -565,6 +570,7 @@ const styles = StyleSheet.create({
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   identityText: { flex: 1 },
   title: { ...typography.title, fontSize: 24, lineHeight: 30, color: colors.textPrimary },
+  titleSmall: { fontSize: 21, lineHeight: 27 },
   artist: { ...typography.subtitle, color: colors.textSecondary, marginTop: 3 },
   metadata: { ...typography.caption, color: colors.textMuted, marginTop: 4 },
   favoriteButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
@@ -578,11 +584,12 @@ const styles = StyleSheet.create({
   modeBadgeActive: { color: colors.cyan },
   skipButton: { width: 50, height: 50, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
   playButton: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
-  playButtonPressed: { opacity: 0.86, transform: [{ scale: 0.96 }] },
   playNudge: { marginLeft: 4 },
   pressed: { opacity: 0.65 },
   secondaryRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
+  secondaryRowCompact: { flexWrap: 'wrap', gap: spacing.sm },
   secondaryAction: { minWidth: 78, minHeight: 46, borderRadius: radii.pill, paddingHorizontal: spacing.md - 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
+  secondaryActionCompact: { flexGrow: 1, flexBasis: '42%', minWidth: 132 },
   sanctuaryAction: { borderColor: glass.tintPrimaryStroke },
   secondaryLabel: { ...typography.caption, color: colors.textSecondary },
   nextRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.surfaceBorder, marginTop: spacing.xs, paddingTop: spacing.md },

@@ -8,36 +8,64 @@ const fs = require('fs');
 const path = require('path');
 const sharp = require('sharp');
 
-const INK = '#0B1411'; // midnight pine
+const INK = '#07111B'; // midnight navy-pine
+const INK_DEEP = '#03080F';
+const INK_LIFT = '#102B2B';
 const STAR = '#E9CD7E'; // star gold
 const CORE = '#FFF7DE';
 const AURORA = '#63D6B5'; // aurora teal
-const RIDGE_FAR = '#0A2018';
-const RIDGE_NEAR = '#04120C';
+const RIDGE_FAR = '#0B3028';
+const RIDGE_NEAR = '#03120F';
 
-// Mark geometry mirrors BrandMark.tsx's 0 0 100 100 viewBox exactly.
-function markGroup({ star = STAR, core = CORE, ridgeFar = RIDGE_FAR, ridgeNear = RIDGE_NEAR, glow = true, flat = false } = {}) {
+// Mark geometry mirrors BrandMark.tsx's 0 0 100 100 viewBox exactly. The
+// concentric grooves read as both a record and a signal travelling through a
+// hollow; the long star remains legible when the mark is only 16px wide.
+function markGroup({ star = 'url(#sh-star)', core = CORE, ridgeFar = RIDGE_FAR, ridgeNear = RIDGE_NEAR, glow = true, flat = false } = {}) {
   return `
-    ${glow ? `<circle cx="50" cy="78" r="44" fill="url(#sh-pool)" />` : ''}
-    <path d="M-2,74 L16,48 L30,66 L40,52 L50,68 L60,52 L70,66 L84,48 L102,74 L102,102 L-2,102 Z" fill="${ridgeFar}" ${flat ? 'opacity="0.55"' : ''} />
-    <path d="M-2,88 L14,68 L28,82 L42,70 L58,70 L72,82 L86,68 L102,88 L102,102 L-2,102 Z" fill="${ridgeNear}" />
-    ${glow ? `<circle cx="50" cy="36" r="32" fill="url(#sh-glow)" />` : ''}
-    <path d="M50,10 L54,30 L72,36 L54,42 L50,62 L46,42 L28,36 L46,30 Z" fill="${star}" />
-    ${flat ? '' : `<path d="M50,26 L51.6,34.4 L60,36 L51.6,37.6 L50,46 L48.4,37.6 L40,36 L48.4,34.4 Z" fill="${core}" opacity="0.9" />`}
-    <circle cx="22" cy="20" r="1.9" fill="${star}" opacity="0.85" />
-    <circle cx="79" cy="16" r="1.4" fill="${star}" opacity="0.65" />
-    <circle cx="87" cy="34" r="1.2" fill="${star}" opacity="0.55" />
+    ${flat
+      ? '<circle cx="50" cy="50" r="40" fill="none" stroke="#FFFFFF" stroke-width="3" opacity="0.42" />'
+      : '<circle cx="50" cy="50" r="42" fill="url(#sh-disc)" stroke="url(#sh-rim)" stroke-width="1.35" />'}
+    ${glow ? '<circle cx="50" cy="39" r="31" fill="url(#sh-glow)" />' : ''}
+    <circle cx="50" cy="50" r="32" fill="none" stroke="${flat ? '#FFFFFF' : AURORA}" stroke-width="0.8" opacity="${flat ? '0.34' : '0.18'}" />
+    <circle cx="50" cy="50" r="25" fill="none" stroke="${flat ? '#FFFFFF' : AURORA}" stroke-width="0.7" opacity="${flat ? '0.24' : '0.13'}" />
+    <circle cx="50" cy="50" r="18" fill="none" stroke="${flat ? '#FFFFFF' : AURORA}" stroke-width="0.6" opacity="${flat ? '0.18' : '0.1'}" />
+    <path d="M11,77 L27,54 L39,68 L50,57 L61,68 L73,54 L89,77 L89,89 L11,89 Z" fill="${ridgeFar}" ${flat ? 'opacity="0.68"' : ''} />
+    <path d="M11,84 L28,67 L42,80 L50,73 L58,80 L72,67 L89,84 L89,91 L11,91 Z" fill="${ridgeNear}" />
+    <path d="M50,10 C51.4,21 52.7,28 55.5,32 C61,34.3 68.5,35.8 78,37 C68.5,38.4 61,39.8 55.5,42 C52.8,47 51.5,55 50,67 C48.5,55 47.2,47 44.5,42 C39,39.8 31.5,38.4 22,37 C31.5,35.8 39,34.3 44.5,32 C47.3,28 48.6,21 50,10 Z" fill="${star}" />
+    ${flat ? '' : `<path d="M50,27 C50.7,32.2 51.3,34.4 53,36.5 C55.6,37.3 57.8,37.8 61,38.5 C57.8,39.2 55.6,39.7 53,40.5 C51.4,42.7 50.8,45 50,50 C49.2,45 48.6,42.7 47,40.5 C44.4,39.7 42.2,39.2 39,38.5 C42.2,37.8 44.4,37.3 47,36.5 C48.7,34.4 49.3,32.2 50,27 Z" fill="${core}" opacity="0.92" />`}
+    <circle cx="24" cy="24" r="1.45" fill="${flat ? '#FFFFFF' : STAR}" opacity="0.72" />
+    <circle cx="76" cy="20" r="1.05" fill="${flat ? '#FFFFFF' : STAR}" opacity="0.5" />
   `;
 }
 
 const GLOW_DEFS = `<defs>
-  <radialGradient id="sh-pool" cx="50%" cy="78%" r="46%">
-    <stop offset="0%" stop-color="${AURORA}" stop-opacity="0.5" />
-    <stop offset="60%" stop-color="${AURORA}" stop-opacity="0.16" />
+  <linearGradient id="sh-bg" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="${INK_LIFT}" />
+    <stop offset="48%" stop-color="${INK}" />
+    <stop offset="100%" stop-color="${INK_DEEP}" />
+  </linearGradient>
+  <radialGradient id="sh-ambient" cx="50%" cy="47%" r="52%">
+    <stop offset="0%" stop-color="${AURORA}" stop-opacity="0.24" />
+    <stop offset="62%" stop-color="${AURORA}" stop-opacity="0.07" />
     <stop offset="100%" stop-color="${AURORA}" stop-opacity="0" />
   </radialGradient>
-  <radialGradient id="sh-glow" cx="50%" cy="36%" r="40%">
-    <stop offset="0%" stop-color="${STAR}" stop-opacity="0.4" />
+  <linearGradient id="sh-disc" x1="16" y1="12" x2="82" y2="90" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="#173A3B" stop-opacity="0.94" />
+    <stop offset="55%" stop-color="#0A1B24" stop-opacity="0.97" />
+    <stop offset="100%" stop-color="#050B12" stop-opacity="0.99" />
+  </linearGradient>
+  <linearGradient id="sh-rim" x1="14" y1="12" x2="86" y2="90" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="${CORE}" stop-opacity="0.3" />
+    <stop offset="42%" stop-color="${AURORA}" stop-opacity="0.68" />
+    <stop offset="100%" stop-color="${AURORA}" stop-opacity="0.12" />
+  </linearGradient>
+  <linearGradient id="sh-star" x1="50" y1="10" x2="50" y2="67" gradientUnits="userSpaceOnUse">
+    <stop offset="0%" stop-color="${CORE}" />
+    <stop offset="44%" stop-color="${STAR}" />
+    <stop offset="100%" stop-color="#C9953F" />
+  </linearGradient>
+  <radialGradient id="sh-glow" cx="50%" cy="39%" r="44%">
+    <stop offset="0%" stop-color="${STAR}" stop-opacity="0.42" />
     <stop offset="100%" stop-color="${STAR}" stop-opacity="0" />
   </radialGradient>
 </defs>`;
@@ -46,8 +74,9 @@ const GLOW_DEFS = `<defs>
 function squareIconSvg({ cornerRadius = 0 } = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
     ${GLOW_DEFS}
-    <rect width="1024" height="1024" rx="${cornerRadius}" fill="${INK}" />
-    <g transform="translate(184 184) scale(6.56)">${markGroup()}</g>
+    <rect width="1024" height="1024" rx="${cornerRadius}" fill="url(#sh-bg)" />
+    <circle cx="512" cy="492" r="430" fill="url(#sh-ambient)" />
+    <g transform="translate(174 174) scale(6.76)">${markGroup()}</g>
   </svg>`;
 }
 
@@ -55,8 +84,9 @@ function squareIconSvg({ cornerRadius = 0 } = {}) {
 function maskableIconSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
     ${GLOW_DEFS}
-    <rect width="1024" height="1024" fill="${INK}" />
-    <g transform="translate(276 276) scale(4.72)">${markGroup()}</g>
+    <rect width="1024" height="1024" fill="url(#sh-bg)" />
+    <circle cx="512" cy="492" r="430" fill="url(#sh-ambient)" />
+    <g transform="translate(246 246) scale(5.32)">${markGroup()}</g>
   </svg>`;
 }
 
@@ -64,21 +94,23 @@ function maskableIconSvg() {
 function foregroundSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
     ${GLOW_DEFS}
-    <g transform="translate(276 276) scale(4.72)">${markGroup()}</g>
+    <g transform="translate(246 246) scale(5.32)">${markGroup()}</g>
   </svg>`;
 }
 
-/** Android adaptive icon background layer: solid ink, no mark. */
+/** Android adaptive icon background layer: navy/aurora field, no mark. */
 function backgroundSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-    <rect width="1024" height="1024" fill="${INK}" />
+    ${GLOW_DEFS}
+    <rect width="1024" height="1024" fill="url(#sh-bg)" />
+    <circle cx="512" cy="492" r="430" fill="url(#sh-ambient)" />
   </svg>`;
 }
 
 /** Android 13+ themed monochrome layer: single-colour silhouette, transparent bg (OS supplies the tint). */
 function monochromeSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-    <g transform="translate(276 276) scale(4.72)">${markGroup({ star: '#FFFFFF', ridgeFar: '#FFFFFF', ridgeNear: '#FFFFFF', glow: false, flat: true })}</g>
+    <g transform="translate(246 246) scale(5.32)">${markGroup({ star: '#FFFFFF', ridgeFar: '#FFFFFF', ridgeNear: '#FFFFFF', glow: false, flat: true })}</g>
   </svg>`;
 }
 
@@ -86,8 +118,9 @@ function monochromeSvg() {
 function splashSvg() {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
     ${GLOW_DEFS}
-    <rect width="2732" height="2732" fill="${INK}" />
-    <g transform="translate(1166 1166) scale(4)">${markGroup()}</g>
+    <rect width="2732" height="2732" fill="url(#sh-bg)" />
+    <circle cx="1366" cy="1366" r="860" fill="url(#sh-ambient)" />
+    <g transform="translate(1066 1066) scale(6)">${markGroup()}</g>
   </svg>`;
 }
 
@@ -95,6 +128,7 @@ const root = path.resolve(__dirname, '..');
 const assets = path.join(root, 'assets');
 const assetsCapacitor = path.join(root, 'assets-capacitor');
 const publicIcons = path.join(root, 'public', 'icons');
+const androidDrawableNoDpi = path.join(root, 'android', 'app', 'src', 'main', 'res', 'drawable-nodpi');
 
 const jobs = [
   // App icon / favicon / splash foreground art
@@ -106,6 +140,9 @@ const jobs = [
   [foregroundSvg(), 1024, path.join(assets, 'android-icon-foreground.png')],
   [backgroundSvg(), 1024, path.join(assets, 'android-icon-background.png')],
   [monochromeSvg(), 1024, path.join(assets, 'android-icon-monochrome.png')],
+  // Capacitor keeps a checked-in native project. Android 13's themed icon
+  // therefore needs an explicit drawable in addition to Expo's source PNG.
+  [monochromeSvg(), 1024, path.join(androidDrawableNoDpi, 'ic_launcher_monochrome.png')],
 
   // Capacitor asset source set (consumed by `npx capacitor-assets generate`)
   [squareIconSvg({ cornerRadius: 0 }), 1024, path.join(assetsCapacitor, 'icon-only.png')],
@@ -123,6 +160,9 @@ const jobs = [
 ];
 
 async function main() {
+  // Keep a human-editable/vector deliverable beside the generated Expo PNG.
+  fs.writeFileSync(path.join(assets, 'starhollow-icon.svg'), squareIconSvg());
+  console.log('wrote', path.join('assets', 'starhollow-icon.svg'), '1024x1024 vector');
   for (const [svg, size, outPath] of jobs) {
     fs.mkdirSync(path.dirname(outPath), { recursive: true });
     await sharp(Buffer.from(svg)).resize(size, size).png().toFile(outPath);

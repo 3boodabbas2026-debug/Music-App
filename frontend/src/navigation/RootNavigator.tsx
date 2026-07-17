@@ -19,6 +19,7 @@ import { UpdateBanner } from '../components/ui/UpdateBanner';
 import { GlobalVideoStage } from '../components/video/GlobalVideoStage';
 import { ForestBackdrop } from '../components/ui/ForestBackdrop';
 import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useAuthStore } from '../store/authStore';
 import { colors } from '../theme/tokens';
 import { useTheme } from '../theme/ThemeProvider';
@@ -30,8 +31,14 @@ const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 
 function AuthNavigator() {
+  const reduceMotion = useReducedMotion();
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator
+      screenOptions={{
+        headerShown: false,
+        animation: reduceMotion ? 'none' : 'fade_from_bottom',
+      }}
+    >
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Register" component={RegisterScreen} />
     </AuthStack.Navigator>
@@ -41,6 +48,7 @@ function AuthNavigator() {
 export function RootNavigator() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const { isDesktop } = useResponsive();
+  const reduceMotion = useReducedMotion();
   const { scheme, theme } = useTheme();
   const navTheme = useMemo(() => {
     const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
@@ -69,9 +77,23 @@ export function RootNavigator() {
       <NavigationContainer ref={navigationRef} theme={navTheme}>
         {isAuthenticated ? (
           <>
-            <RootStack.Navigator screenOptions={{ headerShown: false, contentStyle: styles.transparent }}>
+            <RootStack.Navigator
+              screenOptions={{
+                headerShown: false,
+                contentStyle: styles.transparent,
+                animation: reduceMotion ? 'none' : 'slide_from_right',
+              }}
+            >
               <RootStack.Screen name="Main" component={MainTabs} />
-              <RootStack.Screen name="Player" component={PlayerScreen} options={{ presentation: 'fullScreenModal' }} />
+              <RootStack.Screen
+                name="Player"
+                component={PlayerScreen}
+                options={{
+                  presentation: 'fullScreenModal',
+                  animation: reduceMotion ? 'none' : 'slide_from_bottom',
+                  gestureDirection: 'vertical',
+                }}
+              />
               <RootStack.Screen name="Telegram" component={TelegramScreen} options={railInset} />
               <RootStack.Screen name="Jobs" component={JobsScreen} options={railInset} />
               <RootStack.Screen name="Settings" component={SettingsScreen} options={railInset} />

@@ -43,6 +43,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "assets:brand": "node scripts/generate-brand-assets.js && capacitor-assets generate --android --assetPath assets-capacitor",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",

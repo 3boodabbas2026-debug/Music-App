@@ -61,6 +61,31 @@ class ACRCloudParsingTests(unittest.TestCase):
     def test_no_result_code_is_a_real_no_match(self) -> None:
         self.assertIsNone(acrcloud_service._extract_match({"status": {"code": 1001}}))
 
+    def test_extracts_largest_spotify_cover_from_external_metadata(self) -> None:
+        match = acrcloud_service._extract_match(
+            humming_payload(
+                {
+                    "title": "Covered song",
+                    "artists": [{"name": "Covered artist"}],
+                    "score": "0.9",
+                    "external_metadata": {
+                        "spotify": {
+                            "album": {
+                                "images": [
+                                    {"url": "https://img.example/small.jpg", "width": 64, "height": 64},
+                                    {"url": "https://img.example/large.jpg", "width": 640, "height": 640},
+                                ]
+                            }
+                        }
+                    },
+                }
+            )
+        )
+
+        self.assertIsNotNone(match)
+        assert match is not None
+        self.assertEqual("https://img.example/large.jpg", match.thumbnail_url)
+
     def test_provider_errors_are_not_collapsed_into_no_match(self) -> None:
         with self.assertRaisesRegex(RecognitionProviderError, "credentials are invalid"):
             acrcloud_service._extract_match({"status": {"code": 3001}})

@@ -14,7 +14,10 @@ type LibraryState = {
   /** True when the last refresh() attempt failed to reach the network/API — `items` is whatever was cached. */
   isStale: boolean;
   hydrate: () => Promise<void>;
-  refresh: (query?: string) => Promise<void>;
+  /** Refreshes the canonical, unfiltered account library. Query-specific
+   * results belong to their requesting screen and must never replace this
+   * shared collection or its offline cache. */
+  refresh: () => Promise<void>;
   upsert: (media: Media) => void;
   remove: (mediaId: string) => Promise<void>;
   resetSession: () => Promise<void>;
@@ -22,7 +25,7 @@ type LibraryState = {
 
 async function persist(items: Media[]) {
   try {
-    // Cache the unfiltered library only — refresh(query) results never overwrite the offline snapshot.
+    // `items` is always the canonical unfiltered library.
     await AsyncStorage.setItem(CACHE_KEY, JSON.stringify(items));
   } catch {
     // Best-effort: offline browsing is a nicety, never let it break a live refresh.
@@ -45,12 +48,12 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     }
   },
 
-  async refresh(query) {
+  async refresh() {
     set({ isLoading: true });
     try {
-      const items = await libraryApi.listLibrary(query);
+      const items = await libraryApi.listLibrary();
       set({ items, isStale: false });
-      if (!query) void persist(items);
+      void persist(items);
     } catch (error) {
       // Network/API unreachable — keep whatever's already loaded (live or cached) and flag it as stale
       // rather than clearing the library, which is what made it look "empty" offline before.

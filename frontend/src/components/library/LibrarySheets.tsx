@@ -135,23 +135,15 @@ export function PlaylistPickerModal({
   onDone: () => void;
 }) {
   const playlists = usePlaylistStore((state) => state.playlists);
-  const addItem = usePlaylistStore((state) => state.addItem);
+  const addItems = usePlaylistStore((state) => state.addItems);
   const createPlaylist = usePlaylistStore((state) => state.create);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
 
-  // Sequential by design: concurrent addItem responses can overwrite the
-  // same playlist snapshot in the store and lose an item.
-  async function addAllTo(playlistId: string) {
-    for (const mediaId of mediaIds) {
-      await addItem(playlistId, mediaId);
-    }
-  }
-
   async function pick(playlist: Playlist) {
     setBusy(true);
     try {
-      await addAllTo(playlist.id);
+      await addItems(playlist.id, mediaIds);
       toast(
         mediaIds.length > 1
           ? `Added ${mediaIds.length} tracks to “${playlist.name}”`
@@ -171,7 +163,7 @@ export function PlaylistPickerModal({
     setBusy(true);
     try {
       const playlist = await createPlaylist(trimmed);
-      await addAllTo(playlist.id);
+      await addItems(playlist.id, mediaIds);
       toast(
         mediaIds.length > 1
           ? `Added ${mediaIds.length} tracks to “${playlist.name}”`
@@ -240,6 +232,82 @@ export function PlaylistPickerModal({
           No playlists yet — create one above.
         </Text>
       )}
+    </CompactGlassSheet>
+  );
+}
+
+/** Focused prompt used by the selection strip's "+ new playlist" target.
+ * This is intentionally separate from PlaylistPickerModal: a drag drop should
+ * ask for the promised name directly instead of making the user pick a second
+ * destination after the drop. */
+export function NewPlaylistWithItemsModal({
+  mediaIds,
+  onClose,
+  onDone,
+}: {
+  mediaIds: string[];
+  onClose: () => void;
+  onDone: (playlist: Playlist) => void;
+}) {
+  const createPlaylist = usePlaylistStore((state) => state.create);
+  const addItems = usePlaylistStore((state) => state.addItems);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    const trimmed = name.trim();
+    if (!trimmed || busy || mediaIds.length === 0) return;
+    setBusy(true);
+    try {
+      const playlist = await createPlaylist(trimmed);
+      const updated = await addItems(playlist.id, mediaIds);
+      toast(`Created “${updated.name}” with ${mediaIds.length} track${mediaIds.length === 1 ? '' : 's'}`, 'success');
+      onDone(updated);
+    } catch (err) {
+      toast(apiErrorMessage(err, "Couldn't create that playlist."), 'error');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <CompactGlassSheet
+      visible
+      onClose={onClose}
+      accessibilityLabel="Create a playlist from selected tracks"
+      closeAccessibilityLabel="Cancel new playlist"
+      maxWidth={440}
+      header={
+        <View>
+          <Text style={styles.editTitle}>New playlist</Text>
+          <Text style={styles.sheetSub}>
+            {mediaIds.length} selected {mediaIds.length === 1 ? 'track' : 'tracks'} will be added.
+          </Text>
+        </View>
+      }
+    >
+      <View style={styles.createRow}>
+        <TextInput
+          autoFocus
+          value={name}
+          onChangeText={setName}
+          onSubmitEditing={submit}
+          placeholder="Playlist name"
+          accessibilityLabel="New playlist name"
+          placeholderTextColor={colors.textMuted}
+          selectionColor={colors.cyan}
+          style={styles.createInput}
+        />
+        <PressableScale onPress={submit} disabled={busy || !name.trim()} scaleTo={0.9}>
+          <LinearGradient
+            colors={colors.gradientPrimary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.createButton}
+          >
+            {busy ? <ActivityIndicator size="small" color="#0B1411" /> : <Ionicons name="checkmark" size={20} color="#0B1411" />}
+          </LinearGradient>
+        </PressableScale>
+      </View>
     </CompactGlassSheet>
   );
 }

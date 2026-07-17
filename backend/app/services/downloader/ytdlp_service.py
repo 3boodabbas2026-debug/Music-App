@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import ipaddress
+import re
+import socket
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -28,6 +31,20 @@ class DownloadResult:
     artist: Optional[str]
     thumbnail_url: Optional[str]
     duration_seconds: Optional[float]
+
+
+@dataclass
+class DownloadBatchResult:
+    items: list[DownloadResult]
+    total_count: int
+    failed_count: int
+
+
+@dataclass(frozen=True)
+class DownloadInspection:
+    is_playlist: bool
+    playlist_title: str | None
+    entry_count: int | None
 
 
 def _pick_output_file(out_dir: Path, video_id: str) -> Path:
@@ -55,6 +72,7 @@ _YOUTUBE_AUTH_ERROR_MARKERS = (
     "not a bot",
     "youtube account cookies are no longer valid",
 )
+_YTSEARCH_RE = re.compile(r"^ytsearch(?:date)?(?:\d+|all)?:.+$", re.IGNORECASE | re.DOTALL)
 
 
 def _clean(value: str | None) -> str | None:
@@ -179,17 +197,61 @@ def _is_youtube_source(url: str) -> bool:
     return hostname == "youtu.be" or hostname == "youtube.com" or hostname.endswith(".youtube.com")
 
 
+def validate_media_url(url: str) -> str:
+    """Return a normalized, API-safe media input or raise ``ValueError``.
+
+    yt-dlp search expressions are a deliberate non-URI exception. Everything
+    else must be HTTP(S) and resolve exclusively to public addresses so the
+    downloader cannot be used to probe services on the backend's network.
+    """
+    candidate = url.strip()
+    if _YTSEARCH_RE.fullmatch(candidate):
+        prefix, _, query = candidate.partition(":")
+        if query.strip():
+            return f"{prefix}:{query.strip()}"
+    try:
+        parsed = urlsplit(candidate)
+    except ValueError as exc:
+        raise ValueError("Media URL is invalid") from exc
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError("Media URL must use http or https")
+    if not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError("Media URL host is invalid")
+    try:
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    except ValueError as exc:
+        raise ValueError("Media URL port is invalid") from exc
+
+    hostname = parsed.hostname.casefold().rstrip(".")
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise ValueError("Media URL must use a public host")
+    try:
+        addresses = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except OSError as exc:
+        raise ValueError("Media URL host could not be resolved") from exc
+    if not addresses:
+        raise ValueError("Media URL host could not be resolved")
+    for address in addresses:
+        try:
+            resolved = ipaddress.ip_address(address[4][0].split("%", 1)[0])
+        except ValueError as exc:
+            raise ValueError("Media URL host resolved to an invalid address") from exc
+        if not resolved.is_global:
+            raise ValueError("Media URL must not resolve to a private or local address")
+    return candidate
+
+
 def _is_youtube_auth_error(error: object) -> bool:
     message = str(error).lower()
     return any(marker in message for marker in _YOUTUBE_AUTH_ERROR_MARKERS)
 
 
-def _extract_info(url: str, ydl_opts: dict) -> dict | None:
+def _extract_info(url: str, ydl_opts: dict, download: bool = True) -> dict | None:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        return ydl.extract_info(url, download=True)
+        return ydl.extract_info(url, download=download)
 
 
-def _extract_with_transport_fallback(url: str, ydl_opts: dict) -> dict | None:
+def _extract_with_transport_fallback(url: str, ydl_opts: dict, download: bool = True) -> dict | None:
     """Retry a failed impersonated request through the OS trust store.
 
     curl-cffi supplies browser impersonation but uses a separate CA bundle.
@@ -198,7 +260,7 @@ def _extract_with_transport_fallback(url: str, ydl_opts: dict) -> dict | None:
     yt-dlp's native transport. Certificate verification remains enabled.
     """
     try:
-        return _extract_info(url, ydl_opts)
+        return _extract_info(url, ydl_opts, download=download)
     except DownloadError as exc:
         if "impersonate" not in ydl_opts or not _is_certificate_error(exc):
             raise
@@ -206,7 +268,7 @@ def _extract_with_transport_fallback(url: str, ydl_opts: dict) -> dict | None:
     fallback_opts = dict(ydl_opts)
     fallback_opts.pop("impersonate", None)
     fallback_opts["compat_opts"] = set(fallback_opts.get("compat_opts", ())) | {"no-certifi"}
-    return _extract_info(url, fallback_opts)
+    return _extract_info(url, fallback_opts, download=download)
 
 
 def _youtube_extractor_args() -> dict[str, dict[str, list[str]]]:
@@ -254,53 +316,121 @@ def _friendly_download_error(exc: DownloadError) -> RuntimeError:
     return RuntimeError(message)
 
 
-def download_media(
+def _apply_transport_settings(ydl_opts: dict) -> None:
+    if settings.ytdlp_prefer_system_certs:
+        ydl_opts["compat_opts"] = {"no-certifi"}
+    impersonate = _clean(settings.ytdlp_impersonate)
+    if impersonate:
+        ydl_opts["impersonate"] = ImpersonateTarget.from_str(impersonate)
+    proxy_url = _clean(settings.ytdlp_proxy_url)
+    if proxy_url:
+        ydl_opts["proxy"] = proxy_url
+    extractor_args = _youtube_extractor_args()
+    if extractor_args:
+        ydl_opts["extractor_args"] = extractor_args
+
+
+def _extract_with_cookie_retry(url: str, ydl_opts: dict, *, download: bool) -> dict | None:
+    with _cookies_file() as cookiefile:
+        if cookiefile:
+            ydl_opts["cookiefile"] = cookiefile
+        try:
+            if download:
+                return _extract_with_transport_fallback(url, ydl_opts)
+            return _extract_with_transport_fallback(url, ydl_opts, download=False)
+        except DownloadError as exc:
+            if not cookiefile or not _is_youtube_source(url) or not _is_youtube_auth_error(exc):
+                raise _friendly_download_error(exc) from exc
+            anonymous_opts = dict(ydl_opts)
+            anonymous_opts.pop("cookiefile", None)
+            try:
+                if download:
+                    return _extract_with_transport_fallback(url, anonymous_opts)
+                return _extract_with_transport_fallback(url, anonymous_opts, download=False)
+            except DownloadError as anonymous_exc:
+                raise _friendly_download_error(anonymous_exc) from anonymous_exc
+
+
+def inspect_url(url: str) -> DownloadInspection:
+    """Probe metadata without downloading bytes for the playlist toggle."""
+    # Re-resolve immediately before extraction as a TOCTOU/DNS-rebinding
+    # defense even when the API endpoint already validated this input.
+    url = validate_media_url(url)
+    ydl_opts: dict = {
+        "extract_flat": True,
+        "skip_download": True,
+        "noplaylist": False,
+        "quiet": True,
+        "no_warnings": True,
+        "js_runtimes": {"node": {}},
+    }
+    _apply_transport_settings(ydl_opts)
+    info = _extract_with_cookie_retry(url, ydl_opts, download=False)
+    if info is None:
+        raise RuntimeError("yt-dlp returned no result for this URL")
+
+    raw_entries = info.get("entries")
+    entries = list(raw_entries) if raw_entries is not None else None
+    extractor = str(info.get("extractor_key") or info.get("extractor") or "").lower()
+    is_playlist = entries is not None and "search" not in extractor and (
+        info.get("_type") == "playlist" or info.get("playlist_count") is not None or len(entries) > 1
+    )
+    raw_count = info.get("playlist_count") or info.get("n_entries")
+    try:
+        entry_count = int(raw_count) if raw_count is not None else (len(entries) if entries is not None else None)
+    except (TypeError, ValueError):
+        entry_count = len(entries) if entries is not None else None
+    return DownloadInspection(
+        is_playlist=is_playlist,
+        playlist_title=_clean(info.get("title")) if is_playlist else None,
+        entry_count=entry_count if is_playlist else None,
+    )
+
+
+def download_media_batch(
     url: str,
     media_type: str,
     out_dir: Path,
     progress_callback: Optional[ProgressCallback] = None,
     audio_format: str = "mp3-192",
     video_quality: str = "1080p",
-) -> DownloadResult:
+    download_playlist: bool = False,
+) -> DownloadBatchResult:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     def hook(d: dict) -> None:
         if progress_callback is None:
             return
+        info_dict = d.get("info_dict") or {}
+        try:
+            item_index = max(1, int(info_dict.get("playlist_index") or 1))
+            item_count = max(1, int(info_dict.get("playlist_count") or info_dict.get("n_entries") or 1))
+        except (TypeError, ValueError):
+            item_index, item_count = 1, 1
+        suffix = f" {item_index} of {item_count}" if download_playlist and item_count > 1 else ""
         if d.get("status") == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate")
             downloaded = d.get("downloaded_bytes", 0)
             # Reserve the last 10% of the bar for postprocessing (mux/extract-audio).
-            pct = int(downloaded / total * 90) if total else 0
-            progress_callback(pct, "downloading")
+            item_fraction = downloaded / total if total else 0
+            pct = int(((item_index - 1 + item_fraction) / item_count) * 90)
+            progress_callback(pct, f"downloading{suffix}")
         elif d.get("status") == "finished":
-            progress_callback(90, "processing")
+            pct = int((item_index / item_count) * 90)
+            progress_callback(pct, f"processing{suffix}")
 
     ydl_opts: dict = {
         "outtmpl": str(out_dir / "%(id)s.%(ext)s"),
         "ffmpeg_location": imageio_ffmpeg.get_ffmpeg_exe(),
         "progress_hooks": [hook],
         "js_runtimes": {"node": {}},
-        "noplaylist": True,
+        "noplaylist": not download_playlist,
+        "ignoreerrors": download_playlist,
         "quiet": True,
         "no_warnings": True,
         "restrictfilenames": True,
     }
-    if settings.ytdlp_prefer_system_certs:
-        # `no-certifi` still performs full TLS verification; it changes only
-        # the source of trusted roots from certifi to the host OS.
-        ydl_opts["compat_opts"] = {"no-certifi"}
-    impersonate = _clean(settings.ytdlp_impersonate)
-    if impersonate:
-        ydl_opts["impersonate"] = ImpersonateTarget.from_str(impersonate)
-
-    proxy_url = _clean(settings.ytdlp_proxy_url)
-    if proxy_url:
-        ydl_opts["proxy"] = proxy_url
-
-    extractor_args = _youtube_extractor_args()
-    if extractor_args:
-        ydl_opts["extractor_args"] = extractor_args
+    _apply_transport_settings(ydl_opts)
 
     if media_type == "audio":
         ydl_opts["format"] = "bestaudio/best"
@@ -318,25 +448,7 @@ def download_media(
             ydl_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
         ydl_opts["merge_output_format"] = "mp4"
 
-    with _cookies_file() as cookiefile:
-        if cookiefile:
-            ydl_opts["cookiefile"] = cookiefile
-
-        try:
-            info = _extract_with_transport_fallback(url, ydl_opts)
-        except DownloadError as exc:
-            if not cookiefile or not _is_youtube_source(url) or not _is_youtube_auth_error(exc):
-                raise _friendly_download_error(exc) from exc
-
-            # A stale or incomplete cookie jar can make a public video fail
-            # even when anonymous extraction still works. Retry once without
-            # the cookie jar; keep all transport fallbacks and other options.
-            anonymous_opts = dict(ydl_opts)
-            anonymous_opts.pop("cookiefile", None)
-            try:
-                info = _extract_with_transport_fallback(url, anonymous_opts)
-            except DownloadError as anonymous_exc:
-                raise _friendly_download_error(anonymous_exc) from anonymous_exc
+    info = _extract_with_cookie_retry(url, ydl_opts, download=True)
 
     if info is None:
         raise RuntimeError("yt-dlp returned no result for this URL")
@@ -344,25 +456,73 @@ def download_media(
     # Search queries (ytsearch1:...) and playlist-shaped URLs come back as a
     # wrapper with an "entries" list rather than a flat video dict — the
     # wrapper's own "id" doesn't match the actual downloaded file's id.
-    entries = info.get("entries")
-    if entries is not None:
-        entries = list(entries)
+    raw_entries = info.get("entries")
+    if raw_entries is None:
+        entries: list[dict | None] = [info]
+        expected_count = 1
+    else:
+        entries = list(raw_entries)
         if not entries:
             raise RuntimeError("No results found for that search or URL")
-        info = entries[0]
+        expected_count = len(entries) if download_playlist else 1
+        if download_playlist:
+            try:
+                expected_count = max(expected_count, int(info.get("playlist_count") or expected_count))
+            except (TypeError, ValueError):
+                pass
+        else:
+            entries = [next((entry for entry in entries if entry is not None), None)]
 
     if progress_callback:
         progress_callback(95, "finalizing")
 
-    result_path = _pick_output_file(out_dir, info["id"])
+    results: list[DownloadResult] = []
+    for entry in entries:
+        if entry is None or not entry.get("id"):
+            continue
+        try:
+            result_path = _pick_output_file(out_dir, str(entry["id"]))
+        except RuntimeError:
+            # ignoreerrors can leave metadata for an entry whose bytes failed.
+            continue
+        results.append(
+            DownloadResult(
+                file_path=result_path,
+                title=entry.get("title"),
+                artist=entry.get("artist") or entry.get("uploader") or entry.get("channel"),
+                thumbnail_url=entry.get("thumbnail"),
+                duration_seconds=entry.get("duration"),
+            )
+        )
+
+    if not results:
+        raise RuntimeError("No media could be downloaded from that URL")
 
     if progress_callback:
         progress_callback(100, "complete")
 
-    return DownloadResult(
-        file_path=result_path,
-        title=info.get("title"),
-        artist=info.get("artist") or info.get("uploader") or info.get("channel"),
-        thumbnail_url=info.get("thumbnail"),
-        duration_seconds=info.get("duration"),
+    return DownloadBatchResult(
+        items=results,
+        total_count=max(expected_count, len(results)),
+        failed_count=max(0, expected_count - len(results)),
     )
+
+
+def download_media(
+    url: str,
+    media_type: str,
+    out_dir: Path,
+    progress_callback: Optional[ProgressCallback] = None,
+    audio_format: str = "mp3-192",
+    video_quality: str = "1080p",
+) -> DownloadResult:
+    """Backward-compatible one-item wrapper for older callers."""
+    return download_media_batch(
+        url,
+        media_type,
+        out_dir,
+        progress_callback,
+        audio_format,
+        video_quality,
+        False,
+    ).items[0]

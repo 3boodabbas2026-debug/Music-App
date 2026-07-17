@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -9,7 +10,7 @@ from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.job import Job, JobStatus, JobType
 from app.models.user import User
-from app.schemas.job import DownloadCreate, JobOut
+from app.schemas.job import DownloadCreate, DownloadInspectCreate, DownloadInspectOut, JobOut
 from app.services.admin_events import log_event
 from app.services.downloader import ytdlp_service
 from app.workers import job_engine
@@ -17,13 +18,13 @@ from app.workers import job_engine
 router = APIRouter(prefix="/downloads", tags=["downloads"])
 
 
-@router.post("", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED)
+@router.post("", response_model=JobOut | list[JobOut], status_code=status.HTTP_202_ACCEPTED)
 async def create_download(
     payload: DownloadCreate,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> JobOut:
+) -> JobOut | list[JobOut]:
     if payload.media_type not in {"audio", "video"}:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "media_type must be 'audio' or 'video'")
     if payload.audio_format not in ytdlp_service.AUDIO_FORMATS:
@@ -31,30 +32,75 @@ async def create_download(
     if payload.video_quality not in ytdlp_service.VIDEO_QUALITIES:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unsupported video_quality")
 
-    worker_payload = payload.model_dump(exclude={"priority"})
-    job = Job(
-        user_id=current_user.id,
-        job_type=JobType.DOWNLOAD,
-        source_url=payload.url,
-        request_payload=json.dumps({"kind": "url", **worker_payload}),
-        priority=max(-10, min(10, payload.priority)),
-    )
-    db.add(job)
-    await log_event(db, "job_created", user_id=current_user.id, detail=f"download: {payload.url}")
+    legacy_single_response = payload._legacy_single_response
+    assert payload.urls
+    try:
+        validated_urls = await asyncio.gather(
+            *(asyncio.to_thread(ytdlp_service.validate_media_url, url) for url in payload.urls)
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
+    jobs: list[Job] = []
+    for url in validated_urls:
+        worker_payload = {
+            "kind": "url",
+            "url": url,
+            "media_type": payload.media_type,
+            "audio_format": payload.audio_format,
+            "video_quality": payload.video_quality,
+            "download_playlist": payload.download_playlist,
+        }
+        job = Job(
+            user_id=current_user.id,
+            job_type=JobType.DOWNLOAD,
+            source_url=url,
+            request_payload=json.dumps(worker_payload),
+            priority=max(-10, min(10, payload.priority)),
+        )
+        db.add(job)
+        jobs.append(job)
+        await log_event(db, "job_created", user_id=current_user.id, detail=f"download: {url}")
     await db.commit()
-    await db.refresh(job)
+    for job in jobs:
+        await db.refresh(job)
 
-    background_tasks.add_task(
-        job_engine.run_download_job,
-        job.id,
-        current_user.id,
-        payload.url,
-        payload.media_type,
-        payload.audio_format,
-        payload.video_quality,
+    for job in jobs:
+        background_tasks.add_task(
+            job_engine.run_download_job,
+            job.id,
+            current_user.id,
+            job.source_url,
+            payload.media_type,
+            payload.audio_format,
+            payload.video_quality,
+            payload.download_playlist,
+        )
+
+    output = [JobOut.model_validate(job) for job in jobs]
+    return output[0] if legacy_single_response else output
+
+
+@router.post("/inspect", response_model=DownloadInspectOut)
+async def inspect_download(
+    payload: DownloadInspectCreate,
+    _current_user: User = Depends(get_current_user),
+) -> DownloadInspectOut:
+    try:
+        url = await asyncio.to_thread(ytdlp_service.validate_media_url, payload.url)
+        inspection = await asyncio.to_thread(ytdlp_service.inspect_url, url)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from None
+    except Exception as exc:  # noqa: BLE001 - convert provider text before returning it
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            job_engine.clean_job_error(exc, "That link could not be inspected."),
+        ) from None
+    return DownloadInspectOut(
+        url=url,
+        is_playlist=inspection.is_playlist,
+        playlist_title=inspection.playlist_title,
+        entry_count=inspection.entry_count,
     )
-
-    return JobOut.model_validate(job)
 
 
 @router.get("", response_model=list[JobOut])
@@ -141,6 +187,7 @@ async def retry_download(
             payload["media_type"],
             payload.get("audio_format", "mp3-192"),
             payload.get("video_quality", "1080p"),
+            payload.get("download_playlist", False),
         )
     elif payload.get("kind") == "telegram":
         background_tasks.add_task(

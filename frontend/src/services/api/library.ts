@@ -2,8 +2,38 @@ import { API_V1 } from '../../config';
 import { apiClient } from './client';
 import type { Media } from './types';
 
-export async function listLibrary(query?: string): Promise<Media[]> {
-  const { data } = await apiClient.get<Media[]>('/library', { params: query ? { q: query } : undefined });
+export type LibrarySourceFilter =
+  | 'tiktok'
+  | 'youtube'
+  | 'instagram'
+  | 'telegram'
+  | 'other_url'
+  | 'recognized_upload'
+  | 'recognized'
+  | 'uploaded';
+
+/** Query contract for GET /library. Every populated field is AND-combined by
+ * the API; keeping this type beside the client prevents the filter sheet from
+ * quietly drifting back to client-only filtering. */
+export type LibraryQuery = {
+  q?: string;
+  source?: LibrarySourceFilter;
+  media_type?: Media['media_type'];
+  named?: boolean;
+  favorite?: boolean;
+  min_duration?: number;
+  max_duration?: number;
+  added_after?: string;
+  added_before?: string;
+  artist?: string;
+  playlist_id?: string;
+};
+
+export async function listLibrary(query?: LibraryQuery): Promise<Media[]> {
+  const params = query
+    ? Object.fromEntries(Object.entries(query).filter(([, value]) => value !== undefined && value !== ''))
+    : undefined;
+  const { data } = await apiClient.get<Media[]>('/library', { params });
   return data;
 }
 
