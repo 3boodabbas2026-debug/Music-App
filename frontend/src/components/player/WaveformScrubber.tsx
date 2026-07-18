@@ -1,140 +1,165 @@
-import { useMemo, useRef, useState } from 'react';
-import { PanResponder, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 
-import { colors, glass, radii } from '../../theme/tokens';
+import { colors, glass, radii, typography } from '../../theme/tokens';
 
 const BAR_COUNT = 40;
 const MAX_BAR = 40;
 const MIN_BAR = 8;
+const SEEK_STEP_SECONDS = 5;
+const FALLBACK_BARS = Array.from({ length: BAR_COUNT }, (_, index) => {
+  const phase = index / (BAR_COUNT - 1);
+  return 0.28 + Math.sin(phase * Math.PI) * 0.38 + Math.sin(phase * Math.PI * 6) * 0.08;
+});
 
-/** Deterministic PRNG so each track always shows the same waveform silhouette. */
-function mulberry32(seed: number) {
-  return () => {
-    seed |= 0;
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+function formatTime(seconds: number): string {
+  const safe = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
 }
 
-function hashString(value: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < value.length; i++) {
-    h ^= value.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
+function normalizeBars(data: number[] | null | undefined): number[] {
+  if (!data?.length) return FALLBACK_BARS;
+  return Array.from({ length: BAR_COUNT }, (_, index) => {
+    const sourceIndex = Math.min(data.length - 1, Math.round((index / (BAR_COUNT - 1)) * (data.length - 1)));
+    return Math.max(0.08, Math.min(1, Math.abs(data[sourceIndex] ?? 0)));
+  });
 }
 
 type Props = {
-  /** Stable key (media id) that shapes the waveform silhouette. */
-  seedKey: string;
-  /** Live playback progress 0..1. */
-  progress: number;
-  /** Called with the chosen 0..1 position when a drag or tap ends. */
-  onSeekRatio: (ratio: number) => void;
-  /** Color for the played portion — defaults to the brand ember; PlayerScreen
-   * passes the current track's extracted accent color when one is available. */
+  currentTime: number;
+  duration: number;
+  onSeek: (seconds: number) => void;
   activeColor?: string;
+  /** Optional analyzed amplitudes. When absent, the bars are explicitly presented as decoration. */
+  waveformData?: number[] | null;
 };
 
-/**
- * A faux-waveform scrubber: drag anywhere across the bars to scrub, release to
- * seek. The silhouette is decorative (seeded per track); the position is real.
- */
-export function WaveformScrubber({ seedKey, progress, onSeekRatio, activeColor = colors.cyan }: Props) {
+/** A semantic time slider whose waveform is only a visual treatment. */
+export function WaveformScrubber({
+  currentTime,
+  duration,
+  onSeek,
+  activeColor = colors.cyan,
+  waveformData,
+}: Props) {
   const [dragRatio, setDragRatio] = useState<number | null>(null);
   const originX = useRef(0);
   const width = useRef(1);
   const containerRef = useRef<View>(null);
-  const latestSeek = useRef(onSeekRatio);
-  latestSeek.current = onSeekRatio;
+  const latestSeek = useRef(onSeek);
+  latestSeek.current = onSeek;
   const lastRatio = useRef(0);
+  const safeDuration = Math.max(0, duration || 0);
+  const safeCurrentTime = Math.max(0, Math.min(safeDuration, currentTime || 0));
+  const durationRef = useRef(safeDuration);
+  durationRef.current = safeDuration;
+  const currentTimeRef = useRef(safeCurrentTime);
+  currentTimeRef.current = safeCurrentTime;
+  const keyboardFocused = useRef(false);
+  const bars = useMemo(() => normalizeBars(waveformData), [waveformData]);
 
-  const bars = useMemo(() => {
-    const rand = mulberry32(hashString(seedKey));
-    return Array.from({ length: BAR_COUNT }, (_, i) => {
-      // Blend noise with a gentle arc so the shape reads as "a song".
-      const arc = Math.sin((i / (BAR_COUNT - 1)) * Math.PI);
-      const noise = rand();
-      return MIN_BAR + (0.35 * arc + 0.65 * noise) * (MAX_BAR - MIN_BAR);
-    });
-  }, [seedKey]);
-
-  const ratioFromPageX = (pageX: number) =>
-    Math.max(0, Math.min(1, (pageX - originX.current) / width.current));
+  const seekTo = (seconds: number) => latestSeek.current(Math.max(0, Math.min(safeDuration, seconds)));
+  const ratioFromPageX = (pageX: number) => Math.max(0, Math.min(1, (pageX - originX.current) / width.current));
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        const ratio = ratioFromPageX(evt.nativeEvent.pageX);
+      onPanResponderGrant: (event) => {
+        const ratio = ratioFromPageX(event.nativeEvent.pageX);
         lastRatio.current = ratio;
         setDragRatio(ratio);
       },
-      onPanResponderMove: (evt) => {
-        const ratio = ratioFromPageX(evt.nativeEvent.pageX);
+      onPanResponderMove: (event) => {
+        const ratio = ratioFromPageX(event.nativeEvent.pageX);
         lastRatio.current = ratio;
         setDragRatio(ratio);
       },
       onPanResponderRelease: () => {
-        latestSeek.current(lastRatio.current);
+        latestSeek.current(lastRatio.current * durationRef.current);
         setDragRatio(null);
       },
       onPanResponderTerminate: () => setDragRatio(null),
     }),
   ).current;
 
-  const shown = dragRatio ?? Math.max(0, Math.min(1, progress));
+  const shown = dragRatio ?? (safeDuration > 0 ? safeCurrentTime / safeDuration : 0);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!keyboardFocused.current) return;
+      const { key } = event;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Home', 'End', 'PageDown', 'PageUp'].includes(key)) return;
+      event.preventDefault();
+      const current = currentTimeRef.current;
+      const total = durationRef.current;
+      if (key === 'Home') latestSeek.current(0);
+      else if (key === 'End') latestSeek.current(total);
+      else if (key === 'PageUp') latestSeek.current(Math.min(total, current + SEEK_STEP_SECONDS * 6));
+      else if (key === 'PageDown') latestSeek.current(Math.max(0, current - SEEK_STEP_SECONDS * 6));
+      else latestSeek.current(Math.max(0, Math.min(total, current + (key === 'ArrowRight' || key === 'ArrowUp' ? SEEK_STEP_SECONDS : -SEEK_STEP_SECONDS))));
+    };
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, []);
 
   return (
-    <View
-      ref={containerRef}
-      style={styles.row}
-      onLayout={() => {
-        containerRef.current?.measureInWindow((x, _y, w) => {
-          originX.current = x;
-          width.current = Math.max(1, w);
-        });
-      }}
-      {...panResponder.panHandlers}
-    >
-      {bars.map((height, i) => {
-        const played = i / (BAR_COUNT - 1) <= shown;
-        return (
-          <View
-            key={i}
-            style={[
-              styles.bar,
-              {
-                height,
-                backgroundColor: played ? activeColor : glass.strokeStrong,
-              },
-              played && dragRatio !== null ? styles.barDragging : null,
-            ]}
-          />
-        );
-      })}
+    <View>
+      <View
+        ref={containerRef}
+        accessible
+        focusable
+        tabIndex={0}
+        role="slider"
+        accessibilityRole="adjustable"
+        accessibilityLabel="Playback position"
+        accessibilityHint="Use arrow keys or swipe up and down to seek by five seconds."
+        accessibilityValue={{ min: 0, max: Math.round(safeDuration), now: Math.round(safeCurrentTime), text: `${formatTime(safeCurrentTime)} of ${formatTime(safeDuration)}` }}
+        accessibilityActions={[{ name: 'increment', label: 'Seek forward 5 seconds' }, { name: 'decrement', label: 'Seek back 5 seconds' }]}
+        onAccessibilityAction={(event) => {
+          if (event.nativeEvent.actionName === 'increment') seekTo(safeCurrentTime + SEEK_STEP_SECONDS);
+          if (event.nativeEvent.actionName === 'decrement') seekTo(safeCurrentTime - SEEK_STEP_SECONDS);
+        }}
+        onFocus={() => { keyboardFocused.current = true; }}
+        onBlur={() => { keyboardFocused.current = false; }}
+        style={styles.row}
+        onLayout={() => {
+          containerRef.current?.measureInWindow((x, _y, measuredWidth) => {
+            originX.current = x;
+            width.current = Math.max(1, measuredWidth);
+          });
+        }}
+        {...panResponder.panHandlers}
+      >
+        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.bars}>
+          {bars.map((amplitude, index) => {
+            const played = index / (BAR_COUNT - 1) <= shown;
+            return (
+              <View
+                key={index}
+                style={[
+                  styles.bar,
+                  {
+                    height: MIN_BAR + amplitude * (MAX_BAR - MIN_BAR),
+                    backgroundColor: played ? activeColor : glass.strokeStrong,
+                  },
+                  played && dragRatio !== null ? styles.barDragging : null,
+                ]}
+              />
+            );
+          })}
+        </View>
+      </View>
+      {!waveformData?.length ? <Text style={styles.fallbackLabel}>Decorative rhythm · analyzed waveform unavailable</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    height: 56,
-    paddingVertical: 8,
-  },
-  bar: {
-    flex: 1,
-    marginHorizontal: 1.5,
-    borderRadius: radii.pill,
-  },
-  barDragging: {
-    backgroundColor: colors.violet,
-  },
+  row: { height: 56, justifyContent: 'center', paddingVertical: 8, borderRadius: radii.sm },
+  bars: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bar: { flex: 1, marginHorizontal: 1.5, borderRadius: radii.pill },
+  barDragging: { backgroundColor: colors.violet },
+  fallbackLabel: { ...typography.caption, fontSize: 9, lineHeight: 12, color: colors.textMuted, textAlign: 'center' },
 });

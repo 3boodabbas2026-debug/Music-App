@@ -16,7 +16,7 @@ export type MainTabParamList = {
 
 export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList> | undefined;
-  Player: undefined;
+  Player: { panel?: 'queue' } | undefined;
   Telegram: undefined;
   Jobs: undefined;
   Settings: undefined;

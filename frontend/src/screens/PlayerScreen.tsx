@@ -1,8 +1,22 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AccessibilityInfo,
+  ActivityIndicator,
+  Animated,
+  Easing,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+  findNodeHandle,
+} from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -20,10 +34,12 @@ import { useResponsive } from '../hooks/useResponsive';
 import { useTrackAccent } from '../hooks/useTrackAccent';
 import { useFavoritesStore } from '../store/favoritesStore';
 import { usePinStore } from '../store/pinStore';
-import { usePlayerStore } from '../store/playerStore';
+import { canPlayNext, canPlayPrevious, usePlayerStore } from '../store/playerStore';
+import { useLibraryStore } from '../store/libraryStore';
 import { displayArtist, displayTitle, thumbnailUri } from '../utils/mediaDisplay';
 import { colors, glass, radii, spacing, typography } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
+import type { Media } from '../services/api/types';
 
 type Sheet = 'queue' | 'lyrics' | 'options' | null;
 type MoreTab = 'playback' | 'details';
@@ -36,6 +52,81 @@ const PLAYER_SPARKS = [
   { left: '14%', top: '78%', size: 2.5, color: colors.violet },
   { left: '82%', top: '84%', size: 3, color: colors.gold },
 ] as const;
+
+function ArtworkViewer({
+  visible,
+  onClose,
+  media,
+  uri,
+  accent,
+  width,
+  height,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  media: Media;
+  uri: string | null;
+  accent: string;
+  width: number;
+  height: number;
+}) {
+  const panelRef = useRef<View>(null);
+  const viewerSize = Math.max(220, Math.min(width - spacing.lg * 2, height - 190, 900));
+
+  useEffect(() => {
+    if (!visible) return;
+    const timer = setTimeout(() => {
+      if (Platform.OS === 'web') (panelRef.current as unknown as HTMLElement | null)?.focus?.();
+      else {
+        const node = findNodeHandle(panelRef.current);
+        if (node) AccessibilityInfo.setAccessibilityFocus(node);
+      }
+    }, 60);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    if (Platform.OS === 'web') document.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      clearTimeout(timer);
+      if (Platform.OS === 'web') document.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [onClose, visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      <View style={styles.viewerRoot} accessibilityViewIsModal>
+        <CoverBackdrop uri={uri} blurRadius={70} />
+        <View style={styles.viewerVeil} />
+        <View style={styles.viewerHeader}>
+          <View>
+            <Text style={styles.viewerEyebrow}>ARTWORK VIEW</Text>
+            <Text numberOfLines={1} style={styles.viewerTitle}>{displayTitle(media)}</Text>
+          </View>
+          <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close artwork viewer" style={styles.topButton}>
+            <Ionicons name="close" size={23} color={colors.textPrimary} />
+          </Pressable>
+        </View>
+        <View
+          ref={panelRef}
+          accessible
+          focusable
+          role="dialog"
+          accessibilityLabel={`${displayTitle(media)} artwork viewer`}
+          style={styles.viewerContent}
+          // RN Web maps this to a programmatically focusable dialog surface.
+          tabIndex={-1}
+        >
+          <View style={[styles.viewerArtworkFrame, { width: viewerSize, height: viewerSize, borderColor: `${accent}55` }]}>
+            <Artwork media={media} size="100%" priority borderRadius={radii.lg} contentFit="contain" />
+          </View>
+          <Text style={styles.viewerStatus}>
+            {uri ? 'Best available artwork · shown uncropped' : 'No artwork was supplied · Starhollow fallback shown'}
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -120,12 +211,15 @@ function MoreTabs({ active, onChange }: { active: MoreTab; onChange: (next: More
 
 export function PlayerScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Player'>>();
   const insets = useSafeAreaInsets();
   const { width, height, isDesktop } = useResponsive();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [sheetTab, setSheetTab] = useState<'queue' | 'lyrics'>('queue');
   const [moreTab, setMoreTab] = useState<MoreTab>('playback');
   const [sanctuary, setSanctuary] = useState(false);
+  const [artworkOpen, setArtworkOpen] = useState(false);
+  const closeArtwork = useCallback(() => setArtworkOpen(false), []);
   const reduceMotion = useReducedMotion();
   const artworkEntrance = useRef(new Animated.Value(0)).current;
   const listeningPulse = useRef(new Animated.Value(0)).current;
@@ -158,6 +252,9 @@ export function PlayerScreen() {
   const toggleMute = usePlayerStore((state) => state.toggleMute);
   const setCrossfadeEnabled = usePlayerStore((state) => state.setCrossfadeEnabled);
   const setAutoplayContinuation = usePlayerStore((state) => state.setAutoplayContinuation);
+  const playQueue = usePlayerStore((state) => state.playQueue);
+  const libraryItems = useLibraryStore((state) => state.items);
+  const libraryAudio = useMemo(() => libraryItems.filter((media) => media.media_type === 'audio'), [libraryItems]);
 
   const favoriteIds = useFavoritesStore((state) => state.ids);
   const toggleFavorite = useFavoritesStore((state) => state.toggle);
@@ -175,10 +272,7 @@ export function PlayerScreen() {
   );
 
   useEffect(() => {
-    if (!currentMedia) {
-      navigation.goBack();
-      return;
-    }
+    if (!currentMedia) return;
     artworkEntrance.setValue(0);
     if (reduceMotion) {
       artworkEntrance.setValue(1);
@@ -193,6 +287,13 @@ export function PlayerScreen() {
     animation.start();
     return () => animation.stop();
   }, [artworkEntrance, currentMedia?.id, navigation, reduceMotion]);
+
+  useEffect(() => {
+    if (route.params?.panel !== 'queue' || !currentMedia) return;
+    setSheetTab('queue');
+    setSheet('queue');
+    navigation.setParams({ panel: undefined });
+  }, [currentMedia, navigation, route.params?.panel]);
 
   useEffect(() => {
     listeningPulse.stopAnimation();
@@ -222,11 +323,54 @@ export function PlayerScreen() {
   }, [listeningPulse, playing, reduceMotion]);
 
   const nextTrack = useMemo(() => {
+    if (shuffle) return null;
     if (queue.length < 2) return null;
     return queue[queueIndex + 1] ?? (repeat === 'all' ? queue[0] : null);
-  }, [queue, queueIndex, repeat]);
+  }, [queue, queueIndex, repeat, shuffle]);
 
-  if (!currentMedia) return null;
+  const transportState = { queue, queueIndex, currentTime, repeat, shuffle };
+  const previousAvailable = canPlayPrevious(transportState);
+  const nextAvailable = canPlayNext(transportState);
+
+  if (!currentMedia) {
+    return (
+      <View style={styles.emptyRoot}>
+        <CoverBackdrop uri={null} blurRadius={54} />
+        <View style={styles.emptyVeil} />
+        <View style={[styles.emptyTopBar, { paddingTop: insets.top + spacing.sm }]}>
+          <Pressable onPress={() => navigation.navigate('Main', { screen: 'Library' })} accessibilityRole="button" accessibilityLabel="Return to Library" style={styles.topButton}>
+            <Ionicons name="chevron-down" size={22} color={colors.textPrimary} />
+          </Pressable>
+        </View>
+        <View style={[styles.emptyCard, { paddingBottom: insets.bottom + spacing.xl }]} accessibilityRole="summary">
+          <View style={styles.emptyConstellation} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+            <Ionicons name="musical-notes" size={42} color={colors.cyan} />
+          </View>
+          <Text style={styles.emptyEyebrow}>THE HOLLOW IS QUIET</Text>
+          <Text style={styles.emptyTitle}>Choose a track to wake the night.</Text>
+          <Text style={styles.emptyDescription}>Your player is ready. Return to the Library, or start a queue from the music already in your collection.</Text>
+          <View style={styles.emptyActions}>
+            <Pressable onPress={() => navigation.navigate('Main', { screen: 'Library' })} accessibilityRole="button" style={styles.emptyPrimaryAction}>
+              <Ionicons name="library" size={18} color={colors.bg} />
+              <Text style={styles.emptyPrimaryLabel}>Browse Library</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => void playQueue(libraryAudio, 0)}
+              disabled={libraryAudio.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Start a queue from my library"
+              accessibilityState={{ disabled: libraryAudio.length === 0 }}
+              accessibilityHint={libraryAudio.length === 0 ? 'Add music to your Library first.' : `Starts a queue with ${libraryAudio.length} tracks.`}
+              style={[styles.emptySecondaryAction, libraryAudio.length === 0 && styles.transportDisabled]}
+            >
+              <Ionicons name="play" size={18} color={colors.cyan} />
+              <Text style={styles.emptySecondaryLabel}>{libraryAudio.length ? 'Start my queue' : 'Library is empty'}</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   const isFavorite = !!favoriteIds[currentMedia.id];
   const isPinned = pinnedIds.includes(currentMedia.id);
@@ -311,7 +455,19 @@ export function PlayerScreen() {
           />
         ))}
       </View>
-      <Artwork media={currentMedia} size="100%" priority borderRadius={radii.lg} />
+      <Pressable
+        onPress={() => setArtworkOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={`Inspect artwork for ${displayTitle(currentMedia)}`}
+        accessibilityHint="Opens an uncropped full-screen artwork viewer."
+        style={({ pressed }) => [styles.artworkInspectTarget, pressed && styles.artworkInspectPressed]}
+      >
+        <Artwork media={currentMedia} size="100%" priority borderRadius={radii.lg} />
+        <View pointerEvents="none" style={styles.artworkInspectBadge}>
+          <Ionicons name="expand" size={16} color={colors.textPrimary} />
+          <Text style={styles.artworkInspectLabel}>Inspect</Text>
+        </View>
+      </Pressable>
     </Animated.View>
   );
 
@@ -346,9 +502,9 @@ export function PlayerScreen() {
 
       <View style={styles.scrubberBlock}>
         <WaveformScrubber
-          seedKey={currentMedia.id}
-          progress={duration ? currentTime / duration : 0}
-          onSeekRatio={(ratio) => seek(ratio * duration)}
+          currentTime={currentTime}
+          duration={duration}
+          onSeek={seek}
           activeColor={accent}
         />
         <View style={styles.timeRow}>
@@ -359,8 +515,16 @@ export function PlayerScreen() {
 
       <View style={styles.transportRow}>
         <ModeButton label={shuffle ? 'Turn shuffle off' : 'Turn shuffle on'} icon="shuffle" active={shuffle} onPress={toggleShuffle} />
-        <Pressable onPress={() => void playPrev()} accessibilityRole="button" accessibilityLabel="Previous track" style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}>
-          <Ionicons name="play-skip-back" size={29} color={colors.textPrimary} />
+        <Pressable
+          onPress={() => void playPrev()}
+          disabled={!previousAvailable}
+          accessibilityRole="button"
+          accessibilityLabel="Previous track"
+          accessibilityHint={previousAvailable ? 'Restarts this track after three seconds, otherwise plays the previous track.' : 'No previous track is available with repeat off.'}
+          accessibilityState={{ disabled: !previousAvailable }}
+          style={({ pressed }) => [styles.skipButton, !previousAvailable && styles.transportDisabled, pressed && styles.pressed]}
+        >
+          <Ionicons name="play-skip-back" size={29} color={previousAvailable ? colors.textPrimary : colors.textMuted} />
         </Pressable>
         <PressableScale
           onPress={toggle}
@@ -374,11 +538,27 @@ export function PlayerScreen() {
             <Ionicons name={playing ? 'pause' : 'play'} size={34} color={colors.bg} style={playing ? undefined : styles.playNudge} />
           )}
         </PressableScale>
-        <Pressable onPress={() => void playNext()} accessibilityRole="button" accessibilityLabel="Next track" style={({ pressed }) => [styles.skipButton, pressed && styles.pressed]}>
-          <Ionicons name="play-skip-forward" size={29} color={colors.textPrimary} />
+        <Pressable
+          onPress={() => void playNext()}
+          disabled={!nextAvailable}
+          accessibilityRole="button"
+          accessibilityLabel="Next track"
+          accessibilityHint={nextAvailable ? 'Plays the next available track.' : 'You reached the end of the queue. Turn on repeat all or add more tracks.'}
+          accessibilityState={{ disabled: !nextAvailable }}
+          style={({ pressed }) => [styles.skipButton, !nextAvailable && styles.transportDisabled, pressed && styles.pressed]}
+        >
+          <Ionicons name="play-skip-forward" size={29} color={nextAvailable ? colors.textPrimary : colors.textMuted} />
         </Pressable>
         <ModeButton label={`Repeat mode: ${repeat}`} icon="repeat" active={repeat !== 'off'} badge={repeat === 'one' ? '1' : undefined} onPress={toggleRepeat} />
       </View>
+
+      {!nextAvailable ? (
+        <Text accessibilityRole="summary" aria-live="polite" style={styles.transportHint}>
+          End of queue · add tracks or turn on Repeat All to keep skipping.
+        </Text>
+      ) : !previousAvailable ? (
+        <Text accessibilityRole="summary" style={styles.transportHint}>Start of queue · Previous becomes available after three seconds.</Text>
+      ) : null}
 
       <View style={[styles.secondaryRow, compactControls && styles.secondaryRowCompact]}>
         <Pressable onPress={() => openPanel('queue')} accessibilityRole="button" accessibilityLabel="Open queue" style={[styles.secondaryAction, compactControls && styles.secondaryActionCompact]}>
@@ -415,8 +595,8 @@ export function PlayerScreen() {
         </Pressable>
       ) : null}
 
-      {isDesktop ? (
-        <View style={styles.volumeRow}>
+      {isDesktop || Platform.OS === 'web' ? (
+        <View style={[styles.volumeRow, !isDesktop && styles.volumeRowCompact]}>
           <Pressable onPress={toggleMute} accessibilityRole="button" accessibilityLabel={muted ? 'Unmute' : 'Mute'} style={styles.volumeIcon}>
             <Ionicons name={muted || volume === 0 ? 'volume-mute' : volume < 0.5 ? 'volume-low' : 'volume-high'} size={18} color={colors.textSecondary} />
           </Pressable>
@@ -424,6 +604,9 @@ export function PlayerScreen() {
             style={styles.volumeSlider}
             value={muted ? 0 : volume}
             onValueChange={setVolume}
+            step={0.05}
+            accessibilityLabel="Playback volume"
+            accessibilityValue={{ min: 0, max: 100, now: Math.round((muted ? 0 : volume) * 100), text: muted ? 'Muted' : `${Math.round(volume * 100)} percent` }}
             minimumTrackTintColor={accent}
             maximumTrackTintColor={colors.surfaceBright}
             thumbTintColor={accent}
@@ -471,6 +654,15 @@ export function PlayerScreen() {
       )}
 
       <SanctuaryMode visible={sanctuary} onClose={() => setSanctuary(false)} accent={accent} />
+      <ArtworkViewer
+        visible={artworkOpen}
+        onClose={closeArtwork}
+        media={currentMedia}
+        uri={coverUri}
+        accent={accent}
+        width={width}
+        height={height}
+      />
 
       <CompactGlassSheet
         visible={sheet === 'options'}
@@ -549,6 +741,19 @@ export function PlayerScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  emptyRoot: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
+  emptyVeil: { ...(StyleSheet.absoluteFill as object), backgroundColor: glass.fillHeavy },
+  emptyTopBar: { position: 'absolute', zIndex: 2, top: 0, left: spacing.lg },
+  emptyCard: { width: '100%', maxWidth: 560, alignItems: 'center', paddingHorizontal: spacing.xl },
+  emptyConstellation: { width: 96, height: 96, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke, shadowColor: colors.cyan, shadowOpacity: 0.28, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 10 },
+  emptyEyebrow: { ...typography.eyebrow, marginTop: spacing.xl, fontSize: 10, letterSpacing: 2.2, color: colors.cyan },
+  emptyTitle: { ...typography.title, marginTop: spacing.sm, fontSize: 28, lineHeight: 35, textAlign: 'center', color: colors.textPrimary },
+  emptyDescription: { ...typography.body, maxWidth: 480, marginTop: spacing.sm, textAlign: 'center', color: colors.textSecondary },
+  emptyActions: { marginTop: spacing.xl, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm },
+  emptyPrimaryAction: { minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: colors.cyan },
+  emptyPrimaryLabel: { ...typography.subtitle, fontSize: 14, color: colors.bg },
+  emptySecondaryAction: { minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: glass.fillBright, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
+  emptySecondaryLabel: { ...typography.subtitle, fontSize: 14, color: colors.textPrimary },
   backdropVeil: { ...(StyleSheet.absoluteFill as object), backgroundColor: glass.fillHeavy },
   topBar: { position: 'absolute', zIndex: 10, top: 0, left: spacing.lg, right: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   topButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.fillHeavy, borderWidth: 1, borderColor: colors.surfaceBorder },
@@ -560,6 +765,10 @@ const styles = StyleSheet.create({
   desktopLayout: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxl, paddingHorizontal: spacing.xxl },
   desktopArtworkColumn: { flex: 1, alignItems: 'flex-end' },
   artworkShadow: { borderRadius: radii.lg, shadowOpacity: 0.3, shadowRadius: 38, shadowOffset: { width: 0, height: 20 }, elevation: 16 },
+  artworkInspectTarget: { width: '100%', height: '100%', borderRadius: radii.lg, overflow: 'hidden' },
+  artworkInspectPressed: { opacity: 0.88 },
+  artworkInspectBadge: { position: 'absolute', right: spacing.sm, bottom: spacing.sm, minHeight: 36, paddingHorizontal: spacing.sm + 2, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: glass.fillHeavy, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
+  artworkInspectLabel: { ...typography.caption, fontSize: 10, color: colors.textPrimary },
   artworkAura: { position: 'absolute', top: -34, right: -34, bottom: -34, left: -34, alignItems: 'center', justifyContent: 'center' },
   auraRing: { position: 'absolute', borderWidth: 1 },
   auraRingOuter: { width: '100%', height: '100%', borderRadius: radii.xl + 26 },
@@ -586,6 +795,8 @@ const styles = StyleSheet.create({
   playButton: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
   playNudge: { marginLeft: 4 },
   pressed: { opacity: 0.65 },
+  transportDisabled: { opacity: 0.38 },
+  transportHint: { ...typography.caption, marginTop: -spacing.sm, textAlign: 'center', color: colors.textMuted },
   secondaryRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
   secondaryRowCompact: { flexWrap: 'wrap', gap: spacing.sm },
   secondaryAction: { minWidth: 78, minHeight: 46, borderRadius: radii.pill, paddingHorizontal: spacing.md - 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
@@ -597,6 +808,7 @@ const styles = StyleSheet.create({
   nextEyebrow: { ...typography.eyebrow, fontSize: 9, letterSpacing: 1.6, color: colors.textMuted },
   nextTitle: { ...typography.caption, color: colors.textPrimary, marginTop: 2 },
   volumeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  volumeRowCompact: { minHeight: 52, paddingHorizontal: spacing.sm, borderRadius: radii.md, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
   volumeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   volumeSlider: { flex: 1, height: 36 },
   sheetTabs: { flexDirection: 'row', padding: 4, borderRadius: radii.pill, backgroundColor: colors.bg },
@@ -612,4 +824,12 @@ const styles = StyleSheet.create({
   optionTitle: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary },
   optionSubtitle: { ...typography.caption, fontSize: 11, color: colors.textMuted, marginTop: 2 },
   optionValue: { ...typography.caption, color: colors.cyan },
+  viewerRoot: { flex: 1, backgroundColor: colors.bg },
+  viewerVeil: { ...(StyleSheet.absoluteFill as object), backgroundColor: 'rgba(4,12,24,0.86)' },
+  viewerHeader: { zIndex: 2, minHeight: 78, paddingHorizontal: spacing.lg, paddingTop: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  viewerEyebrow: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.cyan },
+  viewerTitle: { ...typography.subtitle, maxWidth: 520, color: colors.textPrimary, marginTop: 2 },
+  viewerContent: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  viewerArtworkFrame: { maxWidth: '100%', maxHeight: '100%', borderRadius: radii.lg, overflow: 'hidden', backgroundColor: colors.bgElevated, borderWidth: 1, shadowColor: colors.cyan, shadowOpacity: 0.3, shadowRadius: 36, shadowOffset: { width: 0, height: 12 }, elevation: 16 },
+  viewerStatus: { ...typography.caption, marginTop: spacing.md, color: colors.textSecondary, textAlign: 'center' },
 });

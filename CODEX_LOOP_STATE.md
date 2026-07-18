@@ -20,12 +20,12 @@
 ## Status dashboard  (update every round)
 - Phase: **FIX-LOOP**
 - Issues found: 60 / 60  (DISCOVERY complete, TEST_FINDINGS.md written)
-- Issues resolved: 0 / 60
-- Fix round: 1 (in progress)
+- Issues resolved: 8 / 60  (R1: #1 #2 #19 #21 #22 #23 #57 #58 — typecheck green)
+- Fix round: 2 (in progress)
 - Branch: `codex/apk-fast-path` (pushed to `origin/main`)
-- Last APK push: commit `5db3ed0`, versionCode 35, ~01:56 UTC
-- last_apk_push_epoch: 1784340374   (next APK push due at epoch >= 1784342174 ≈ 02:36 UTC)
-- Current Codex task id: task-mrpqv8v1-s74apd (FIX round 1)
+- Last APK push: commit `77706da` (R1), ~02:36 UTC
+- last_apk_push_epoch: 1784342219   (next APK push due at epoch >= 1784344019 ≈ 03:06 UTC)
+- Current Codex task id: task-mrprb6l5-hf1ce0 (FIX round 2 — Player & Queue)
 
 ### Batch plan (adaptive; adjust from remaining-open each round)
 - R1 Account safety & form/overlay a11y: #1 #2 #19 #21 #22 #23 #57 #58
@@ -49,3 +49,4 @@
 ## Round log
 - 02:13 UTC — Polled DISCOVERY task `task-mrpq89s8-pmcgcf`: status=running (PID 14772 alive, 5m elapsed). TEST_FINDINGS.md not yet written. Rescheduled poll in ~600s. No action taken (correct per protocol).
 - 02:24 UTC — DISCOVERY completed (9m 49s). TEST_FINDINGS.md written with 60 issues (#1-#60, no gaps). Phase=FIX-LOOP. Launched FIX round 1 (`task-mrpqv8v1-s74apd`, batch: #1 #2 #19 #21 #22 #23 #57 #58 — account safety & form/overlay a11y). Rescheduled poll ~600s.
+- 02:36 UTC — FIX round 1 completed (9m 54s). All 8 issues marked [x] with RESOLVED R1 notes; new files (account/, auth/, FormError, SignOutConfirmSheet, signOutStore). typecheck GREEN. Committed + pushed `77706da` → origin/main (APK build triggered). Resolved 8/60. last_apk_push_epoch=1784342219. Launched FIX round 2 (`task-mrprb6l5-hf1ce0`, batch: #7 #8 #12 #13 #38 #39 #40 #41 #42 #43 — Player & Queue). Rescheduled poll ~600s.

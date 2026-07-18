@@ -90,6 +90,9 @@ type PlayerState = {
   addToQueue: (media: Media) => void;
   playNextInQueue: (media: Media) => void;
   removeFromQueue: (index: number) => void;
+  restoreQueueItem: (media: Media, index: number) => void;
+  moveQueueItem: (index: number, direction: -1 | 1) => void;
+  clearQueue: () => void;
   /** Restore the last session from disk — paused, ready to resume. */
   hydrate: () => Promise<void>;
   toggle: () => void;
@@ -105,6 +108,22 @@ type PlayerState = {
   setAutoplayContinuation: (enabled: boolean) => void;
   resetSession: () => Promise<void>;
 };
+
+type TransportState = Pick<PlayerState, 'queue' | 'queueIndex' | 'currentTime' | 'repeat' | 'shuffle'>;
+
+/** One source of truth for transport affordances across the full and mini players. */
+export function canPlayPrevious({ queue, queueIndex, currentTime, repeat }: TransportState): boolean {
+  if (queue.length === 0) return false;
+  if (currentTime > 3 || queueIndex > 0) return true;
+  return repeat === 'all' && queue.length > 1;
+}
+
+export function canPlayNext({ queue, queueIndex, repeat, shuffle }: TransportState): boolean {
+  if (queue.length < 2) return false;
+  if (shuffle) return true;
+  if (queueIndex < queue.length - 1) return true;
+  return repeat === 'all';
+}
 
 let unsubscribePlayback: (() => void) | null = null;
 let unsubscribeAmplitude: (() => void) | null = null;
@@ -450,10 +469,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
           } else {
             return;
           }
-        } else if (!auto) {
-          nextIndex = 0; // manual "skip" past the end just wraps to the top
         } else {
-          return; // reached the end of the queue on autoplay, nothing to continue with
+          return; // no manual wrap unless repeat-all explicitly allows it
         }
       }
 
@@ -462,7 +479,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
     },
 
     async playPrev() {
-      const { queue, queueIndex, currentTime } = get();
+      const { queue, queueIndex, currentTime, repeat } = get();
       if (queue.length === 0) return;
       haptics.tap();
       // Standard player behavior: restart the track unless we're near its start.
@@ -470,7 +487,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
         PlayerService.seekTo(0);
         return;
       }
-      const prevIndex = queueIndex - 1 < 0 ? queue.length - 1 : queueIndex - 1;
+      if (queueIndex === 0 && repeat !== 'all') {
+        PlayerService.seekTo(0);
+        set({ currentTime: 0 });
+        return;
+      }
+      const prevIndex = queueIndex === 0 ? queue.length - 1 : queueIndex - 1;
       set({ queueIndex: prevIndex });
       await load(queue[prevIndex]);
     },
@@ -509,6 +531,39 @@ export const usePlayerStore = create<PlayerState>((set, get) => {
       if (index < 0 || index >= queue.length || index === queueIndex) return;
       const next = queue.filter((_, i) => i !== index);
       set({ queue: next, queueIndex: index < queueIndex ? queueIndex - 1 : queueIndex });
+      persist(true);
+    },
+
+    restoreQueueItem(media, index) {
+      const { queue, queueIndex } = get();
+      const insertionIndex = Math.max(0, Math.min(queue.length, index));
+      const next = [...queue];
+      next.splice(insertionIndex, 0, media);
+      set({ queue: next, queueIndex: insertionIndex <= queueIndex ? queueIndex + 1 : queueIndex });
+      persist(true);
+    },
+
+    moveQueueItem(index, direction) {
+      const { queue, queueIndex } = get();
+      const destination = index + direction;
+      if (
+        index < 0 ||
+        index >= queue.length ||
+        destination < 0 ||
+        destination >= queue.length ||
+        index === queueIndex ||
+        destination === queueIndex
+      ) return;
+      const next = [...queue];
+      [next[index], next[destination]] = [next[destination], next[index]];
+      set({ queue: next });
+      persist(true);
+    },
+
+    clearQueue() {
+      const { currentMedia } = get();
+      if (!currentMedia) return;
+      set({ queue: [currentMedia], queueIndex: 0, continuationActive: false });
       persist(true);
     },
 

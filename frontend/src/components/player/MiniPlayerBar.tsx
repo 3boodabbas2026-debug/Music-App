@@ -11,7 +11,7 @@ import { useDockClearance, usePlayerChromeBottomOffset } from '../../hooks/useBo
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useTrackAccent } from '../../hooks/useTrackAccent';
-import { usePlayerStore } from '../../store/playerStore';
+import { canPlayNext, canPlayPrevious, usePlayerStore } from '../../store/playerStore';
 import { useVideoPlayerStore } from '../../store/videoPlayerStore';
 import { displayArtist, displayTitle, thumbnailUri } from '../../utils/mediaDisplay';
 import { colors, glass, radii, spacing, typography } from '../../theme/tokens';
@@ -68,16 +68,26 @@ function AmplitudeBars({ playing, amplitude, reduceMotion }: { playing: boolean;
   );
 }
 
-function QueuePreview({ onJump }: { onJump: () => void }) {
+function QueuePreview({ onJump, onOpenFullQueue }: { onJump: () => void; onOpenFullQueue: () => void }) {
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const playAt = usePlayerStore((s) => s.playAt);
   const upcoming = queue.slice(queueIndex + 1, queueIndex + 6);
+  const upcomingCount = Math.max(0, queue.length - queueIndex - 1);
 
   return (
     <View style={styles.queueCard}>
       <GlassPanel style={StyleSheet.absoluteFill as object} overlayColor={glass.fillHeavy} />
-      <Text style={styles.queueTitle}>UP NEXT</Text>
+      <View style={styles.queuePreviewHeader}>
+        <View>
+          <Text style={styles.queueTitle}>UP NEXT · PREVIEW</Text>
+          <Text style={styles.queueScope}>Showing {upcoming.length} of {upcomingCount} upcoming {upcomingCount === 1 ? 'track' : 'tracks'}</Text>
+        </View>
+        <Pressable onPress={onOpenFullQueue} accessibilityRole="button" accessibilityLabel="Open full queue" style={styles.fullQueueButton}>
+          <Text style={styles.fullQueueLabel}>Open full queue</Text>
+          <Ionicons name="open-outline" size={15} color={colors.cyan} />
+        </Pressable>
+      </View>
       {upcoming.length === 0 ? (
         <Text style={styles.queueEmpty}>End of queue.</Text>
       ) : (
@@ -126,6 +136,9 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
   const playNext = usePlayerStore((s) => s.playNext);
   const playPrev = usePlayerStore((s) => s.playPrev);
   const queue = usePlayerStore((s) => s.queue);
+  const queueIndex = usePlayerStore((s) => s.queueIndex);
+  const repeat = usePlayerStore((s) => s.repeat);
+  const shuffle = usePlayerStore((s) => s.shuffle);
   const videoMode = useVideoPlayerStore((state) => state.mode);
   const [queueOpen, setQueueOpen] = useState(false);
   const accentColor = useTrackAccent(currentMedia ? thumbnailUri(currentMedia) : null);
@@ -152,6 +165,9 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
   if (!currentMedia || !isFocused || videoMode !== 'closed') return null;
 
   const progress = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0;
+  const transportState = { queue, queueIndex, currentTime, repeat, shuffle };
+  const previousAvailable = canPlayPrevious(transportState);
+  const nextAvailable = canPlayNext(transportState);
 
   // On phones the bar floats above the bottom dock; on desktop there is no
   // dock, so it hugs the bottom edge as a centered strip.
@@ -169,11 +185,25 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
         { bottom, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] },
       ]}
     >
-      {queueOpen && <QueuePreview onJump={() => setQueueOpen(false)} />}
-      <Pressable onPress={() => navigation.navigate('Player')} style={isDesktop ? styles.pressDesktop : undefined}>
-        <View style={[playing && styles.glowWrap, playing && accentColor && { shadowColor: accentColor }]}>
-          <GlassPanel style={styles.panel} overlayColor={glass.fillHeavy}>
-            <View style={styles.content}>
+      {queueOpen && (
+        <QueuePreview
+          onJump={() => setQueueOpen(false)}
+          onOpenFullQueue={() => {
+            setQueueOpen(false);
+            navigation.navigate('Player', { panel: 'queue' });
+          }}
+        />
+      )}
+      <View style={[styles.playerWidth, playing && styles.glowWrap, playing && accentColor && { shadowColor: accentColor }]}>
+        <GlassPanel style={styles.panel} overlayColor={glass.fillHeavy}>
+          <View style={styles.content}>
+            <Pressable
+              onPress={() => navigation.navigate('Player')}
+              accessibilityRole="button"
+              accessibilityLabel={`Open player for ${displayTitle(currentMedia)}`}
+              accessibilityHint="Opens the full now playing screen."
+              style={({ pressed }) => [styles.navigationTarget, pressed && styles.navigationPressed]}
+            >
               <Artwork
                 media={currentMedia}
                 size={42}
@@ -190,31 +220,33 @@ export function MiniPlayerBar({ bottomOffset = 0 }: Props) {
                 </Text>
               </View>
               <AmplitudeBars playing={playing} amplitude={amplitude} reduceMotion={reduceMotion} />
-              {isDesktop && queue.length > 1 && (
-                <Pressable onPress={() => playPrev()} accessibilityLabel="Previous track" hitSlop={10} style={styles.skipButton}>
-                  <Ionicons name="play-skip-back" size={16} color={colors.textSecondary} />
+            </Pressable>
+            <View style={styles.transportTargets} accessibilityRole="toolbar" accessibilityLabel="Mini player controls">
+              {isDesktop && (
+                <Pressable disabled={!previousAvailable} onPress={() => playPrev()} accessibilityRole="button" accessibilityLabel="Previous track" accessibilityState={{ disabled: !previousAvailable }} hitSlop={10} style={[styles.skipButton, !previousAvailable && styles.controlDisabled]}>
+                  <Ionicons name="play-skip-back" size={16} color={previousAvailable ? colors.textSecondary : colors.textMuted} />
                 </Pressable>
               )}
-              <Pressable onPress={toggle} accessibilityLabel={playing ? 'Pause' : 'Play'} hitSlop={12} style={[styles.controlButton, accentColor && { backgroundColor: `${accentColor}29` }]}>
+              <Pressable onPress={toggle} accessibilityRole="button" accessibilityLabel={playing ? 'Pause' : 'Play'} hitSlop={12} style={[styles.controlButton, accentColor && { backgroundColor: `${accentColor}29` }]}>
                 <Ionicons name={playing ? 'pause' : 'play'} size={18} color={accentColor ?? colors.cyan} />
               </Pressable>
               {queue.length > 1 && (
-                <Pressable onPress={() => playNext()} accessibilityLabel="Next track" hitSlop={10} style={styles.skipButton}>
-                  <Ionicons name="play-skip-forward" size={16} color={colors.textSecondary} />
+                <Pressable disabled={!nextAvailable} onPress={() => playNext()} accessibilityRole="button" accessibilityLabel="Next track" accessibilityState={{ disabled: !nextAvailable }} hitSlop={10} style={[styles.skipButton, !nextAvailable && styles.controlDisabled]}>
+                  <Ionicons name="play-skip-forward" size={16} color={nextAvailable ? colors.textSecondary : colors.textMuted} />
                 </Pressable>
               )}
               {queue.length > 1 && (
-                <Pressable onPress={() => setQueueOpen((v) => !v)} accessibilityLabel="Open queue" hitSlop={10} style={styles.skipButton}>
+                <Pressable onPress={() => setQueueOpen((v) => !v)} accessibilityRole="button" accessibilityLabel={queueOpen ? 'Close queue preview' : 'Open queue preview'} accessibilityState={{ expanded: queueOpen }} hitSlop={10} style={styles.skipButton}>
                   <Ionicons name="list" size={17} color={queueOpen ? colors.cyan : colors.textSecondary} />
                 </Pressable>
               )}
             </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${progress * 100}%` }, accentColor && { backgroundColor: accentColor }]} />
-            </View>
-          </GlassPanel>
-        </View>
-      </Pressable>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${progress * 100}%` }, accentColor && { backgroundColor: accentColor }]} />
+          </View>
+        </GlassPanel>
+      </View>
     </Animated.View>
   );
 }
@@ -228,7 +260,7 @@ const styles = StyleSheet.create({
   holderDesktop: {
     alignItems: 'center',
   },
-  pressDesktop: {
+  playerWidth: {
     width: '100%',
     maxWidth: 640,
   },
@@ -249,6 +281,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
   },
+  navigationTarget: { flex: 1, minWidth: 0, minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderRadius: radii.sm },
+  navigationPressed: { backgroundColor: glass.fillBright },
+  transportTargets: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   textWrap: { flex: 1 },
   title: { ...typography.subtitle, color: colors.textPrimary },
   artist: { ...typography.caption, color: colors.textMuted },
@@ -267,6 +302,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  controlDisabled: { opacity: 0.38 },
   eqRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -295,7 +331,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(158,181,170,0.14)',
     padding: spacing.md,
   },
-  queueTitle: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textMuted, marginBottom: spacing.sm },
+  queuePreviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginBottom: spacing.sm },
+  queueTitle: { ...typography.eyebrow, fontSize: 10, letterSpacing: 2, color: colors.textMuted },
+  queueScope: { ...typography.caption, fontSize: 10, color: colors.textMuted, marginTop: 2 },
+  fullQueueButton: { minHeight: 40, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: radii.pill, backgroundColor: glass.tintPrimary },
+  fullQueueLabel: { ...typography.caption, fontSize: 10, color: colors.cyan },
   queueEmpty: { ...typography.caption, color: colors.textMuted },
   queueRow: { paddingVertical: spacing.sm - 2, borderRadius: radii.sm },
   queueRowPressed: { backgroundColor: glass.tintPrimary },
