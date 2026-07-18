@@ -520,7 +520,7 @@ export function RecognitionScreen() {
                 </View>
               ) : capabilities?.humming === false ? (
                 <Text style={styles.capabilityHint}>
-                  Nearby listening is ready. Hum or sing needs ACRCloud configuration from the server owner.
+                  Nearby listening is ready. Hum or sing becomes available when ACRCloud is connected by the server owner.
                 </Text>
               ) : null}
             </View>

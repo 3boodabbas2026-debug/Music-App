@@ -49,6 +49,22 @@
 4. If Codex failed on token/quota/rate-limit → STOP loop, push whatever is done, post summary noting quota hit + remaining issues.
 5. If typecheck fails → next round instructs Codex to fix the build first.
 
+## ⚠️ BLOCKER (discovered 04:29 UTC) — CI quality gate RED, APK NOT shipping
+- All 60 issues are code-complete and local `tsc --noEmit` is GREEN, BUT the GitHub Actions `android-apk.yml` "quality" job fails at the **Playwright smoke step** (`npm run test:smoke`), so the `apk` job is SKIPPED. No new signed APK has been produced since R1.
+- Failing CI runs observed: `4aeb59f` (R2+R3) FAILURE, `365edea` (R4+R5) FAILURE, `f265ab7` (R6a+R6b) in progress (will also fail — same untested smoke breakage).
+- Failing step: "Mobile login and dashboard smoke" = full Playwright suite in `frontend/tests/*.spec.ts`.
+- Loop is NOT done. Mission stop condition = APK build GREEN. Must reproduce smoke failure locally (build:web → serve-dist → playwright), fix the broken selectors/runtime errors my UI changes introduced, get the FULL smoke suite green locally, then push and confirm CI green before reporting/stopping.
+- Repro: `cd frontend; EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:4173 npm run build:web` then `CI=1 npx playwright test`.
+- NOTE: origin is `github.com/abdulah-ai/Music-App` (not the 3boodabbas2026-debug repo referenced in AGENT_BRIEF). Verify CI/release on the abdulah-ai repo.
+- LOCAL BROWSER NOTE: ms-playwright chromium_headless_shell-1187 never finished downloading in this sandbox (slow net + __dirlock contention). Workaround that WORKS: run WITHOUT CI=1 so playwright.config uses `channel: 'chrome'` = system Google Chrome (installed at C:/Program Files/Google/Chrome/Application/chrome.exe). Command: `cd frontend; npx playwright test --workers=3 --reporter=list`.
+
+### CI-FIX progress (05:xx UTC)
+- Reproduced full suite via system Chrome. Real failures = 4 (not R2/R3 alone; spanned R3 + R6a):
+  1. downloads-navigation.smoke swipe test — my R6a #27 gutted MainTabs paging, but the smoke test treats paging (incl. Today→Settings right-swipe + left-edge drawer) as INTENDED. → REVERTED MainTabs.tsx to last-green baseline (77706da). #27 left by-design.
+  2. recognition-modes.smoke #54 — my R3 #48 reworded the humming-unavailable copy. → restored phrase "becomes available when ACRCloud is connected" (kept the loading/error/config state distinction).
+  3+4. theme.smoke #43/#68 — my R6a #29 removed the appearance SegmentedControl (System/Daylight/Night) from DashboardCustomizer. → restored DashboardCustomizer to baseline + re-applied #28 (confirmReset). Appearance also remains in Settings (Codex's #29 addition) → additive, both places.
+- After fixes: local `tsc` GREEN; the 3 affected specs 8/8 GREEN; full-suite run in progress (bdrdoahh9). Next: if full suite green → commit+push, confirm CI green on the new commit, then DONE.
+
 ## Round log
 - 02:13 UTC — Polled DISCOVERY task `task-mrpq89s8-pmcgcf`: status=running (PID 14772 alive, 5m elapsed). TEST_FINDINGS.md not yet written. Rescheduled poll in ~600s. No action taken (correct per protocol).
 - 02:24 UTC — DISCOVERY completed (9m 49s). TEST_FINDINGS.md written with 60 issues (#1-#60, no gaps). Phase=FIX-LOOP. Launched FIX round 1 (`task-mrpqv8v1-s74apd`, batch: #1 #2 #19 #21 #22 #23 #57 #58 — account safety & form/overlay a11y). Rescheduled poll ~600s.
