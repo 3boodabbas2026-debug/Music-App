@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,21 +39,12 @@ import { usePinStore } from '../store/pinStore';
 import { canPlayNext, canPlayPrevious, usePlayerStore } from '../store/playerStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { displayArtist, displayTitle, thumbnailUri } from '../utils/mediaDisplay';
-import { colors, glass, numericTypography, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, gradients, radii, spacing, typography } from '../theme/tokens';
 import type { RootStackParamList } from '../navigation/types';
 import type { Media } from '../services/api/types';
 
 type Sheet = 'queue' | 'lyrics' | 'options' | null;
 type MoreTab = 'playback' | 'details';
-
-const PLAYER_SPARKS = [
-  { left: '8%', top: '22%', size: 3, color: colors.gold },
-  { left: '22%', top: '4%', size: 2, color: colors.textPrimary },
-  { left: '72%', top: '9%', size: 2.5, color: colors.violet },
-  { left: '90%', top: '35%', size: 2, color: colors.textPrimary },
-  { left: '14%', top: '78%', size: 2.5, color: colors.violet },
-  { left: '82%', top: '84%', size: 3, color: colors.gold },
-] as const;
 
 function ArtworkViewer({
   visible,
@@ -127,13 +119,6 @@ function ArtworkViewer({
       </View>
     </Modal>
   );
-}
-
-function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
-  const minutes = Math.floor(seconds / 60);
-  const remainder = Math.floor(seconds % 60);
-  return `${minutes}:${remainder.toString().padStart(2, '0')}`;
 }
 
 function ModeButton({
@@ -220,6 +205,7 @@ export function PlayerScreen() {
   const [moreTab, setMoreTab] = useState<MoreTab>('playback');
   const [sanctuary, setSanctuary] = useState(false);
   const [artworkOpen, setArtworkOpen] = useState(false);
+  const [artworkAffordanceActive, setArtworkAffordanceActive] = useState(false);
   const closeArtwork = useCallback(() => setArtworkOpen(false), []);
   const reduceMotion = useReducedMotion();
   const artworkEntrance = useRef(new Animated.Value(0)).current;
@@ -265,7 +251,6 @@ export function PlayerScreen() {
   const coverUri = currentMedia ? thumbnailUri(currentMedia) : null;
   const trackAccent = useTrackAccent(coverUri);
   const smallPhone = !isDesktop && width < 390;
-  const compactControls = !isDesktop && width < 440;
   const artworkSize = Math.min(
     isDesktop ? 440 : width - (smallPhone ? spacing.md : spacing.lg) * 2,
     isDesktop ? height * 0.58 : height * (smallPhone ? 0.34 : 0.39),
@@ -418,8 +403,8 @@ export function PlayerScreen() {
             styles.auraRingOuter,
             {
               borderColor: `${trackAccent.artworkAura}38`,
-              opacity: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 0.68] }),
-              transform: [{ scale: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1.035] }) }],
+              opacity: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [0.16, 0.28] }),
+              transform: [{ scale: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [0.985, 1.018] }) }],
             },
           ]}
         />
@@ -428,47 +413,40 @@ export function PlayerScreen() {
             styles.auraRing,
             styles.auraRingInner,
             {
-              borderColor: `${colors.violet}30`,
-              opacity: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [0.58, 0.24] }),
-              transform: [{ scale: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [1.025, 0.985] }) }],
+              borderColor: `${trackAccent.artworkAura}24`,
+              opacity: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [0.22, 0.12] }),
+              transform: [{ scale: listeningPulse.interpolate({ inputRange: [0, 1], outputRange: [1.01, 0.992] }) }],
             },
           ]}
         />
-        {PLAYER_SPARKS.map((spark, index) => (
-          <Animated.View
-            key={`${spark.left}-${spark.top}`}
-            style={[
-              styles.auraSpark,
-              {
-                left: spark.left,
-                top: spark.top,
-                width: spark.size,
-                height: spark.size,
-                borderRadius: spark.size,
-                backgroundColor: spark.color,
-                shadowColor: spark.color,
-                opacity: listeningPulse.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: index % 2 === 0 ? [0.38, 0.9] : [0.78, 0.34],
-                }),
-              },
-            ]}
-          />
-        ))}
       </View>
-      <Pressable
-        onPress={() => setArtworkOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel={`Inspect artwork for ${displayTitle(currentMedia)}`}
-        accessibilityHint="Opens an uncropped full-screen artwork viewer."
-        style={({ pressed }) => [styles.artworkInspectTarget, pressed && styles.artworkInspectPressed]}
-      >
-        <Artwork media={currentMedia} size="100%" priority borderRadius={radii.cover} />
-        <View pointerEvents="none" style={styles.artworkInspectBadge}>
-          <Ionicons name="expand" size={16} color={colors.textPrimary} />
-          <Text style={styles.artworkInspectLabel}>Inspect</Text>
-        </View>
-      </Pressable>
+      <View style={styles.artworkMat}>
+        <Pressable
+          onPress={() => setArtworkOpen(true)}
+          onFocus={() => setArtworkAffordanceActive(true)}
+          onBlur={() => setArtworkAffordanceActive(false)}
+          onHoverIn={() => setArtworkAffordanceActive(true)}
+          onHoverOut={() => setArtworkAffordanceActive(false)}
+          accessibilityRole="button"
+          accessibilityLabel={`Inspect artwork for ${displayTitle(currentMedia)}`}
+          accessibilityHint="Opens an uncropped full-screen artwork viewer."
+          style={({ pressed }) => [styles.artworkInspectTarget, pressed && styles.artworkInspectPressed]}
+        >
+          <Artwork media={currentMedia} size="100%" priority borderRadius={radii.cover} />
+          <View pointerEvents="none" style={styles.artworkInnerHighlight} />
+          <View
+            pointerEvents="none"
+            style={[
+              styles.artworkCornerAffordance,
+              Platform.OS === 'web' && !artworkAffordanceActive && styles.artworkCornerAffordanceHidden,
+              artworkAffordanceActive && styles.artworkCornerAffordanceActive,
+            ]}
+          >
+            <Ionicons name="expand" size={15} color={colors.textPrimary} />
+            {Platform.OS === 'web' && artworkAffordanceActive ? <Text style={styles.artworkInspectLabel}>View</Text> : null}
+          </View>
+        </Pressable>
+      </View>
     </Animated.View>
   );
 
@@ -508,49 +486,53 @@ export function PlayerScreen() {
           onSeek={seek}
           activeColor={trackAccent.waveform}
         />
-        <View style={styles.timeRow}>
-          <Text style={styles.time}>{formatTime(currentTime)}</Text>
-          <Text style={styles.time}>{formatTime(duration)}</Text>
-        </View>
       </View>
 
       <View style={styles.transportRow}>
-        <ModeButton label={shuffle ? 'Turn shuffle off' : 'Turn shuffle on'} icon="shuffle" active={shuffle} onPress={toggleShuffle} />
-        <Pressable
-          onPress={() => void playPrev()}
-          disabled={!previousAvailable}
-          accessibilityRole="button"
-          accessibilityLabel="Previous track"
-          accessibilityHint={previousAvailable ? 'Restarts this track after three seconds, otherwise plays the previous track.' : 'No previous track is available with repeat off.'}
-          accessibilityState={{ disabled: !previousAvailable }}
-          style={({ pressed }) => [styles.skipButton, !previousAvailable && styles.transportDisabled, pressed && styles.pressed]}
-        >
-          <Ionicons name="play-skip-back" size={29} color={previousAvailable ? colors.textPrimary : colors.textMuted} />
-        </Pressable>
-        <PressableScale
-          onPress={toggle}
-          accessibilityLabel={playing ? 'Pause' : 'Play'}
-          scaleTo={0.94}
-          style={[styles.playButton, { backgroundColor: trackAccent.playControl }]}
-        >
-          {isBuffering ? (
-            <ActivityIndicator color={colors.bg} />
-          ) : (
-            <Ionicons name={playing ? 'pause' : 'play'} size={34} color={colors.bg} style={playing ? undefined : styles.playNudge} />
-          )}
-        </PressableScale>
-        <Pressable
-          onPress={() => void playNext()}
-          disabled={!nextAvailable}
-          accessibilityRole="button"
-          accessibilityLabel="Next track"
-          accessibilityHint={nextAvailable ? 'Plays the next available track.' : 'You reached the end of the queue. Turn on repeat all or add more tracks.'}
-          accessibilityState={{ disabled: !nextAvailable }}
-          style={({ pressed }) => [styles.skipButton, !nextAvailable && styles.transportDisabled, pressed && styles.pressed]}
-        >
-          <Ionicons name="play-skip-forward" size={29} color={nextAvailable ? colors.textPrimary : colors.textMuted} />
-        </Pressable>
-        <ModeButton label={`Repeat mode: ${repeat}`} icon="repeat" active={repeat !== 'off'} badge={repeat === 'one' ? '1' : undefined} onPress={toggleRepeat} />
+        <View style={styles.transportSatelliteLeft}>
+          <ModeButton label={shuffle ? 'Turn shuffle off' : 'Turn shuffle on'} icon="shuffle" active={shuffle} onPress={toggleShuffle} />
+        </View>
+        <View style={styles.transportCore}>
+          <Pressable
+            onPress={() => void playPrev()}
+            disabled={!previousAvailable}
+            accessibilityRole="button"
+            accessibilityLabel="Previous track"
+            accessibilityHint={previousAvailable ? 'Restarts this track after three seconds, otherwise plays the previous track.' : 'No previous track is available with repeat off.'}
+            accessibilityState={{ disabled: !previousAvailable }}
+            style={({ pressed }) => [styles.skipButton, !previousAvailable && styles.transportDisabled, pressed && styles.pressed]}
+          >
+            <Ionicons name="play-skip-back" size={28} color={previousAvailable ? colors.textPrimary : colors.textMuted} />
+          </Pressable>
+          <PressableScale
+            onPress={toggle}
+            accessibilityLabel={playing ? 'Pause' : 'Play'}
+            scaleTo={0.94}
+            style={[styles.playButton, { borderColor: `${trackAccent.playControl}8A`, shadowColor: trackAccent.playControl }]}
+          >
+            <View style={[styles.playButtonCore, { backgroundColor: trackAccent.playControl }]}>
+              {isBuffering ? (
+                <ActivityIndicator color={colors.bg} />
+              ) : (
+                <Ionicons name={playing ? 'pause' : 'play'} size={32} color={colors.bg} style={playing ? undefined : styles.playNudge} />
+              )}
+            </View>
+          </PressableScale>
+          <Pressable
+            onPress={() => void playNext()}
+            disabled={!nextAvailable}
+            accessibilityRole="button"
+            accessibilityLabel="Next track"
+            accessibilityHint={nextAvailable ? 'Plays the next available track.' : 'You reached the end of the queue. Turn on repeat all or add more tracks.'}
+            accessibilityState={{ disabled: !nextAvailable }}
+            style={({ pressed }) => [styles.skipButton, !nextAvailable && styles.transportDisabled, pressed && styles.pressed]}
+          >
+            <Ionicons name="play-skip-forward" size={28} color={nextAvailable ? colors.textPrimary : colors.textMuted} />
+          </Pressable>
+        </View>
+        <View style={styles.transportSatelliteRight}>
+          <ModeButton label={`Repeat mode: ${repeat}`} icon="repeat" active={repeat !== 'off'} badge={repeat === 'one' ? '1' : undefined} onPress={toggleRepeat} />
+        </View>
       </View>
 
       {!nextAvailable ? (
@@ -561,40 +543,41 @@ export function PlayerScreen() {
         <Text accessibilityRole="summary" style={styles.transportHint}>Start of queue · Previous becomes available after three seconds.</Text>
       ) : null}
 
-      <View style={[styles.secondaryRow, compactControls && styles.secondaryRowCompact]}>
-        <Pressable onPress={() => openPanel('queue')} accessibilityRole="button" accessibilityLabel="Open queue" style={[styles.secondaryAction, compactControls && styles.secondaryActionCompact]}>
-          <Ionicons name="list" size={19} color={colors.textSecondary} />
-          <Text style={styles.secondaryLabel}>Up next</Text>
-        </Pressable>
-        <Pressable onPress={() => openPanel('lyrics')} accessibilityRole="button" accessibilityLabel="Open lyrics" style={[styles.secondaryAction, compactControls && styles.secondaryActionCompact]}>
-          <Ionicons name="text" size={18} color={colors.textSecondary} />
-          <Text style={styles.secondaryLabel}>Lyrics</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setSanctuary(true)}
-          accessibilityRole="button"
-          accessibilityLabel="Enter Sanctuary Mode"
-          style={[styles.secondaryAction, styles.sanctuaryAction, compactControls && styles.secondaryActionCompact]}
-        >
-          <Ionicons name="moon" size={17} color={colors.cyan} />
-          <Text style={[styles.secondaryLabel, { color: colors.cyan }]}>Sanctuary</Text>
-        </Pressable>
-        <Pressable onPress={openMore} accessibilityRole="button" accessibilityLabel="More player options" style={[styles.secondaryAction, compactControls && styles.secondaryActionCompact]}>
-          <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-          <Text style={styles.secondaryLabel}>More</Text>
-        </Pressable>
-      </View>
+      <View style={styles.utilityStack}>
+        <View style={styles.utilityRibbon} accessibilityRole="toolbar" accessibilityLabel="Player utilities">
+          <Pressable onPress={() => openPanel('queue')} accessibilityRole="button" accessibilityLabel="Open queue" accessibilityState={{ selected: sheet === 'queue' }} style={styles.secondaryAction}>
+            <Ionicons name="list-outline" size={18} color={sheet === 'queue' ? colors.cyan : colors.textSecondary} />
+            <Text style={[styles.secondaryLabel, sheet === 'queue' && styles.secondaryLabelActive]}>Up next</Text>
+            {sheet === 'queue' ? <View style={styles.utilityUnderline} /> : null}
+          </Pressable>
+          <Pressable onPress={() => openPanel('lyrics')} accessibilityRole="button" accessibilityLabel="Open lyrics" accessibilityState={{ selected: sheet === 'lyrics' }} style={styles.secondaryAction}>
+            <Ionicons name="document-text-outline" size={18} color={sheet === 'lyrics' ? colors.cyan : colors.textSecondary} />
+            <Text style={[styles.secondaryLabel, sheet === 'lyrics' && styles.secondaryLabelActive]}>Lyrics</Text>
+            {sheet === 'lyrics' ? <View style={styles.utilityUnderline} /> : null}
+          </Pressable>
+          <Pressable onPress={() => setSanctuary(true)} accessibilityRole="button" accessibilityLabel="Enter Sanctuary Mode" accessibilityState={{ selected: sanctuary }} style={styles.secondaryAction}>
+            <Ionicons name="moon-outline" size={18} color={sanctuary ? colors.cyan : colors.textSecondary} />
+            <Text style={[styles.secondaryLabel, sanctuary && styles.secondaryLabelActive]}>Sanctuary</Text>
+            {sanctuary ? <View style={styles.utilityUnderline} /> : null}
+          </Pressable>
+          <Pressable onPress={openMore} accessibilityRole="button" accessibilityLabel="More player options" accessibilityState={{ selected: sheet === 'options' }} style={styles.secondaryAction}>
+            <Ionicons name="ellipsis-horizontal" size={18} color={sheet === 'options' ? colors.cyan : colors.textSecondary} />
+            <Text style={[styles.secondaryLabel, sheet === 'options' && styles.secondaryLabelActive]}>More</Text>
+            {sheet === 'options' ? <View style={styles.utilityUnderline} /> : null}
+          </Pressable>
+        </View>
 
-      {nextTrack ? (
-        <Pressable onPress={() => void playNext()} accessibilityRole="button" accessibilityLabel={`Play next: ${displayTitle(nextTrack)}`} style={styles.nextRow}>
-          <Artwork media={nextTrack} size={42} borderRadius={radii.sm} />
-          <View style={styles.nextText}>
-            <Text style={styles.nextEyebrow}>UP NEXT</Text>
-            <Text numberOfLines={1} style={styles.nextTitle}>{displayTitle(nextTrack)}</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
-        </Pressable>
-      ) : null}
+        {nextTrack ? (
+          <Pressable onPress={() => void playNext()} accessibilityRole="button" accessibilityLabel={`Play next: ${displayTitle(nextTrack)}`} style={styles.nextRow}>
+            <Artwork media={nextTrack} size={38} borderRadius={radii.sm} />
+            <View style={styles.nextText}>
+              <Text style={styles.nextEyebrow}>NEXT ON THE ITINERARY</Text>
+              <Text numberOfLines={1} style={styles.nextTitle}>{displayTitle(nextTrack)}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color={colors.textMuted} />
+          </Pressable>
+        ) : null}
+      </View>
 
       {isDesktop || Platform.OS === 'web' ? (
         <View style={[styles.volumeRow, !isDesktop && styles.volumeRowCompact]}>
@@ -621,6 +604,13 @@ export function PlayerScreen() {
     <View style={styles.root}>
       <CoverBackdrop uri={coverUri} blurRadius={54} />
       <View style={styles.backdropVeil} />
+      <LinearGradient
+        pointerEvents="none"
+        colors={gradients.playerScrim}
+        start={isDesktop ? { x: 0.12, y: 0.5 } : { x: 0.5, y: 0.12 }}
+        end={isDesktop ? { x: 0.82, y: 0.5 } : { x: 0.5, y: 0.78 }}
+        style={StyleSheet.absoluteFill}
+      />
 
       <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
         <Pressable onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="Close player" style={styles.topButton}>
@@ -660,7 +650,7 @@ export function PlayerScreen() {
         onClose={closeArtwork}
         media={currentMedia}
         uri={coverUri}
-        accent={colors.cyan}
+        accent={trackAccent.artworkAura}
         width={width}
         height={height}
       />
@@ -755,28 +745,31 @@ const styles = StyleSheet.create({
   emptyPrimaryLabel: { ...typography.subtitle, fontSize: 14, color: colors.bg },
   emptySecondaryAction: { minHeight: 48, paddingHorizontal: spacing.lg, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, backgroundColor: glass.fillBright, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
   emptySecondaryLabel: { ...typography.subtitle, fontSize: 14, color: colors.textPrimary },
-  backdropVeil: { ...(StyleSheet.absoluteFill as object), backgroundColor: glass.fillHeavy },
+  backdropVeil: { ...(StyleSheet.absoluteFill as object), backgroundColor: glass.fillDeep },
   topBar: { position: 'absolute', zIndex: 10, top: 0, left: spacing.lg, right: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   topButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.fillHeavy, borderWidth: 1, borderColor: colors.surfaceBorder },
   playingState: { minHeight: 36, paddingHorizontal: spacing.md, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: glass.fill },
   stateDot: { width: 6, height: 6, borderRadius: 3 },
   playingStateLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 1.8, color: colors.textSecondary },
-  mobileContent: { alignItems: 'center', paddingHorizontal: spacing.lg, gap: spacing.lg },
-  mobileContentSmall: { paddingHorizontal: spacing.md, gap: spacing.md },
-  desktopLayout: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xxl, paddingHorizontal: spacing.xxl },
-  desktopArtworkColumn: { flex: 1, alignItems: 'flex-end' },
-  artworkShadow: { borderRadius: radii.lg, shadowOpacity: 0.3, shadowRadius: 38, shadowOffset: { width: 0, height: 20 }, elevation: 16 },
-  artworkInspectTarget: { width: '100%', height: '100%', borderRadius: radii.cover, overflow: 'hidden' },
+  mobileContent: { alignItems: 'center', paddingHorizontal: spacing.lg, gap: spacing.xl },
+  mobileContentSmall: { paddingHorizontal: spacing.md, gap: spacing.lg },
+  desktopLayout: { flex: 1, width: '100%', maxWidth: 1180, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 88, paddingHorizontal: spacing.xxl },
+  desktopArtworkColumn: { flex: 1, maxWidth: 520, alignItems: 'flex-end', justifyContent: 'center' },
+  artworkShadow: { borderRadius: radii.lg, shadowOpacity: 0.22, shadowRadius: 34, shadowOffset: { width: 0, height: 18 }, elevation: 14 },
+  artworkMat: { width: '100%', height: '100%', padding: 9, borderRadius: radii.lg, backgroundColor: glass.fillDeep, borderWidth: 1, borderColor: glass.strokeStrong },
+  artworkInspectTarget: { flex: 1, borderRadius: radii.cover, overflow: 'hidden' },
   artworkInspectPressed: { opacity: 0.88 },
-  artworkInspectBadge: { position: 'absolute', right: spacing.sm, bottom: spacing.sm, minHeight: 36, paddingHorizontal: spacing.sm + 2, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: glass.fillHeavy, borderWidth: 1, borderColor: colors.surfaceBorderStrong },
+  artworkInnerHighlight: { ...(StyleSheet.absoluteFill as object), borderRadius: radii.cover, borderWidth: 1, borderColor: glass.edgeRaised },
+  artworkCornerAffordance: { position: 'absolute', right: spacing.sm, bottom: spacing.sm, minWidth: 34, height: 34, paddingHorizontal: spacing.sm, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: glass.fillHeavy, borderWidth: 1, borderColor: colors.surfaceBorderStrong, opacity: 0.76 },
+  artworkCornerAffordanceHidden: { opacity: 0.08, transform: [{ translateY: 3 }] },
+  artworkCornerAffordanceActive: { opacity: 1, transform: [{ translateY: 0 }] },
   artworkInspectLabel: { ...typography.caption, fontSize: 10, color: colors.textPrimary },
-  artworkAura: { position: 'absolute', top: -34, right: -34, bottom: -34, left: -34, alignItems: 'center', justifyContent: 'center' },
+  artworkAura: { position: 'absolute', top: -30, right: -30, bottom: -30, left: -30, alignItems: 'center', justifyContent: 'center' },
   auraRing: { position: 'absolute', borderWidth: 1 },
   auraRingOuter: { width: '100%', height: '100%', borderRadius: radii.xl + 26 },
-  auraRingInner: { width: '90%', height: '90%', borderRadius: radii.xl + 18 },
-  auraSpark: { position: 'absolute', shadowOpacity: 0.85, shadowRadius: 7, shadowOffset: { width: 0, height: 0 }, elevation: 5 },
-  controlColumn: { width: '100%', maxWidth: 520, gap: spacing.md },
-  controlColumnDesktop: { flex: 1, paddingRight: spacing.xl },
+  auraRingInner: { width: '92%', height: '92%', borderRadius: radii.xl + 18 },
+  controlColumn: { width: '100%', maxWidth: 520 },
+  controlColumnDesktop: { flex: 1, maxWidth: 520 },
   identityRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   identityText: { flex: 1 },
   title: { ...typography.title, fontSize: 24, lineHeight: 30, color: colors.textPrimary },
@@ -784,31 +777,33 @@ const styles = StyleSheet.create({
   artist: { ...typography.subtitle, color: colors.textSecondary, marginTop: 3 },
   metadata: { ...typography.caption, color: colors.textMuted, marginTop: 4 },
   favoriteButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
-  scrubberBlock: { marginTop: spacing.xs },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 2 },
-  time: { ...numericTypography.time, color: colors.textMuted },
-  transportRow: { minHeight: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  modeButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
-  modeButtonActive: { backgroundColor: glass.tintPrimary },
+  scrubberBlock: { marginTop: spacing.lg },
+  transportRow: { position: 'relative', minHeight: 92, marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  transportCore: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  transportSatelliteLeft: { position: 'absolute', left: 0 },
+  transportSatelliteRight: { position: 'absolute', right: 0 },
+  modeButton: { width: 42, height: 42, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent', backgroundColor: glass.fillDeep },
+  modeButtonActive: { backgroundColor: glass.tintPrimary, borderColor: glass.tintPrimaryStroke },
   modeBadge: { position: 'absolute', fontSize: 8, color: colors.textMuted, fontFamily: 'Sora_700Bold' },
   modeBadgeActive: { color: colors.cyan },
-  skipButton: { width: 50, height: 50, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
-  playButton: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', shadowOpacity: 0.35, shadowRadius: 20, shadowOffset: { width: 0, height: 8 }, elevation: 12 },
+  skipButton: { width: 54, height: 54, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  playButton: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.fillHeavy, borderWidth: 1, shadowOpacity: 0.28, shadowRadius: 22, shadowOffset: { width: 0, height: 9 }, elevation: 12 },
+  playButtonCore: { width: 62, height: 62, borderRadius: 31, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: glass.edgeRaised },
   playNudge: { marginLeft: 4 },
   pressed: { opacity: 0.65 },
   transportDisabled: { opacity: 0.38 },
-  transportHint: { ...typography.caption, marginTop: -spacing.sm, textAlign: 'center', color: colors.textMuted },
-  secondaryRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
-  secondaryRowCompact: { flexWrap: 'wrap', gap: spacing.sm },
-  secondaryAction: { minWidth: 78, minHeight: 46, borderRadius: radii.pill, paddingHorizontal: spacing.md - 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
-  secondaryActionCompact: { flexGrow: 1, flexBasis: '42%', minWidth: 132 },
-  sanctuaryAction: { borderColor: glass.tintPrimaryStroke },
+  transportHint: { ...typography.caption, marginTop: -spacing.xs, textAlign: 'center', color: colors.textMuted },
+  utilityStack: { marginTop: spacing.lg },
+  utilityRibbon: { minHeight: 60, flexDirection: 'row', alignItems: 'stretch', borderRadius: radii.card, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder, overflow: 'hidden' },
+  secondaryAction: { position: 'relative', flex: 1, minWidth: 0, minHeight: 58, paddingHorizontal: spacing.xs, flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4 },
   secondaryLabel: { ...typography.caption, color: colors.textSecondary },
-  nextRow: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, borderTopWidth: 1, borderTopColor: colors.surfaceBorder, marginTop: spacing.xs, paddingTop: spacing.md },
+  secondaryLabelActive: { color: colors.textPrimary, fontFamily: 'Sora_600SemiBold' },
+  utilityUnderline: { position: 'absolute', left: '32%', right: '32%', bottom: 0, height: 2, borderRadius: radii.pill, backgroundColor: colors.cyan },
+  nextRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: -1, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, borderWidth: 1, borderTopColor: glass.stroke, borderColor: colors.surfaceBorder, borderBottomLeftRadius: radii.card, borderBottomRightRadius: radii.card, backgroundColor: glass.fillDeep },
   nextText: { flex: 1 },
   nextEyebrow: { ...typography.eyebrow, fontSize: 9, letterSpacing: 1.6, color: colors.textMuted },
   nextTitle: { ...typography.caption, color: colors.textPrimary, marginTop: 2 },
-  volumeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  volumeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md },
   volumeRowCompact: { minHeight: 52, paddingHorizontal: spacing.sm, borderRadius: radii.md, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
   volumeIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   volumeSlider: { flex: 1, height: 36 },

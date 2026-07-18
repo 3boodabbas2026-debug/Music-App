@@ -127,6 +127,7 @@ const darkGradients = {
   screenHorizon: ['#050911', '#08131A', '#0B191F'] as const,
   heroGlass: ['rgba(32,54,44,0.72)', 'rgba(13,26,36,0.42)'] as const,
   artworkScrim: ['rgba(5,10,11,0)', 'rgba(5,10,11,0.52)', 'rgba(5,10,11,0.94)'] as const,
+  playerScrim: ['rgba(5,10,11,0.08)', 'rgba(5,10,11,0.72)', 'rgba(5,10,11,0.96)'] as const,
   liveProgress: [darkPaletteSeed.primary, '#8FE3C8'] as const,
   celebratorySheen: ['rgba(233,205,126,0.12)', 'rgba(99,214,181,0.06)', 'rgba(233,205,126,0)'] as const,
 };
@@ -149,6 +150,7 @@ const lightGradients: GradientScale<typeof darkGradients> = {
   screenHorizon: ['#F2F7F3', '#E7F0E9', '#DDE9E1'],
   heroGlass: ['rgba(250,252,250,0.86)', 'rgba(220,232,223,0.62)'],
   artworkScrim: ['rgba(5,10,11,0)', 'rgba(5,10,11,0.42)', 'rgba(5,10,11,0.88)'],
+  playerScrim: ['rgba(234,241,235,0.10)', 'rgba(234,241,235,0.76)', 'rgba(234,241,235,0.96)'],
   liveProgress: ['#176F59', '#2A8C70'],
   celebratorySheen: ['rgba(123,99,40,0.12)', 'rgba(23,111,89,0.05)', 'rgba(123,99,40,0)'],
 };
@@ -172,6 +174,7 @@ export const gradients = {
   screenHorizon: themedGradient('screenHorizon'),
   heroGlass: themedGradient('heroGlass'),
   artworkScrim: themedGradient('artworkScrim'),
+  playerScrim: themedGradient('playerScrim'),
   liveProgress: themedGradient('liveProgress'),
   celebratorySheen: themedGradient('celebratorySheen'),
 } as const;

@@ -86,6 +86,7 @@ function QueuePreview({ onJump, onOpenFullQueue }: { onJump: () => void; onOpenF
   const queue = usePlayerStore((s) => s.queue);
   const queueIndex = usePlayerStore((s) => s.queueIndex);
   const playAt = usePlayerStore((s) => s.playAt);
+  const current = queue[queueIndex] ?? null;
   const upcoming = queue.slice(queueIndex + 1, queueIndex + 6);
   const upcomingCount = Math.max(0, queue.length - queueIndex - 1);
 
@@ -94,7 +95,7 @@ function QueuePreview({ onJump, onOpenFullQueue }: { onJump: () => void; onOpenF
       <GlassPanel style={StyleSheet.absoluteFill as object} overlayColor={glass.fillHeavy} />
       <View style={styles.queuePreviewHeader}>
         <View>
-          <Text style={styles.queueTitle}>UP NEXT · PREVIEW</Text>
+          <Text style={styles.queueTitle}>LISTENING ITINERARY</Text>
           <Text style={styles.queueScope}>Showing {upcoming.length} of {upcomingCount} upcoming {upcomingCount === 1 ? 'track' : 'tracks'}</Text>
         </View>
         <Pressable onPress={onOpenFullQueue} accessibilityRole="button" accessibilityLabel="Open full queue" style={styles.fullQueueButton}>
@@ -102,10 +103,25 @@ function QueuePreview({ onJump, onOpenFullQueue }: { onJump: () => void; onOpenF
           <Ionicons name="open-outline" size={15} color={colors.cyan} />
         </Pressable>
       </View>
-      {upcoming.length === 0 ? (
-        <Text style={styles.queueEmpty}>End of queue.</Text>
-      ) : (
-        <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
+      <View style={styles.previewItinerary}>
+        {current ? (
+          <View accessibilityRole="summary" accessibilityLabel={`${displayTitle(current)}, now playing`} style={[styles.queueRow, styles.queueRowCurrent]}>
+            <View style={styles.previewSignalRail}>
+              <View style={styles.previewSignalLine} />
+              <View style={[styles.previewSignalPoint, styles.previewSignalPointCurrent]}>
+                <Ionicons name="volume-high" size={11} color={colors.cyan} />
+              </View>
+            </View>
+            <View style={styles.previewTrackText}>
+              <Text style={styles.previewNow}>NOW</Text>
+              <Text numberOfLines={1} style={styles.queueRowTitle}>{displayTitle(current)}</Text>
+            </View>
+          </View>
+        ) : null}
+        {upcoming.length === 0 ? (
+          <Text style={styles.queueEmpty}>End of queue.</Text>
+        ) : (
+          <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
           {upcoming.map((media, i) => (
             <Pressable
               key={`${media.id}-${i}`}
@@ -113,18 +129,23 @@ function QueuePreview({ onJump, onOpenFullQueue }: { onJump: () => void; onOpenF
                 playAt(queueIndex + 1 + i);
                 onJump();
               }}
+              accessibilityRole="button"
+              accessibilityLabel={`Play itinerary item ${i + 1}, ${displayTitle(media)}`}
               style={({ pressed }) => [styles.queueRow, pressed && styles.queueRowPressed]}
             >
-              <Text numberOfLines={1} style={styles.queueRowTitle}>
-                {displayTitle(media)}
-              </Text>
-              <Text numberOfLines={1} style={styles.queueRowArtist}>
-                {displayArtist(media) ?? 'Unknown artist'}
-              </Text>
+              <View style={styles.previewSignalRail}>
+                <View style={styles.previewSignalLine} />
+                <View style={styles.previewSignalPoint}><Text style={styles.previewIndex}>{i + 1}</Text></View>
+              </View>
+              <View style={styles.previewTrackText}>
+                <Text numberOfLines={1} style={styles.queueRowTitle}>{displayTitle(media)}</Text>
+                <Text numberOfLines={1} style={styles.queueRowArtist}>{displayArtist(media) ?? 'Unknown artist'}</Text>
+              </View>
             </Pressable>
           ))}
-        </ScrollView>
-      )}
+          </ScrollView>
+        )}
+      </View>
     </View>
   );
 }
@@ -465,9 +486,18 @@ const styles = StyleSheet.create({
   queueScope: { ...typography.caption, fontSize: 10, color: colors.textMuted, marginTop: 2 },
   fullQueueButton: { minHeight: 40, paddingHorizontal: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: radii.pill, backgroundColor: glass.tintPrimary },
   fullQueueLabel: { ...typography.caption, fontSize: 10, color: colors.cyan },
-  queueEmpty: { ...typography.caption, color: colors.textMuted },
-  queueRow: { paddingVertical: spacing.sm - 2, borderRadius: radii.sm },
+  previewItinerary: { overflow: 'hidden', borderRadius: radii.md, backgroundColor: glass.fillDeep },
+  queueEmpty: { ...typography.caption, color: colors.textMuted, padding: spacing.md, paddingLeft: 48 },
+  queueRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', borderRadius: radii.sm },
+  queueRowCurrent: { minHeight: 54, backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke },
   queueRowPressed: { backgroundColor: glass.tintPrimary },
+  previewSignalRail: { width: 40, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  previewSignalLine: { position: 'absolute', top: 0, bottom: 0, width: StyleSheet.hairlineWidth, backgroundColor: glass.strokeStrong },
+  previewSignalPoint: { width: 20, height: 20, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.surfaceBorder },
+  previewSignalPointCurrent: { width: 24, height: 24, borderWidth: 2, borderColor: colors.cyan },
+  previewIndex: { ...typography.numeric, fontSize: 9, lineHeight: 12, color: colors.textMuted },
+  previewTrackText: { flex: 1, minWidth: 0, paddingVertical: spacing.xs, paddingRight: spacing.sm },
+  previewNow: { ...typography.eyebrow, fontSize: 8, lineHeight: 11, letterSpacing: 1.5, color: colors.cyan },
   queueRowTitle: { ...typography.subtitle, fontSize: 14, color: colors.textPrimary },
   queueRowArtist: { ...typography.caption, fontSize: 11, color: colors.textMuted },
 });

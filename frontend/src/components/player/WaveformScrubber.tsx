@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Easing, PanResponder, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { useReducedMotion } from '../../hooks/useReducedMotion';
-import { colors, glass, motion, radii, typography } from '../../theme/tokens';
+import { colors, glass, motion, numericTypography, radii, spacing, typography } from '../../theme/tokens';
 
 const BAR_COUNT = 40;
 const MAX_BAR = 40;
@@ -22,7 +22,10 @@ function normalizeBars(data: number[] | null | undefined): number[] {
   if (!data?.length) return FALLBACK_BARS;
   return Array.from({ length: BAR_COUNT }, (_, index) => {
     const sourceIndex = Math.min(data.length - 1, Math.round((index / (BAR_COUNT - 1)) * (data.length - 1)));
-    return Math.max(0.08, Math.min(1, Math.abs(data[sourceIndex] ?? 0)));
+    const window = data.slice(Math.max(0, sourceIndex - 2), Math.min(data.length, sourceIndex + 3));
+    const peak = Math.max(...window.map((sample) => Math.abs(sample ?? 0)));
+    const rms = Math.sqrt(window.reduce((sum, sample) => sum + Math.abs(sample ?? 0) ** 2, 0) / Math.max(1, window.length));
+    return Math.max(0.08, Math.min(1, rms * 0.68 + peak * 0.32));
   });
 }
 
@@ -58,6 +61,7 @@ export function WaveformScrubber({
   const currentTimeRef = useRef(safeCurrentTime);
   currentTimeRef.current = safeCurrentTime;
   const keyboardFocused = useRef(false);
+  const isAnalyzed = !!waveformData?.length;
   const bars = useMemo(() => normalizeBars(waveformData), [waveformData]);
   const smoothRatio = useRef(new Animated.Value(0)).current;
 
@@ -122,7 +126,15 @@ export function WaveformScrubber({
   }, []);
 
   return (
-    <View>
+    <View style={styles.instrument}>
+      <View style={styles.readout} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Text style={styles.time}>{formatTime(safeCurrentTime)}</Text>
+        <View style={styles.signalLabelWrap}>
+          <View style={[styles.signalDot, isAnalyzed && { backgroundColor: activeColor }]} />
+          <Text style={styles.signalLabel}>{isAnalyzed ? 'ANALYZED SIGNAL' : 'SIGNAL GUIDE'}</Text>
+        </View>
+        <Text style={[styles.time, styles.timeEnd]}>{formatTime(safeDuration)}</Text>
+      </View>
       <View
         ref={containerRef}
         accessible
@@ -157,7 +169,12 @@ export function WaveformScrubber({
             <Text style={styles.previewText}>{formatTime(dragRatio * safeDuration)}</Text>
           </View>
         ) : null}
-        <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.bars}>
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[styles.bars, !isAnalyzed && styles.barsFallback]}
+        >
+          <View style={styles.baseline} />
           {bars.map((amplitude, index) => {
             const frontier = (index + 0.5) / BAR_COUNT;
             const before = Math.max(0, frontier - 0.012);
@@ -201,14 +218,28 @@ export function WaveformScrubber({
           />
         </View>
       </View>
-      {!waveformData?.length ? <Text style={styles.fallbackLabel}>Decorative rhythm · analyzed waveform unavailable</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: { height: 56, justifyContent: 'center', paddingVertical: 8, borderRadius: radii.sm },
+  instrument: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.strokeStrong,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
+  readout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 18 },
+  time: { ...numericTypography.time, minWidth: 44, color: colors.textSecondary },
+  timeEnd: { textAlign: 'right' },
+  signalLabelWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  signalDot: { width: 4, height: 4, borderRadius: radii.pill, backgroundColor: colors.textMuted },
+  signalLabel: { ...typography.eyebrow, fontSize: 8, lineHeight: 12, letterSpacing: 1.45, color: colors.textMuted },
+  row: { height: 58, justifyContent: 'center', paddingVertical: 7, borderRadius: radii.sm },
   bars: { flex: 1, position: 'relative', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  barsFallback: { opacity: 0.58, transform: [{ scaleY: 0.76 }] },
+  baseline: { position: 'absolute', left: 0, right: 0, top: '50%', height: StyleSheet.hairlineWidth, backgroundColor: glass.strokeStrong },
   bar: { flex: 1, marginHorizontal: 1.5, borderRadius: radii.pill },
   frontier: {
     position: 'absolute',
@@ -239,5 +270,4 @@ const styles = StyleSheet.create({
     borderColor: glass.tintPrimaryStroke,
   },
   previewText: { ...typography.numeric, fontSize: 10, lineHeight: 14, color: colors.textPrimary },
-  fallbackLabel: { ...typography.caption, fontSize: 9, lineHeight: 12, color: colors.textMuted, textAlign: 'center' },
 });

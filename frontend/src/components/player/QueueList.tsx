@@ -29,17 +29,23 @@ function formatDuration(seconds: number | null): string {
   return `${minutes}:${remainder.toString().padStart(2, '0')}`;
 }
 
-function QueueIdentity({ item, index, current, playing }: { item: Media; index: number; current: boolean; playing: boolean }) {
+function QueueIdentity({ item, index, queueIndex, current, playing }: { item: Media; index: number; queueIndex: number; current: boolean; playing: boolean }) {
   const title = displayTitle(item);
   const artist = displayArtist(item) ?? 'Unknown artist';
+  const itineraryNumber = index - queueIndex;
   return (
     <>
-      <View style={styles.index}>
-        {current ? (
-          <Ionicons name={playing ? 'volume-high' : 'pause'} size={14} color={colors.cyan} />
-        ) : (
-          <Text style={styles.indexText}>{index + 1}</Text>
-        )}
+      <View style={styles.signalRail} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <View style={styles.signalLine} />
+        <View style={[styles.signalPoint, current && styles.signalPointCurrent]}>
+          {current ? (
+            <Ionicons name={playing ? 'volume-high' : 'pause'} size={12} color={colors.cyan} />
+          ) : index < queueIndex ? (
+            <Ionicons name="checkmark" size={11} color={colors.textMuted} />
+          ) : (
+            <Text style={styles.indexText}>{itineraryNumber}</Text>
+          )}
+        </View>
       </View>
       <Artwork media={item} size={38} borderRadius={radii.sm - 4} accessibilityLabel={`${title} by ${artist} artwork`} />
       <View style={styles.text}>
@@ -200,7 +206,7 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
         const isCurrent = index === queueIndex;
         const canMoveUp = !isCurrent && index > 0 && index - 1 !== queueIndex;
         const canMoveDown = !isCurrent && index < queue.length - 1 && index + 1 !== queueIndex;
-        const identity = <QueueIdentity item={item} index={index} current={isCurrent} playing={playing} />;
+        const identity = <QueueIdentity item={item} index={index} queueIndex={queueIndex} current={isCurrent} playing={playing} />;
         return (
           <View style={[styles.row, isCurrent && styles.rowCurrent]}>
             {isCurrent ? (
@@ -237,34 +243,37 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
 
 const styles = StyleSheet.create({
   list: { flexGrow: 0 },
-  content: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, gap: 3 },
-  queueTools: { gap: spacing.sm, marginBottom: spacing.sm },
+  content: { paddingVertical: spacing.sm, paddingHorizontal: spacing.sm },
+  queueTools: { gap: spacing.sm, marginBottom: spacing.md },
   queueSummary: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm },
   queueHeading: { ...typography.eyebrow, fontSize: 10, letterSpacing: 1.7, color: colors.textSecondary },
   queueSub: { ...typography.caption, fontSize: 10, color: colors.textMuted, marginTop: 2 },
   queueActions: { flexDirection: 'row', gap: spacing.xs },
-  toolButton: { minHeight: 40, paddingHorizontal: spacing.sm, borderRadius: radii.pill, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: glass.fillBright, borderWidth: 1, borderColor: colors.surfaceBorder },
+  toolButton: { minHeight: 38, paddingHorizontal: spacing.sm, borderRadius: radii.control, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
   toolLabel: { ...typography.caption, fontSize: 10, color: colors.textSecondary },
   saveRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   saveInput: { flex: 1, minHeight: 44, borderRadius: radii.md, paddingHorizontal: spacing.md, color: colors.textPrimary, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorderStrong, ...typography.body },
-  saveButton: { width: 44, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cyan },
+  saveButton: { width: 44, height: 44, borderRadius: radii.control, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cyan },
   undoRow: { minHeight: 44, paddingLeft: spacing.md, paddingRight: spacing.sm, borderRadius: radii.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke },
   undoText: { ...typography.caption, flex: 1, color: colors.textSecondary },
-  undoButton: { minWidth: 72, minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  undoButton: { minWidth: 72, minHeight: 36, borderRadius: radii.control, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
   undoLabel: { ...typography.caption, color: colors.cyan, fontFamily: 'Sora_600SemiBold' },
-  row: { flexDirection: 'row', alignItems: 'center', borderRadius: radii.md - 4, overflow: 'hidden' },
-  rowCurrent: { backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke },
+  row: { flexDirection: 'row', alignItems: 'center', borderRadius: radii.md - 4, overflow: 'hidden', marginBottom: 2 },
+  rowCurrent: { backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke, shadowColor: colors.cyan, shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
   rowPressed: { backgroundColor: glass.fillBright },
-  identityAction: { flex: 1, minWidth: 0, minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderRadius: radii.md - 4 },
-  index: { width: 20, alignItems: 'center', justifyContent: 'center' },
-  indexText: { ...numericTypography.rank, fontSize: 11, lineHeight: 16, textAlign: 'center', color: colors.textMuted },
+  identityAction: { flex: 1, minWidth: 0, minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, paddingLeft: spacing.xs, paddingRight: spacing.sm, borderRadius: radii.md - 4 },
+  signalRail: { width: 28, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },
+  signalLine: { position: 'absolute', top: 0, bottom: 0, width: StyleSheet.hairlineWidth, backgroundColor: glass.strokeStrong },
+  signalPoint: { width: 22, height: 22, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bgElevated, borderWidth: 1, borderColor: colors.surfaceBorder },
+  signalPointCurrent: { width: 26, height: 26, backgroundColor: glass.fillHeavy, borderColor: colors.cyan, borderWidth: 2 },
+  indexText: { ...numericTypography.rank, fontSize: 9, lineHeight: 12, textAlign: 'center', color: colors.textMuted },
   text: { flex: 1, minWidth: 0 },
   title: { ...typography.subtitle, fontSize: 14, lineHeight: 18, color: colors.textSecondary },
   titleCurrent: { color: colors.textPrimary },
   artist: { ...typography.caption, fontSize: 11, color: colors.textMuted },
   duration: { ...numericTypography.time, color: colors.textMuted },
-  rowActions: { flexDirection: 'row', alignItems: 'center', paddingRight: spacing.xs },
-  iconAction: { width: 40, height: 44, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingRight: spacing.xs },
+  iconAction: { width: 36, height: 36, borderRadius: radii.control, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
   disabled: { opacity: 0.32 },
   pressed: { opacity: 0.65 },
   emptyWrap: { minHeight: 132, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.lg },
