@@ -37,7 +37,7 @@ import { useRecognitionCaptureStore } from '../store/recognitionCaptureStore';
 import { SCAN_HISTORY_LIMIT, type ScanEntry, useScanHistoryStore } from '../store/scanHistoryStore';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage, friendlyJobError, friendlyJobStage } from '../utils/apiError';
-import { colors, glass, gradients, motion, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, gradients, motion, numericTypography, radii, spacing, typography } from '../theme/tokens';
 
 const LISTEN_SECONDS = 15;
 
@@ -133,6 +133,7 @@ export function RecognitionScreen() {
   const ringAnim = useRef(new Animated.Value(0)).current;
   const idleSpin = useRef(new Animated.Value(0)).current;
   const phaseMorph = useRef(new Animated.Value(0)).current;
+  const analysisTravel = useRef(new Animated.Value(0)).current;
 
   // A slow dashed orbit around the button while idle — invites the tap.
   useEffect(() => {
@@ -243,6 +244,24 @@ export function RecognitionScreen() {
       useNativeDriver: true,
     }).start();
   }, [phase, phaseMorph, reduceMotion]);
+
+  useEffect(() => {
+    analysisTravel.stopAnimation();
+    if (phase !== 'analyzing' || reduceMotion) {
+      analysisTravel.setValue(phase === 'analyzing' ? 0.5 : 0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.timing(analysisTravel, {
+        toValue: 1,
+        duration: motion.duration.continuous,
+        easing: Easing.inOut(Easing.sin),
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [analysisTravel, phase, reduceMotion]);
 
   function clearCaptureTimers() {
     if (tickTimer.current) clearInterval(tickTimer.current);
@@ -482,6 +501,14 @@ export function RecognitionScreen() {
       >
         <LinearGradient colors={gradients.screenListening} style={StyleSheet.absoluteFill} />
       </Animated.View>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          styles.captureVignette,
+          { opacity: phaseMorph.interpolate({ inputRange: [0, 1, 2, 3], outputRange: [0, 0.44, 0.52, 0] }) },
+        ]}
+      />
 
       <View pointerEvents="box-none" style={[styles.triggerHolder, { top: insets.top + spacing.md }]}>
         <SidebarTrigger size={38} />
@@ -508,7 +535,8 @@ export function RecognitionScreen() {
             <Text style={styles.megaSolid}>{match?.stage_label === 'matched' ? 'Got it.' : 'Hmm…'}</Text>
           )}
           {phase === 'idle' ? (
-            <View style={styles.modeBlock}>
+            <GlassPanel variant="quiet" style={styles.modeShelf}>
+              <View style={styles.modeBlock}>
               <SegmentedControl
                 accessibilityLabel="Recognition method"
                 value={mode}
@@ -540,13 +568,15 @@ export function RecognitionScreen() {
                   Nearby listening is ready. Hum or sing becomes available when ACRCloud is connected by the server owner.
                 </Text>
               ) : null}
-            </View>
+              </View>
+            </GlassPanel>
           ) : null}
         </View>
 
         <Animated.View
           style={[
             styles.buttonZone,
+            micActive && styles.captureTheatre,
             {
               transform: [
                 { scale: phaseMorph.interpolate({ inputRange: [0, 1, 2, 3], outputRange: [1, 1.035, 0.87, 0.94] }) },
@@ -584,6 +614,10 @@ export function RecognitionScreen() {
                   strokeLinecap="round"
                   fill="none"
                 />
+                <Circle cx={RING_SIZE / 2} cy={7} r={2.5} fill={colors.gold} />
+                <Circle cx={RING_SIZE - 7} cy={RING_SIZE / 2} r={1.8} fill={colors.cyan} />
+                <Circle cx={RING_SIZE / 2} cy={RING_SIZE - 7} r={1.5} fill={colors.textPrimary} />
+                <Circle cx={7} cy={RING_SIZE / 2} r={1.8} fill={colors.cyan} />
               </Svg>
             </Animated.View>
           )}
@@ -696,7 +730,11 @@ export function RecognitionScreen() {
                   return <View key={i} style={[styles.waveBar, { height }]} />;
                 })}
               </View>
-              <Text style={styles.countdownText}>{countdown}s — tap the orb to identify</Text>
+              <View style={styles.captureReadout}>
+                <Text style={styles.captureTimer}>0:{String(countdown).padStart(2, '0')}</Text>
+                <View style={styles.captureReadoutRule} />
+                <Text style={styles.countdownText}>tap the orb to identify</Text>
+              </View>
               <Button
                 label="Cancel and discard"
                 icon="trash-outline"
@@ -707,7 +745,20 @@ export function RecognitionScreen() {
             </>
           )}
 
-          {phase === 'analyzing' && <ActivityIndicator color={colors.cyan} />}
+          {phase === 'analyzing' && (
+            <View style={styles.analysisBlock} accessibilityLiveRegion="polite">
+              <View style={styles.analysisSignal}>
+                <View style={styles.analysisBaseline} />
+                <Animated.View
+                  style={[
+                    styles.analysisPacket,
+                    { transform: [{ translateX: analysisTravel.interpolate({ inputRange: [0, 1], outputRange: [0, 170] }) }] },
+                  ]}
+                />
+              </View>
+              <Text style={styles.analysisLabel}>Following the captured signal…</Text>
+            </View>
+          )}
 
           {phase === 'result' && match && (
             <Animated.View
@@ -721,7 +772,8 @@ export function RecognitionScreen() {
             >
               {match.stage_label === 'matched' ? (
                 <>
-                  <GlassPanel style={styles.resultPanel}>
+                  <GlassPanel style={[styles.resultPanel, styles.resultCollectible]}>
+                    <LinearGradient pointerEvents="none" colors={gradients.celebratorySheen} style={styles.resultSheen} />
                     <View style={styles.resultContent}>
                       <Artwork
                         media={{
@@ -730,11 +782,15 @@ export function RecognitionScreen() {
                           artist: match.match_artist,
                           thumbnail_url: match.match_thumbnail_url,
                         }}
-                        size={72}
-                        borderRadius={radii.md}
+                        size={104}
+                        borderRadius={radii.cover}
                         priority
                       />
                       <View style={styles.resultText}>
+                        <View style={styles.identifiedSeal}>
+                          <Ionicons name="sparkles" size={12} color={colors.gold} />
+                          <Text style={styles.identifiedSealText}>IDENTIFIED</Text>
+                        </View>
                         <Text numberOfLines={2} style={styles.resultTitle}>{match.match_title}</Text>
                         <Text numberOfLines={1} style={styles.resultArtist}>{match.match_artist}</Text>
                       </View>
@@ -938,6 +994,7 @@ export function RecognitionScreen() {
               const isSelected = selectedCandidate?.id === candidate.id;
               return (
                 <GlassPanel key={candidate.id} style={[styles.candidateCard, isSelected && styles.candidateCardSelected]}>
+                  <View pointerEvents="none" style={[styles.candidateSelectionEdge, isSelected && styles.candidateSelectionEdgeActive]} />
                   <View style={styles.candidateIdentity}>
                     <Artwork
                       media={{ id: candidate.id, title: candidate.title, artist: candidate.channel, thumbnail_url: candidate.thumbnail_url }}
@@ -946,8 +1003,13 @@ export function RecognitionScreen() {
                     />
                     <View style={styles.candidateText}>
                       <Text numberOfLines={2} style={styles.candidateTitle}>{candidate.title}</Text>
-                      <Text numberOfLines={1} style={styles.candidateMeta}>{candidate.channel ?? 'Unknown channel'}</Text>
-                      <Text style={styles.candidateDuration}>{formatDuration(candidate.duration_seconds)}</Text>
+                      <View style={styles.candidateMetaRow}>
+                        <Ionicons name="radio-outline" size={13} color={colors.textMuted} />
+                        <Text numberOfLines={1} style={styles.candidateMeta}>{candidate.channel ?? 'Unknown channel'}</Text>
+                        <View style={styles.candidateDurationChip}>
+                          <Text style={styles.candidateDuration}>{formatDuration(candidate.duration_seconds)}</Text>
+                        </View>
+                      </View>
                     </View>
                   </View>
                   <Button
@@ -986,6 +1048,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
+  captureVignette: { backgroundColor: colors.bg },
   triggerHolder: {
     position: 'absolute',
     right: spacing.lg,
@@ -1003,20 +1066,32 @@ const styles = StyleSheet.create({
   header: {
     alignItems: 'center',
     gap: spacing.xs,
-    minHeight: 84,
+    minHeight: 72,
   },
-  modeBlock: { width: '100%', maxWidth: 440, gap: spacing.xs, marginTop: spacing.sm },
+  modeShelf: { width: '100%', maxWidth: 460, marginTop: spacing.sm, borderRadius: radii.control },
+  modeBlock: { width: '100%', gap: spacing.sm, padding: spacing.sm },
   capabilityHint: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
   capabilityStatus: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   capabilityError: { alignItems: 'center', gap: spacing.sm },
   compactButton: { minHeight: 40, paddingVertical: spacing.sm, alignSelf: 'center' },
   eyebrow: { ...typography.eyebrow, color: colors.cyan },
-  megaTitle: { ...typography.mega, color: colors.textPrimary, textAlign: 'center' },
-  megaSolid: { ...typography.mega, color: colors.textPrimary, textAlign: 'center' },
+  megaTitle: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
+  megaSolid: { ...typography.screenTitle, color: colors.textPrimary, textAlign: 'center' },
   buttonZone: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  captureTheatre: {
+    flex: 0,
+    width: '100%',
+    minHeight: 316,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    borderRadius: radii.hero,
+    borderWidth: 1,
+    borderColor: glass.tintPrimaryStroke,
+    backgroundColor: glass.fillDeep,
   },
   phaseHalo: {
     position: 'absolute',
@@ -1088,9 +1163,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cyan,
   },
   countdownText: { ...typography.body, color: colors.textMuted, textAlign: 'center' },
+  captureReadout: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  captureTimer: { ...numericTypography.time, fontSize: 15, lineHeight: 20, color: colors.textPrimary },
+  captureReadoutRule: { width: 1, height: 14, backgroundColor: glass.strokeStrong },
   cancelButton: { minHeight: 44, alignSelf: 'center', paddingVertical: spacing.sm },
+  analysisBlock: { width: 220, alignItems: 'center', gap: spacing.sm },
+  analysisSignal: { width: 184, height: 24, justifyContent: 'center', overflow: 'hidden' },
+  analysisBaseline: { height: 1, backgroundColor: glass.strokeStrong },
+  analysisPacket: {
+    position: 'absolute',
+    left: 0,
+    width: 14,
+    height: 6,
+    borderRadius: radii.pill,
+    backgroundColor: colors.cyan,
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  analysisLabel: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
   resultBlock: { width: '100%', gap: spacing.md, alignItems: 'center' },
   resultPanel: { width: '100%' },
+  resultCollectible: { borderRadius: radii.hero, borderColor: glass.tintPrimaryStroke },
+  resultSheen: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.12 },
   resultContent: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1104,13 +1200,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  resultText: { flex: 1, gap: 4 },
-  resultTitle: { ...typography.title, fontSize: 20, lineHeight: 25, color: colors.textPrimary },
+  resultText: { flex: 1, minWidth: 0, gap: 4 },
+  identifiedSeal: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: 3,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: colors.surfaceElevated,
+  },
+  identifiedSealText: { ...typography.eyebrow, fontSize: 8, lineHeight: 11, color: colors.gold },
+  resultTitle: { ...typography.sectionTitle, color: colors.textPrimary },
   resultArtist: { ...typography.body, color: colors.textMuted },
   downloadZone: {
     paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
+    paddingVertical: spacing.md,
     gap: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: glass.stroke,
   },
   downloadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   wide: { alignSelf: 'stretch' },
@@ -1203,12 +1314,16 @@ const styles = StyleSheet.create({
   candidateQuery: { ...typography.body, color: colors.textSecondary },
   sheetLoading: { minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   candidateList: { gap: spacing.md },
-  candidateCard: { padding: spacing.md, gap: spacing.md },
-  candidateCardSelected: { borderColor: glass.tintPrimaryStroke },
+  candidateCard: { position: 'relative', padding: spacing.md, gap: spacing.md },
+  candidateCardSelected: { borderColor: colors.cyan, backgroundColor: glass.tintPrimary },
+  candidateSelectionEdge: { position: 'absolute', left: 0, top: spacing.md, bottom: spacing.md, width: 3, borderRadius: radii.pill, backgroundColor: 'transparent' },
+  candidateSelectionEdgeActive: { backgroundColor: colors.cyan },
   candidateIdentity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   candidateText: { flex: 1, gap: 3 },
   candidateTitle: { ...typography.subtitle, color: colors.textPrimary },
-  candidateMeta: { ...typography.caption, color: colors.textSecondary },
-  candidateDuration: { ...typography.caption, color: colors.cyan },
+  candidateMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  candidateMeta: { ...typography.caption, color: colors.textSecondary, flex: 1 },
+  candidateDurationChip: { paddingVertical: 2, paddingHorizontal: spacing.sm, borderRadius: radii.pill, backgroundColor: colors.surfaceElevated },
+  candidateDuration: { ...numericTypography.time, color: colors.cyan },
   candidateProgress: { gap: spacing.sm, marginTop: spacing.md },
 });

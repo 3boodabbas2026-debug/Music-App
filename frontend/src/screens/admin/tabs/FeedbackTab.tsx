@@ -56,7 +56,8 @@ export function FeedbackTab({ items, total, query, loading, onQueryChange, onLoa
       {items.length === 0 ? <EmptyState title="No matching feedback" subtitle="Try another account, message, or status filter." icon="chatbubble-ellipses-outline" /> : (
         <View style={adminStyles.list}>
           {items.map((item) => (
-            <GlassPanel key={item.id} style={adminStyles.row}>
+            <GlassPanel key={item.id} style={[adminStyles.row, item.status === 'open' ? adminStyles.rowIntervention : adminStyles.rowHealthy]}>
+              <View pointerEvents="none" style={[adminStyles.rowAccent, item.status === 'open' ? adminStyles.rowAccentIntervention : adminStyles.rowAccentHealthy]} />
               <View style={[adminStyles.rowContent, { flexDirection: 'column', alignItems: 'stretch', gap: spacing.sm }]}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
                   <View style={[adminStyles.badge, item.status === 'open' && adminStyles.badgeOpen]}><Ionicons name={item.status === 'open' ? 'ellipse' : 'checkmark-circle'} size={16} color={item.status === 'open' ? colors.cyan : colors.textMuted} /></View>

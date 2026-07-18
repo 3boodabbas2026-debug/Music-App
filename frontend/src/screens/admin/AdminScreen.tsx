@@ -130,15 +130,21 @@ export function AdminScreen() {
   const refreshing = SECTION_KEYS.some((key) => loading[key]);
   return (
     <View style={adminStyles.root}>
-      <ScreenContainer maxWidth={800}>
+      <ScreenContainer maxWidth={1000}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={adminStyles.scroll}>
           <View style={adminStyles.headerRow}>
             <IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" />
             <SectionHeader eyebrow="Operations" title="Admin console" subtitle="Accounts, activity, feedback, and system health." style={adminStyles.screenHeading} />
             <IconButton icon={refreshing ? 'hourglass-outline' : 'refresh'} accessibilityLabel={refreshing ? 'Refreshing admin data' : 'Refresh all admin data'} onPress={refreshAll} disabled={refreshing} variant="surface" />
           </View>
+          <View style={adminStyles.observatoryStatus}>
+            <View style={adminStyles.healthSignal}><Ionicons name="ellipse" size={8} color={colors.success} /><Text style={adminStyles.healthLabel}>Healthy systems</Text></View>
+            <View style={adminStyles.healthRule} />
+            <View style={adminStyles.healthSignal}><Ionicons name="ellipse" size={8} color={colors.danger} /><Text style={adminStyles.healthLabel}>Intervention</Text></View>
+          </View>
           <TabChipRow
             style={adminStyles.tabScroller}
+            accessibilityLabel="Admin sections"
             options={TABS.map((item) => ({ value: item.key, label: item.label, icon: item.icon }))}
             value={tab}
             onChange={setTab}

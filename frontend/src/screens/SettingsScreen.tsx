@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { Ionicons } from '@expo/vector-icons';
 
 import { BrandMark } from '../components/ui/BrandMark';
 import { AccountSecurityPanel } from '../components/account/AccountSecurityPanel';
@@ -103,6 +104,28 @@ function StatusRow({
       <Text style={[styles.statusValue, state === 'bad' && !neutralWhenOff && styles.statusValueBad]}>
         {state === 'unknown' ? 'Checking…' : state === 'good' ? 'Connected' : notConnectedLabel}
       </Text>
+    </View>
+  );
+}
+
+function SettingsChapter({
+  title,
+  description,
+  icon,
+}: {
+  title: string;
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
+    <View style={styles.chapterHeader}>
+      <View style={styles.chapterIcon}>
+        <Ionicons name={icon} size={19} color={colors.cyan} />
+      </View>
+      <View style={styles.chapterCopy}>
+        <Text style={styles.sectionHeading}>{title}</Text>
+        <Text style={styles.chapterDescription}>{description}</Text>
+      </View>
     </View>
   );
 }
@@ -353,8 +376,8 @@ export function SettingsScreen() {
           </Reveal>
 
           <Reveal delay={30} distance={8}>
-            <SectionHeader title="Appearance" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
-            <GlassPanel style={styles.panel}>
+            <SettingsChapter title="Appearance" description="Theme and accent choices for the hollow on this device." icon="color-palette-outline" />
+            <GlassPanel variant="quiet" style={styles.panel}>
               <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
                 <View style={styles.appearanceControl}>
                   <Text style={styles.fieldLabel}>App theme</Text>
@@ -388,8 +411,8 @@ export function SettingsScreen() {
           </Reveal>
 
           <Reveal delay={40} distance={8}>
-            <SectionHeader title="Connection" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
-            <GlassPanel style={styles.panel}>
+            <SettingsChapter title="Connection" description="Live reachability and optional intake services at a glance." icon="radio-outline" />
+            <GlassPanel variant="quiet" style={styles.panel}>
               <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
                 <StatusRow label="Network" ok={networkOnline} />
                 <StatusRow label="Starhollow API" ok={backendOnline} pending={backendOnline === null} />
@@ -414,8 +437,8 @@ export function SettingsScreen() {
           </Reveal>
 
           <Reveal delay={80} distance={8}>
-            <SectionHeader title="Account" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
-            <GlassPanel style={styles.panel}>
+            <SettingsChapter title="Account" description="Identity, password, and private account safeguards." icon="shield-checkmark-outline" />
+            <GlassPanel variant="quiet" style={styles.panel}>
               <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
                 <AccountSecurityPanel />
               </View>
@@ -423,8 +446,8 @@ export function SettingsScreen() {
           </Reveal>
 
           <Reveal delay={120} distance={8}>
-            <SectionHeader title="Playback" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
-            <GlassPanel style={styles.panel}>
+            <SettingsChapter title="Playback" description="Quiet defaults for how one track hands off to the next." icon="headset-outline" />
+            <GlassPanel variant="quiet" style={styles.panel}>
               <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
                 <SettingSwitch
                   label="Smooth transitions"
@@ -444,7 +467,7 @@ export function SettingsScreen() {
             </GlassPanel>
           </Reveal>
 
-          <SectionHeader title="Library & storage" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
+          <SettingsChapter title="Library & storage" description="See exactly where new media lands and what remains on this device." icon="server-outline" />
           <GlassPanel style={styles.panel}>
             <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
               <View style={[styles.fieldRow, smallPhone && styles.fieldRowSmall]}>
@@ -502,7 +525,7 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
-          <SectionHeader title="Library tools" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
+          <SettingsChapter title="Library tools" description="Repair metadata and move a portable, inspectable archive backup." icon="construct-outline" />
           <GlassPanel style={styles.panel}>
             <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
               <Button
@@ -524,15 +547,15 @@ export function SettingsScreen() {
                 <Text style={styles.hint}>Includes {BACKUP_INCLUDES.join(', ')}. Offline audio/video bytes are not embedded.</Text>
               </View>
               <View style={styles.backupActions}>
-                <Button label={backupBusy ? 'Working…' : 'Save backup file'} icon="download-outline" variant="ghost" loading={backupBusy} onPress={() => void exportLibrary()} style={styles.backupButton} />
+                <Button label={backupBusy ? 'Working…' : 'Export library'} icon="download-outline" variant="ghost" loading={backupBusy} onPress={() => void exportLibrary()} style={styles.backupButton} />
                 <Button label="Restore backup" icon="cloud-upload-outline" variant="secondary" disabled={backupBusy} onPress={() => void importLibrary()} style={styles.backupButton} />
               </View>
               {lastRestore ? <Text accessibilityLiveRegion="polite" style={styles.restoreNote}>{lastRestore}</Text> : null}
             </View>
           </GlassPanel>
 
-          <SectionHeader title="Feedback" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
-          <GlassPanel style={styles.panel}>
+          <SettingsChapter title="Feedback" description="Send a private note to the people maintaining this hollow." icon="chatbubble-ellipses-outline" />
+          <GlassPanel variant="quiet" style={styles.panel}>
             <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
               <Text style={styles.hint}>Found a bug, or want something changed? Tell us directly.</Text>
               <TextField
@@ -554,8 +577,8 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
-          <SectionHeader title="About" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
-          <GlassPanel style={styles.panel}>
+          <SettingsChapter title="About" description="The identity and promise behind this private signal archive." icon="sparkles-outline" />
+          <GlassPanel variant="quiet" style={styles.panel}>
             <View style={[styles.panelBody, smallPhone && styles.panelBodySmall, styles.aboutRow]}>
               <BrandMark size={28} />
               <View>
@@ -565,12 +588,21 @@ export function SettingsScreen() {
             </View>
           </GlassPanel>
 
-          <Button
-            label="Sign out"
-            variant="danger"
-            onPress={() => void requestSignOut()}
-            style={styles.signOutButton}
-          />
+          <GlassPanel variant="quiet" style={styles.signOutChapter}>
+            <View style={styles.signOutCopy}>
+              <View style={styles.signOutIcon}><Ionicons name="log-out-outline" size={19} color={colors.danger} /></View>
+              <View style={styles.chapterCopy}>
+                <Text style={styles.signOutTitle}>Leave this device</Text>
+                <Text style={styles.chapterDescription}>You will review the local-data impact before this account is signed out.</Text>
+              </View>
+            </View>
+            <Button
+              label="Sign out"
+              variant="danger"
+              onPress={() => void requestSignOut()}
+              style={styles.signOutButton}
+            />
+          </GlassPanel>
         </ScrollView>
       </ScreenContainer>
     </View>
@@ -589,16 +621,31 @@ const styles = StyleSheet.create({
   },
   headerRowSmall: { gap: spacing.sm, marginBottom: spacing.lg },
   screenHeading: { flex: 1 },
-  sectionHeader: {
+  chapterHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
+  chapterIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorderStrong,
+  },
+  chapterCopy: { flex: 1, minWidth: 0, gap: 2 },
+  chapterDescription: { ...typography.caption, color: colors.textMuted, lineHeight: 17 },
   sectionHeading: { ...typography.title, fontSize: 17, lineHeight: 23, color: colors.textPrimary },
   panel: { borderRadius: radii.lg },
   panelBody: { padding: spacing.lg, gap: spacing.md },
   appearanceControl: { gap: spacing.sm },
   panelBodySmall: { padding: spacing.md },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  statusRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xs },
   statusDot: { width: 8, height: 8, borderRadius: radii.pill, backgroundColor: colors.textMuted },
   statusDotGood: { backgroundColor: colors.success },
   statusDotBad: { backgroundColor: colors.danger },
@@ -606,9 +653,9 @@ const styles = StyleSheet.create({
   statusValue: { ...typography.caption, color: colors.textMuted, flexShrink: 1, textAlign: 'right' },
   statusValueBad: { color: colors.danger },
   inlineButton: { marginTop: spacing.xs },
-  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  fieldRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
   fieldRowSmall: { flexDirection: 'column', alignItems: 'flex-start', gap: spacing.xs },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  switchRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xs },
   switchRowSmall: { alignItems: 'flex-start', gap: spacing.sm },
   fieldLabel: { ...typography.body, color: colors.textMuted },
   controlBusy: { opacity: 0.5 },
@@ -624,5 +671,18 @@ const styles = StyleSheet.create({
   backupButton: { flexGrow: 1, minWidth: 180 },
   restoreNote: { ...typography.caption, color: colors.success, lineHeight: 18 },
   aboutRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  signOutButton: { marginTop: spacing.xl },
+  signOutChapter: { marginTop: spacing.xl, padding: spacing.md, gap: spacing.md, borderColor: colors.surfaceBorderStrong },
+  signOutCopy: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  signOutIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.danger,
+  },
+  signOutTitle: { ...typography.subtitle, color: colors.textPrimary },
+  signOutButton: { alignSelf: 'stretch' },
 });

@@ -86,7 +86,8 @@ export function AnnouncementsTab({
       ) : (
         <View style={adminStyles.list}>
           {items.map((item) => (
-            <GlassPanel key={item.id} style={adminStyles.row}>
+            <GlassPanel key={item.id} style={[adminStyles.row, adminStyles.rowHealthy]}>
+              <View pointerEvents="none" style={[adminStyles.rowAccent, adminStyles.rowAccentHealthy]} />
               <View style={[adminStyles.rowContent, { alignItems: 'flex-start' }]}>
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text style={adminStyles.title}>{item.title}</Text>

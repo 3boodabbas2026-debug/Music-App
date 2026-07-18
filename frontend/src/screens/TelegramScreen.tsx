@@ -42,6 +42,34 @@ const LIMITS: Array<{ label: string; value: number | null }> = [
   { label: 'All', value: null },
 ];
 
+const CORRIDOR_STEPS = ['Setup', 'Code', 'Secure', 'Sources', 'Import'] as const;
+
+function StepCorridor({ activeStep }: { activeStep: number }) {
+  return (
+    <View style={styles.corridor} accessibilityLabel={`Telegram setup step ${activeStep + 1} of ${CORRIDOR_STEPS.length}`}>
+      {CORRIDOR_STEPS.map((label, index) => {
+        const complete = index < activeStep;
+        const active = index === activeStep;
+        return (
+          <View key={label} style={styles.corridorStep}>
+            {index < CORRIDOR_STEPS.length - 1 ? (
+              <View style={[styles.corridorLine, (complete || active) && styles.corridorLineLit]} />
+            ) : null}
+            <View style={[styles.corridorMarker, complete && styles.corridorMarkerComplete, active && styles.corridorMarkerActive]}>
+              {complete ? (
+                <Ionicons name="checkmark" size={13} color={colors.textInverse} />
+              ) : (
+                <Text style={[styles.corridorNumber, active && styles.corridorNumberActive]}>{index + 1}</Text>
+              )}
+            </View>
+            <Text numberOfLines={1} style={[styles.corridorLabel, active && styles.corridorLabelActive]}>{label}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 export function TelegramScreen({ navigation }: Props) {
   const refreshLibrary = useLibraryStore((s) => s.refresh);
 
@@ -259,6 +287,15 @@ export function TelegramScreen({ navigation }: Props) {
   useEffect(() => setVisibleDialogCount(30), [dialogQuery]);
 
   const importing = importJob && (importJob.status === 'pending' || importJob.status === 'in_progress');
+  const corridorStep = phase === 'setup'
+    ? 0
+    : phase === 'code'
+      ? 1
+      : phase === 'password'
+        ? 2
+        : importJob || selectedFolder || selectedChatList.length > 0
+          ? 4
+          : 3;
 
   return (
     <View style={styles.root}>
@@ -274,6 +311,7 @@ export function TelegramScreen({ navigation }: Props) {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+          {phase !== 'loading' ? <StepCorridor activeStep={corridorStep} /> : null}
           {phase === 'loading' ? (
             <View accessibilityLiveRegion="polite" style={styles.loadingState}>
               <ActivityIndicator color={colors.cyan} />
@@ -282,7 +320,7 @@ export function TelegramScreen({ navigation }: Props) {
           ) : null}
 
           {phase === 'setup' && (
-            <GlassPanel style={styles.panel}>
+            <GlassPanel style={[styles.panel, styles.activeChapter]}>
               <View style={styles.panelContent}>
                 {hasSavedSettings ? (
                   <>
@@ -335,7 +373,7 @@ export function TelegramScreen({ navigation }: Props) {
           )}
 
           {phase === 'code' && (
-            <GlassPanel style={styles.panel}>
+            <GlassPanel style={[styles.panel, styles.activeChapter]}>
               <View style={styles.panelContent}>
                 <Text style={styles.panelTitle}>Enter the code</Text>
                 <Text style={styles.hint}>Telegram sent a login code to {phone}.</Text>
@@ -347,7 +385,7 @@ export function TelegramScreen({ navigation }: Props) {
           )}
 
           {phase === 'password' && (
-            <GlassPanel style={styles.panel}>
+            <GlassPanel style={[styles.panel, styles.activeChapter]}>
               <View style={styles.panelContent}>
                 <Text style={styles.panelTitle}>Two-step verification</Text>
                 <Text style={styles.hint}>Your account has a 2FA password — enter it to finish linking.</Text>
@@ -360,7 +398,7 @@ export function TelegramScreen({ navigation }: Props) {
 
           {phase === 'linked' && (
             <>
-              <GlassPanel style={styles.panel}>
+              <GlassPanel style={[styles.panel, styles.activeChapter]}>
                 <View style={styles.panelContent}>
                   <View style={styles.linkedRow}>
                     <View style={styles.linkedBadge}>
@@ -425,15 +463,18 @@ export function TelegramScreen({ navigation }: Props) {
                                   accessibilityState={{ checked: active }}
                                   style={[styles.dialogRow, active && styles.dialogRowActive]}
                                 >
-                                  <Ionicons
-                                    name={active ? 'checkbox' : 'square-outline'}
-                                    size={16}
-                                    color={active ? colors.cyan : colors.textMuted}
-                                  />
+                                  <View style={[styles.sourceMedallion, active && styles.sourceMedallionActive]}>
+                                    <Text style={[styles.sourceInitial, active && styles.sourceInitialActive]}>{dialog.title.trim().charAt(0).toUpperCase() || '?'}</Text>
+                                  </View>
                                   <Text numberOfLines={1} style={[styles.dialogTitle, active && styles.dialogTitleActive]}>
                                     {dialog.title}
                                   </Text>
                                   {dialog.username ? <Text style={styles.dialogHandle}>@{dialog.username}</Text> : null}
+                                  <Ionicons
+                                    name={active ? 'checkbox' : 'square-outline'}
+                                    size={17}
+                                    color={active ? colors.cyan : colors.textMuted}
+                                  />
                                 </Pressable>
                               );
                             })}
@@ -469,15 +510,18 @@ export function TelegramScreen({ navigation }: Props) {
                                   accessibilityState={{ checked: active }}
                                   style={[styles.dialogRow, active && styles.dialogRowActive]}
                                 >
-                                  <Ionicons
-                                    name={active ? 'radio-button-on' : 'radio-button-off'}
-                                    size={16}
-                                    color={active ? colors.cyan : colors.textMuted}
-                                  />
+                                  <View style={[styles.folderWell, active && styles.folderWellActive]}>
+                                    <Ionicons name={active ? 'folder-open' : 'folder-outline'} size={18} color={active ? colors.cyan : colors.textMuted} />
+                                  </View>
                                   <Text numberOfLines={1} style={[styles.dialogTitle, active && styles.dialogTitleActive]}>
                                     {folder.title}
                                   </Text>
                                   <Text style={styles.dialogHandle}>{folder.chat_count} chats</Text>
+                                  <Ionicons
+                                    name={active ? 'radio-button-on' : 'radio-button-off'}
+                                    size={17}
+                                    color={active ? colors.cyan : colors.textMuted}
+                                  />
                                 </Pressable>
                               );
                             })}
@@ -493,8 +537,14 @@ export function TelegramScreen({ navigation }: Props) {
               </GlassPanel>
 
               {(selectedFolder || selectedChatList.length > 0) && (
-                <GlassPanel style={styles.panel}>
+                <GlassPanel style={[styles.panel, styles.importSummary]}>
                   <View style={styles.panelContent}>
+                    <View style={styles.importSummaryHeading}>
+                      <View style={styles.importSummaryIcon}>
+                        <Ionicons name="download-outline" size={18} color={colors.cyan} />
+                      </View>
+                      <Text style={styles.importSummaryEyebrow}>IMPORT PLAN</Text>
+                    </View>
                     <Text style={styles.panelTitle} numberOfLines={1}>
                       {selectedFolder
                         ? `Import folder "${selectedFolder.title}" (${selectedFolder.chat_count} chats)`
@@ -527,7 +577,7 @@ export function TelegramScreen({ navigation }: Props) {
               )}
 
               {importJob && (
-                <GlassPanel style={styles.panel}>
+                <GlassPanel style={[styles.panel, styles.importJobPanel]}>
                   <View style={[styles.panelContent, styles.jobRow]}>
                     {importing ? (
                       <ProgressRing progress={importJob.progress_pct / 100} size={48} strokeWidth={4}>
@@ -569,8 +619,46 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.xl },
   headerText: { flex: 1 },
   scroll: { gap: spacing.md, paddingBottom: spacing.xxl },
+  corridor: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.lg,
+    backgroundColor: colors.surfaceBright,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  corridorStep: { position: 'relative', flex: 1, alignItems: 'center', gap: spacing.xs },
+  corridorLine: {
+    position: 'absolute',
+    top: 13,
+    left: '50%',
+    right: '-50%',
+    height: 1,
+    backgroundColor: colors.surfaceBorder,
+  },
+  corridorLineLit: { backgroundColor: colors.cyan },
+  corridorMarker: {
+    zIndex: 1,
+    width: 28,
+    height: 28,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.surfaceBorderStrong,
+    backgroundColor: colors.bgElevated,
+  },
+  corridorMarkerComplete: { borderColor: colors.cyan, backgroundColor: colors.cyan },
+  corridorMarkerActive: { borderColor: colors.gold, backgroundColor: colors.surfaceElevated },
+  corridorNumber: { ...numericTypography.rank, fontSize: 11, lineHeight: 15, color: colors.textMuted },
+  corridorNumberActive: { color: colors.gold },
+  corridorLabel: { ...typography.caption, fontSize: 9, lineHeight: 13, color: colors.textMuted, textAlign: 'center' },
+  corridorLabelActive: { color: colors.textPrimary, fontFamily: 'Sora_600SemiBold' },
   loadingState: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: spacing.md },
   panel: {},
+  activeChapter: { borderColor: colors.surfaceBorderStrong },
   panelContent: { padding: spacing.lg, gap: spacing.md },
   panelTitle: { ...typography.title, fontSize: 19, lineHeight: 24, color: colors.textPrimary },
   hint: { ...typography.caption, color: colors.textMuted },
@@ -608,12 +696,38 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    minHeight: 48,
+    minHeight: 56,
     paddingVertical: spacing.sm + 2,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-  dialogRowActive: { backgroundColor: colors.surfaceElevated },
+  dialogRowActive: { backgroundColor: colors.surfaceElevated, borderColor: colors.cyan, borderLeftWidth: 3 },
+  sourceMedallion: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceBright,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  sourceMedallionActive: { borderColor: colors.cyan, backgroundColor: colors.surfaceElevated },
+  sourceInitial: { ...typography.label, color: colors.textMuted },
+  sourceInitialActive: { color: colors.cyan },
+  folderWell: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceBright,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorder,
+  },
+  folderWellActive: { borderColor: colors.cyan, backgroundColor: colors.surfaceElevated },
   dialogTitle: { ...typography.body, color: colors.textSecondary, flex: 1 },
   dialogTitleActive: { color: colors.textPrimary },
   dialogHandle: { ...typography.caption, fontSize: 11, color: colors.textMuted },
@@ -628,6 +742,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceBright,
   },
   showMoreLabel: { ...typography.caption, fontFamily: 'Sora_500Medium', color: colors.cyan },
+  importSummary: { borderColor: colors.cyan },
+  importSummaryHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  importSummaryIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: radii.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceElevated,
+    borderWidth: 1,
+    borderColor: colors.surfaceBorderStrong,
+  },
+  importSummaryEyebrow: { ...typography.eyebrow, color: colors.cyan },
+  importJobPanel: { borderColor: colors.surfaceBorderStrong },
   jobRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   jobPct: { ...numericTypography.percent, color: colors.cyan },
 });

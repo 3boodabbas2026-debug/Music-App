@@ -39,6 +39,14 @@ const STATUS_META: Record<Job['status'], { label: string; icon: keyof typeof Ion
   cancelled: { label: 'Cancelled', icon: 'close', tone: 'neutral' },
 };
 
+const STATUS_COLOR: Record<Job['status'], string> = {
+  pending: colors.textMuted,
+  in_progress: colors.cyan,
+  complete: colors.success,
+  failed: colors.danger,
+  cancelled: colors.textMuted,
+};
+
 function sourceName(url: string | null): string {
   if (!url) return 'Media import';
   if (url.startsWith('telegram:')) return 'Telegram import';
@@ -240,6 +248,7 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
       const exists = current.some((job) => job.id === updated.id);
       return exists ? current.map((job) => (job.id === updated.id ? updated : job)) : [updated, ...current];
     });
+    setSelectedJob((current) => current?.id === updated.id ? updated : current);
     if (updated.status === 'complete' && updated.result_media) upsertMedia(updated.result_media);
   }, [upsertMedia]);
 
@@ -352,25 +361,6 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
             </GlassPanel>
           ) : null}
 
-          {selectedJob ? (
-            <GlassPanel style={styles.detailPanel}>
-              <View style={styles.detailHeading}>
-                <View style={styles.detailCopy}>
-                  <Text style={styles.detailEyebrow}>{STATUS_META[selectedJob.status].label.toUpperCase()}</Text>
-                  <Text style={styles.detailTitle}>{jobTitle(selectedJob)}</Text>
-                </View>
-                <PressableScale onPress={() => setSelectedJob(null)} accessibilityLabel="Close import details" style={styles.iconButton}>
-                  <Ionicons name="close" size={18} color={colors.textSecondary} />
-                </PressableScale>
-              </View>
-              <Text selectable style={styles.detailSource}>{selectedJob.source_url ?? 'No source link recorded'}</Text>
-              <Text style={styles.detailBody}>{selectedJob.error_message ? friendlyJobError(selectedJob.error_message) : friendlyJobStage(selectedJob.stage_label, STATUS_META[selectedJob.status].label)}</Text>
-              {(selectedJob.status === 'failed' || selectedJob.status === 'cancelled') && selectedJob.source_url ? (
-                <Button label="Restart import" icon="refresh" onPress={() => void handleRetry(selectedJob)} style={styles.detailAction} />
-              ) : null}
-            </GlassPanel>
-          ) : null}
-
           {jobs === null ? (
             <ActivitySkeleton />
           ) : loadError ? (
@@ -405,15 +395,50 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
           </>}
           renderItem={({ item, index }) => {
             const beginsHistory = showFinished && finished.length > 0 && index === active.length;
+            const running = item.status === 'pending' || item.status === 'in_progress';
+            const selected = selectedJob?.id === item.id;
             return (
-              <View style={styles.rowReveal}>
-                {beginsHistory && active.length > 0 ? <Text style={styles.sectionTitle}>HISTORY</Text> : null}
+              <View style={[styles.rowReveal, running && styles.timelineRow]}>
+                {beginsHistory && active.length > 0 ? (
+                  <View style={styles.historyDivider}>
+                    <View style={styles.historyRule} />
+                    <Text style={styles.sectionTitle}>HISTORY</Text>
+                    <View style={styles.historyRule} />
+                  </View>
+                ) : null}
+                {running ? (
+                  <View pointerEvents="none" style={styles.signalRail}>
+                    <View style={styles.signalNode} />
+                  </View>
+                ) : null}
                 <JobRow
                   job={item}
                   onCancel={() => void handleCancel(item)}
                   onRetry={() => void handleRetry(item)}
                   onOpen={() => void openJob(item)}
                 />
+                {selected ? (
+                  <GlassPanel style={[styles.detailPanel, { borderColor: STATUS_COLOR[item.status] }]}>
+                    <View pointerEvents="none" style={[styles.detailAccent, { backgroundColor: STATUS_COLOR[item.status] }]} />
+                    <View style={styles.detailHeading}>
+                      <View style={[styles.detailGlyph, { borderColor: STATUS_COLOR[item.status] }]}>
+                        <Ionicons name={sourceIcon(item.source_url)} size={18} color={STATUS_COLOR[item.status]} />
+                      </View>
+                      <View style={styles.detailCopy}>
+                        <Text style={[styles.detailEyebrow, { color: STATUS_COLOR[item.status] }]}>{STATUS_META[item.status].label.toUpperCase()} · {sourceName(item.source_url).toUpperCase()}</Text>
+                        <Text style={styles.detailTitle}>{jobTitle(item)}</Text>
+                      </View>
+                      <PressableScale onPress={() => setSelectedJob(null)} accessibilityLabel="Close import details" style={styles.iconButton}>
+                        <Ionicons name="close" size={18} color={colors.textSecondary} />
+                      </PressableScale>
+                    </View>
+                    <Text selectable style={styles.detailSource}>{item.source_url ?? 'No source link recorded'}</Text>
+                    <Text style={styles.detailBody}>{item.error_message ? friendlyJobError(item.error_message) : friendlyJobStage(item.stage_label, STATUS_META[item.status].label)}</Text>
+                    {(item.status === 'failed' || item.status === 'cancelled') && item.source_url ? (
+                      <Button label="Restart import" icon="refresh" onPress={() => void handleRetry(item)} style={styles.detailAction} />
+                    ) : null}
+                  </GlassPanel>
+                ) : null}
               </View>
             );
           }}
@@ -452,7 +477,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   summaryItem: { flex: 1, alignItems: 'center', gap: 2 },
-  summaryValue: { ...typography.title, fontSize: 20, lineHeight: 25, color: colors.textPrimary },
+  summaryValue: { ...numericTypography.total, fontSize: 24, lineHeight: 30, color: colors.textPrimary },
   summaryValueAttention: { color: colors.danger },
   summaryLabel: { ...typography.caption, fontSize: 11, color: colors.textMuted },
   summaryDivider: { width: 1, height: 30, backgroundColor: glass.stroke },
@@ -486,7 +511,29 @@ const styles = StyleSheet.create({
   clearButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.sm },
   clearButtonText: { ...typography.caption, fontFamily: 'Sora_500Medium', color: colors.cyan },
   list: { gap: spacing.sm },
-  rowReveal: { width: '100%' },
+  rowReveal: { position: 'relative', width: '100%' },
+  timelineRow: { paddingLeft: spacing.md },
+  signalRail: {
+    position: 'absolute',
+    left: 2,
+    top: 24,
+    bottom: -spacing.md,
+    width: 1,
+    backgroundColor: glass.tintPrimaryStroke,
+  },
+  signalNode: {
+    position: 'absolute',
+    top: 18,
+    left: -4,
+    width: 9,
+    height: 9,
+    borderRadius: radii.pill,
+    backgroundColor: colors.cyan,
+    borderWidth: 2,
+    borderColor: colors.bg,
+  },
+  historyDivider: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.sm },
+  historyRule: { flex: 1, height: 1, backgroundColor: colors.violet },
   rowSeparator: { height: spacing.sm },
   progressText: { ...numericTypography.percent, fontSize: 9, lineHeight: 13, color: colors.cyan },
   jobSourceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
@@ -501,8 +548,18 @@ const styles = StyleSheet.create({
   },
   retryButton: { backgroundColor: glass.tintPrimary },
   pressed: { opacity: 0.68 },
-  detailPanel: { marginBottom: spacing.md, padding: spacing.md, gap: spacing.sm },
+  detailPanel: { position: 'relative', marginTop: spacing.xs, padding: spacing.md, paddingLeft: spacing.lg, gap: spacing.sm, borderTopLeftRadius: radii.xs },
+  detailAccent: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
   detailHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  detailGlyph: {
+    width: 40,
+    height: 40,
+    borderRadius: radii.control,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    backgroundColor: colors.surfaceElevated,
+  },
   detailCopy: { flex: 1, minWidth: 0 },
   detailEyebrow: { ...typography.eyebrow, color: colors.cyan },
   detailTitle: { ...typography.subtitle, color: colors.textPrimary, marginTop: 2 },

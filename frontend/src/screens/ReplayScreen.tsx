@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { Artwork } from '../components/ui/Artwork';
 import { Button } from '../components/ui/Button';
@@ -16,7 +18,7 @@ import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { usePlayHistoryStore } from '../store/playHistoryStore';
 import { toast } from '../store/toastStore';
-import { colors, numericTypography, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, gradients, numericTypography, radii, spacing, typography } from '../theme/tokens';
 import { displayArtist, displayTitle } from '../utils/mediaDisplay';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -108,21 +110,33 @@ export function ReplayScreen() {
             style={styles.rangeControl}
           />
 
-          <View style={styles.statsRow}>
-            <GlassPanel style={styles.statTile}>
-              <Text style={styles.statValue}>{hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`}</Text>
-              <Text style={styles.statLabel}>listened</Text>
-            </GlassPanel>
-            <GlassPanel style={styles.statTile}>
-              <Text style={styles.statValue}>{topTracks.reduce((sum, track) => sum + track.count, 0)}</Text>
-              <Text style={styles.statLabel}>plays counted</Text>
-            </GlassPanel>
-            <GlassPanel style={styles.statTile}>
-              <Text style={styles.statValue}>{topArtists.length}</Text>
-              <Text style={styles.statLabel}>artists in rotation</Text>
-            </GlassPanel>
-          </View>
-          <Text style={styles.comparison}>{comparison}</Text>
+          <GlassPanel variant="modal" style={styles.poster}>
+            <LinearGradient pointerEvents="none" colors={gradients.celebratorySheen} style={styles.posterSheen} />
+            <View style={styles.posterContent}>
+              <View style={styles.posterMasthead}>
+                <Text style={styles.posterEyebrow}>LISTENING TIME</Text>
+                <Ionicons name="sparkles" size={17} color={colors.gold} />
+              </View>
+              <Text adjustsFontSizeToFit numberOfLines={1} style={styles.posterMetric}>
+                {hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`}
+              </Text>
+              <View style={styles.comparisonLine}>
+                <View style={styles.comparisonStar}><Ionicons name="star" size={10} color={colors.gold} /></View>
+                <Text style={styles.comparison}>{comparison}</Text>
+              </View>
+              <View style={styles.supportingStats}>
+                <View style={styles.supportingStat}>
+                  <Text style={styles.statValue}>{topTracks.reduce((sum, track) => sum + track.count, 0)}</Text>
+                  <Text style={styles.statLabel}>plays counted</Text>
+                </View>
+                <View style={styles.posterRule} />
+                <View style={styles.supportingStat}>
+                  <Text style={styles.statValue}>{topArtists.length}</Text>
+                  <Text style={styles.statLabel}>artists in rotation</Text>
+                </View>
+              </View>
+            </View>
+          </GlassPanel>
 
           {topTracks.length === 0 ? (
             <View style={styles.emptyBody}>
@@ -157,7 +171,7 @@ export function ReplayScreen() {
                     >
                       <GlassPanel style={styles.trackRow}>
                         <View style={styles.trackContent}>
-                          <Text style={styles.rank}>{index + 1}</Text>
+                          <Text style={[styles.rank, index === 0 && styles.rankLeader]}>{index + 1}</Text>
                           <Artwork
                             media={media ?? { id: entry.event.mediaId, title: entry.event.title, artist: entry.event.artist }}
                             size={44}
@@ -170,8 +184,9 @@ export function ReplayScreen() {
                               {media ? displayArtist(media) ?? entry.event.artist : entry.event.artist}
                             </Text>
                           </View>
-                          <View style={styles.countChip}>
-                            <Text style={styles.countText}>{entry.count}×</Text>
+                          <Ionicons name="play-circle" size={20} color={colors.cyan} />
+                          <View style={[styles.countChip, index === 0 && styles.countChipLeader]}>
+                            <Text style={[styles.countText, index === 0 && styles.countTextLeader]}>{entry.count}×</Text>
                           </View>
                         </View>
                       </GlassPanel>
@@ -187,12 +202,12 @@ export function ReplayScreen() {
                     {topArtists.map((entry, index) => (
                       <GlassPanel key={entry.artist} style={styles.artistRow}>
                         <View style={styles.trackContent}>
-                          <Text style={styles.rank}>{index + 1}</Text>
+                          <Text style={[styles.rank, index === 0 && styles.rankLeader]}>{index + 1}</Text>
                           <Text numberOfLines={1} style={[styles.trackTitle, styles.trackCopy]}>
                             {entry.artist}
                           </Text>
-                          <View style={styles.countChip}>
-                            <Text style={styles.countText}>{entry.count} plays</Text>
+                          <View style={[styles.countChip, index === 0 && styles.countChipLeader]}>
+                            <Text style={[styles.countText, index === 0 && styles.countTextLeader]}>{entry.count} plays</Text>
                           </View>
                         </View>
                       </GlassPanel>
@@ -214,12 +229,30 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.md, marginBottom: spacing.xl },
   heroHeader: { flex: 1 },
   hero: { ...typography.display, fontSize: 30, lineHeight: 37 },
-  statsRow: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.xl },
   rangeControl: { marginBottom: spacing.lg },
-  statTile: { flex: 1, borderRadius: radii.lg, padding: spacing.md, alignItems: 'center', gap: 2 },
+  poster: { marginBottom: spacing.xl, borderRadius: radii.hero, borderColor: glass.strokeModal },
+  posterSheen: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.14 },
+  posterContent: { padding: spacing.xl, gap: spacing.md },
+  posterMasthead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  posterEyebrow: { ...typography.eyebrow, color: colors.gold },
+  posterMetric: { ...typography.display, fontSize: 52, lineHeight: 60, letterSpacing: -2, color: colors.textPrimary },
+  comparisonLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  comparisonStar: {
+    width: 24,
+    height: 24,
+    borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: colors.surfaceElevated,
+  },
+  supportingStats: { flexDirection: 'row', alignItems: 'stretch', paddingTop: spacing.md, borderTopWidth: 1, borderTopColor: glass.stroke },
+  supportingStat: { flex: 1, gap: spacing.xs },
+  posterRule: { width: 1, marginHorizontal: spacing.md, backgroundColor: glass.stroke },
   statValue: { ...numericTypography.total, color: colors.textPrimary },
-  statLabel: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
-  comparison: { ...typography.caption, color: colors.textSecondary, textAlign: 'center', marginTop: -spacing.md, marginBottom: spacing.xl },
+  statLabel: { ...typography.caption, color: colors.textMuted },
+  comparison: { ...typography.body, flex: 1, color: colors.textSecondary },
   emptyBody: { flex: 1, justifyContent: 'center' },
   sectionHeader: { marginBottom: spacing.sm },
   artistSection: { marginTop: spacing.xl },
@@ -232,6 +265,7 @@ const styles = StyleSheet.create({
   trackContent: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
   trackCopy: { flex: 1, minWidth: 0 },
   rank: { ...numericTypography.rank, color: colors.textMuted, width: 20 },
+  rankLeader: { color: colors.gold },
   trackTitle: { ...typography.subtitle, fontSize: 15, color: colors.textPrimary },
   trackArtist: { ...typography.caption, color: colors.textMuted },
   countChip: {
@@ -240,5 +274,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     backgroundColor: colors.surfaceElevated,
   },
-  countText: { ...numericTypography.total, fontSize: 11, lineHeight: 16, letterSpacing: 0.1, color: colors.gold },
+  countChipLeader: { borderWidth: 1, borderColor: colors.gold },
+  countText: { ...numericTypography.total, fontSize: 11, lineHeight: 16, letterSpacing: 0.1, color: colors.textSecondary },
+  countTextLeader: { color: colors.gold },
 });
