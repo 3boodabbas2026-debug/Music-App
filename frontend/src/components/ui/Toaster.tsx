@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,9 +28,13 @@ function ToastCard({ toast }: { toast: Toast }) {
   }, [anim, reduceMotion]);
 
   const meta = TONE_META[toast.tone];
+  const dismiss = useToastStore((state) => state.dismiss);
 
   return (
     <Animated.View
+      role={toast.tone === 'error' ? 'alert' : 'status'}
+      accessibilityLiveRegion={toast.tone === 'error' ? 'assertive' : 'polite'}
+      accessibilityLabel={`${toast.tone}: ${toast.message}`}
       style={[
         styles.card,
         {
@@ -43,6 +47,15 @@ function ToastCard({ toast }: { toast: Toast }) {
       <Text numberOfLines={2} style={styles.message}>
         {toast.message}
       </Text>
+      <Pressable
+        onPress={() => dismiss(toast.id)}
+        accessibilityRole="button"
+        accessibilityLabel="Dismiss notification"
+        hitSlop={8}
+        style={({ pressed }) => [styles.dismiss, pressed && styles.dismissPressed]}
+      >
+        <Ionicons name="close" size={18} color={colors.textSecondary} />
+      </Pressable>
     </Animated.View>
   );
 }
@@ -55,7 +68,7 @@ export function Toaster() {
   if (toasts.length === 0) return null;
 
   return (
-    <View pointerEvents="none" style={[styles.holder, { top: insets.top + spacing.sm }]}>
+    <View pointerEvents="box-none" style={[styles.holder, { top: insets.top + spacing.sm }]}>
       {toasts.map((t) => (
         <ToastCard key={t.id} toast={t} />
       ))}
@@ -87,6 +100,8 @@ const styles = StyleSheet.create({
     ...typography.body,
     fontSize: 14,
     color: colors.textPrimary,
-    flexShrink: 1,
+    flex: 1,
   },
+  dismiss: { width: 36, height: 36, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  dismissPressed: { backgroundColor: glass.fillBright },
 });

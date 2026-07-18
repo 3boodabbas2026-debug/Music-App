@@ -1,8 +1,11 @@
 import { PropsWithChildren, ReactNode, useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   Animated,
   Easing,
+  findNodeHandle,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -63,6 +66,75 @@ export function CompactGlassSheet({
   const reduceMotion = useReducedMotion();
   const [panelHeight, setPanelHeight] = useState(0);
   const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const panelRef = useRef<View>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const wasVisible = useRef(false);
+
+  useEffect(() => {
+    if (visible && !wasVisible.current) {
+      if (Platform.OS === 'web') openerRef.current = document.activeElement as HTMLElement | null;
+      const timer = setTimeout(() => {
+        if (Platform.OS === 'web') {
+          const panel = panelRef.current as unknown as HTMLElement | null;
+          const first = panel?.querySelector<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+          );
+          (first ?? panel)?.focus?.();
+        } else {
+          const node = findNodeHandle(panelRef.current);
+          if (node) AccessibilityInfo.setAccessibilityFocus(node);
+        }
+      }, 60);
+      wasVisible.current = true;
+      return () => clearTimeout(timer);
+    }
+    if (!visible && wasVisible.current) {
+      wasVisible.current = false;
+      if (Platform.OS === 'web') {
+        const opener = openerRef.current;
+        setTimeout(() => opener?.isConnected && opener.focus(), 0);
+      }
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !visible) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current as unknown as HTMLElement | null;
+      if (!panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.offsetParent !== null);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!panel.contains(document.activeElement)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [onClose, visible]);
 
   useEffect(() => {
     progress.stopAnimation();
@@ -155,7 +227,11 @@ export function CompactGlassSheet({
             edgeColor={glass.edge}
           >
             <View
+              ref={panelRef}
               testID={testID}
+              role="dialog"
+              tabIndex={-1}
+              accessibilityViewIsModal
               accessibilityLabel={accessibilityLabel}
               style={styles.content}
             >

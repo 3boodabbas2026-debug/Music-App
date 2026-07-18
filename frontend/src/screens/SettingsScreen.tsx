@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 
 import { BrandMark } from '../components/ui/BrandMark';
+import { AccountSecurityPanel } from '../components/account/AccountSecurityPanel';
 import { Button } from '../components/ui/Button';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { IconButton } from '../components/ui/IconButton';
@@ -23,6 +24,7 @@ import { watchJob } from '../services/api/jobSocket';
 import * as offlineMedia from '../services/storage/offlineMedia';
 import type { OfflineEntry } from '../services/storage/offlineMedia';
 import { useAuthStore } from '../store/authStore';
+import { requestSignOut } from '../store/signOutStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { toast } from '../store/toastStore';
@@ -117,7 +119,6 @@ export function SettingsScreen() {
   const { width } = useResponsive();
   const smallPhone = width < 390;
   const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
   const setStoragePreference = useAuthStore((s) => s.setStoragePreference);
   const [savingStoragePref, setSavingStoragePref] = useState(false);
 
@@ -309,14 +310,7 @@ export function SettingsScreen() {
             <SectionHeader title="Account" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
             <GlassPanel style={styles.panel}>
               <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
-                <View style={[styles.fieldRow, smallPhone && styles.fieldRowSmall]}>
-                  <Text style={styles.fieldLabel}>Name</Text>
-                  <Text style={[styles.fieldValue, smallPhone && styles.fieldValueSmall]}>{user?.display_name ?? '—'}</Text>
-                </View>
-                <View style={[styles.fieldRow, smallPhone && styles.fieldRowSmall]}>
-                  <Text style={styles.fieldLabel}>Email</Text>
-                  <Text style={[styles.fieldValue, smallPhone && styles.fieldValueSmall]}>{user?.email ?? '—'}</Text>
-                </View>
+                <AccountSecurityPanel />
               </View>
             </GlassPanel>
           </Reveal>
@@ -459,7 +453,7 @@ export function SettingsScreen() {
           <Button
             label="Sign out"
             variant="danger"
-            onPress={() => logout()}
+            onPress={() => void requestSignOut()}
             style={styles.signOutButton}
           />
         </ScrollView>

@@ -23,6 +23,9 @@ type AuthState = {
   startAccountSwitch: (email?: string) => Promise<void>;
   forgetAccount: (userId: string) => Promise<void>;
   setStoragePreference: (preference: StoragePreference) => Promise<void>;
+  updateProfile: (displayName: string, email: string, currentPassword: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  deleteAccount: (currentPassword: string) => Promise<void>;
 };
 
 /** True only for a genuine "this token is invalid" rejection — never for "we couldn't reach the server". */
@@ -127,6 +130,24 @@ export const useAuthStore = create<AuthState>((set) => ({
     const updated = await authApi.updateStoragePreference(preference);
     await tokenStorage.setCachedUser(updated);
     set({ user: updated });
+  },
+
+  async updateProfile(displayName, email, currentPassword) {
+    const updated = await authApi.updateProfile({ displayName, email, currentPassword });
+    await tokenStorage.setCachedUser(updated);
+    const rememberedAccounts = await accountStorage.remember(updated);
+    set({ user: updated, rememberedAccounts });
+  },
+
+  async changePassword(currentPassword, newPassword) {
+    await authApi.changePassword(currentPassword, newPassword);
+  },
+
+  async deleteAccount(currentPassword) {
+    await authApi.deleteAccount(currentPassword);
+    invalidateApiSession();
+    await Promise.all([tokenStorage.clear(), resetSessionStores()]);
+    set({ user: null, pendingAccountEmail: null, isAuthenticated: false, isOfflineSession: false });
   },
 }));
 

@@ -37,3 +37,29 @@ export async function updateStoragePreference(preference: StoragePreference): Pr
   const { data } = await apiClient.patch<User>('/auth/me/settings', { storage_preference: preference });
   return data;
 }
+
+/** Endpoint-ready auth calls. The current backend has not shipped these routes yet. */
+export async function requestPasswordRecovery(email: string): Promise<void> {
+  await apiClient.post('/auth/password/recovery', { email });
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  await apiClient.post('/auth/password/reset', { token, new_password: newPassword });
+}
+
+export async function updateProfile(input: { displayName: string; email: string; currentPassword: string }): Promise<User> {
+  const { data } = await apiClient.patch<User>('/auth/me/profile', {
+    display_name: input.displayName,
+    email: input.email,
+    current_password: input.currentPassword,
+  });
+  return data;
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await apiClient.post('/auth/me/password', { current_password: currentPassword, new_password: newPassword });
+}
+
+export async function deleteAccount(currentPassword: string): Promise<void> {
+  await apiClient.delete('/auth/me', { data: { current_password: currentPassword, confirmation: 'DELETE' } });
+}

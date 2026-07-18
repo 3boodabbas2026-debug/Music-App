@@ -22,7 +22,8 @@ export const useToastStore = create<ToastState>((set, get) => ({
   show(message, tone = 'info') {
     const id = ++counter;
     set({ toasts: [...get().toasts, { id, message, tone }] });
-    setTimeout(() => get().dismiss(id), 3200);
+    // Errors remain until explicitly dismissed so recovery instructions are never lost.
+    if (tone !== 'error') setTimeout(() => get().dismiss(id), tone === 'success' ? 5000 : 6500);
   },
 
   dismiss(id) {

@@ -1,3 +1,7 @@
+> **ARCHIVED / SUPERSEDED (2026-07-18).** This audit is complete and no longer
+> the active worklist. Current work is driven by `CODEX_LOOP_STATE.md` and the
+> fresh findings in `TEST_FINDINGS.md`. Kept for history only.
+
 # Star Hollow UI Audit — Live Issue List
 
 Working list from a screenshot-by-screenshot pass over the app (mobile-first,

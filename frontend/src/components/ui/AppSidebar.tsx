@@ -8,6 +8,7 @@ import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { navigationRef } from '../../navigation/navigationRef';
 import type { MainTabParamList } from '../../navigation/types';
 import { useAuthStore } from '../../store/authStore';
+import { requestSignOut } from '../../store/signOutStore';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useUiStore } from '../../store/uiStore';
@@ -160,7 +161,6 @@ export function AppSidebar({
   onNavigate?: () => void;
 }) {
   const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
   const currentMedia = usePlayerStore((state) => state.currentMedia);
   const libraryItems = useLibraryStore((state) => state.items);
   const { backendOnline, networkOnline } = useOnlineStatus();
@@ -318,7 +318,7 @@ export function AppSidebar({
         <Pressable
           onPress={() => {
             onNavigate?.();
-            void logout();
+            void requestSignOut();
           }}
           accessibilityRole="button"
           accessibilityLabel="Sign out"

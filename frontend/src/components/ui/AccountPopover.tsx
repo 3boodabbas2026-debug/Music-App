@@ -7,6 +7,7 @@ import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { RAIL_WIDTH, useResponsive } from '../../hooks/useResponsive';
 import { navigationRef } from '../../navigation/navigationRef';
 import { useAuthStore } from '../../store/authStore';
+import { requestSignOut } from '../../store/signOutStore';
 import { useUiStore } from '../../store/uiStore';
 import { colors, glass, motion, radii, spacing, typography } from '../../theme/tokens';
 import { GlassPanel } from './GlassPanel';
@@ -15,7 +16,6 @@ export function AccountPopover() {
   const open = useUiStore((state) => state.accountMenuOpen);
   const close = useUiStore((state) => state.closeAccountMenu);
   const user = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
   const rememberedAccounts = useAuthStore((state) => state.rememberedAccounts);
   const startAccountSwitch = useAuthStore((state) => state.startAccountSwitch);
   const forgetAccount = useAuthStore((state) => state.forgetAccount);
@@ -160,7 +160,7 @@ export function AccountPopover() {
           <Pressable
             onPress={() => {
               close();
-              void logout();
+              void requestSignOut();
             }}
             accessibilityRole="button"
             accessibilityLabel="Sign out"

@@ -3,10 +3,12 @@ import { Text, StyleSheet, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { AuthLayout } from '../components/ui/AuthLayout';
+import { PasswordRecoverySheet } from '../components/auth/PasswordRecoverySheet';
 import { Button } from '../components/ui/Button';
 import { PressableScale } from '../components/ui/PressableScale';
 import { Reveal } from '../components/ui/Reveal';
 import { TextField } from '../components/ui/TextField';
+import { FormError } from '../components/ui/FormError';
 import { useAuthStore } from '../store/authStore';
 import { apiErrorMessage } from '../utils/apiError';
 import { colors, typography } from '../theme/tokens';
@@ -22,6 +24,7 @@ export function LoginScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
 
   useEffect(() => {
     if (pendingAccountEmail) setEmail(pendingAccountEmail);
@@ -86,6 +89,7 @@ export function LoginScreen({ navigation }: Props) {
         keyboardType="email-address"
         placeholder="you@example.com"
         onSubmitEditing={handleLogin}
+        credentialType="username"
       />
       <TextField
         label="Password"
@@ -94,16 +98,18 @@ export function LoginScreen({ navigation }: Props) {
         secureTextEntry
         placeholder="••••••••"
         onSubmitEditing={handleLogin}
+        credentialType="current-password"
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <FormError message={error} />
       <Button label={!email || !password ? 'Enter email and password' : 'Log in'} onPress={handleLogin} loading={loading} disabled={!email || !password} />
+      <Button label="Forgot password?" variant="ghost" onPress={() => setRecoveryOpen(true)} />
       <Button label="Create an account" variant="ghost" onPress={() => navigation.navigate('Register')} />
+      <PasswordRecoverySheet visible={recoveryOpen} initialEmail={email} onClose={() => setRecoveryOpen(false)} />
     </AuthLayout>
   );
 }
 
 const styles = StyleSheet.create({
-  error: { ...typography.caption, color: colors.danger, textAlign: 'center' },
   switching: { ...typography.caption, color: colors.textSecondary, textAlign: 'center' },
   rememberedBlock: { gap: 6 },
   rememberedLabel: { ...typography.eyebrow, fontSize: 9, color: colors.textMuted },

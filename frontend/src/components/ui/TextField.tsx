@@ -9,7 +9,16 @@ type Props = TextInputProps & {
   label?: string;
   error?: string;
   hint?: string;
+  credentialType?: 'username' | 'current-password' | 'new-password' | 'name' | 'one-time-code';
 };
+
+const CREDENTIAL_META = {
+  username: { autoComplete: 'username', textContentType: 'username' },
+  'current-password': { autoComplete: 'current-password', textContentType: 'password' },
+  'new-password': { autoComplete: 'new-password', textContentType: 'newPassword' },
+  name: { autoComplete: 'name', textContentType: 'name' },
+  'one-time-code': { autoComplete: 'one-time-code', textContentType: 'oneTimeCode' },
+} as const;
 
 export function TextField({
   label,
@@ -20,6 +29,9 @@ export function TextField({
   onBlur,
   secureTextEntry,
   accessibilityLabel,
+  credentialType,
+  autoComplete,
+  textContentType,
   ...rest
 }: Props) {
   const [focused, setFocused] = useState(false);
@@ -27,6 +39,7 @@ export function TextField({
   const reduceMotion = useReducedMotion();
   const focusProgress = useRef(new Animated.Value(0)).current;
   const isSecure = !!secureTextEntry;
+  const credentialMeta = credentialType ? CREDENTIAL_META[credentialType] : undefined;
 
   useEffect(() => {
     if (reduceMotion) {
@@ -57,6 +70,8 @@ export function TextField({
           {...rest}
           accessibilityLabel={accessibilityLabel ?? label}
           accessibilityState={{ disabled: rest.editable === false }}
+          autoComplete={credentialMeta?.autoComplete ?? autoComplete}
+          textContentType={credentialMeta?.textContentType ?? textContentType}
           placeholderTextColor={colors.textMuted}
           selectionColor={colors.cyan}
           secureTextEntry={isSecure && !revealed}
