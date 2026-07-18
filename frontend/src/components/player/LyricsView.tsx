@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { Button } from '../ui/Button';
 import { fetchLyrics, type Lyrics } from '../../services/api/lyrics';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors, spacing, typography } from '../../theme/tokens';
@@ -21,6 +22,8 @@ export function LyricsView() {
 
   const [lyrics, setLyrics] = useState<Lyrics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const requestGeneration = useRef(0);
 
   const scrollRef = useRef<ScrollView>(null);
   const lineOffsets = useRef<number[]>([]);
@@ -29,20 +32,46 @@ export function LyricsView() {
 
   useEffect(() => {
     let alive = true;
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
     setLyrics(null);
+    setError(null);
     lineOffsets.current = [];
     lastScrolledIndex.current = -1;
     if (!currentMedia) return;
     setLoading(true);
     fetchLyrics(currentMedia)
       .then((result) => {
-        if (alive) setLyrics(result);
+        if (alive && generation === requestGeneration.current) setLyrics(result);
       })
-      .finally(() => alive && setLoading(false));
+      .catch((caught) => {
+        if (alive && generation === requestGeneration.current) {
+          setError(caught instanceof Error ? caught.message : 'Lyrics could not be loaded.');
+        }
+      })
+      .finally(() => alive && generation === requestGeneration.current && setLoading(false));
     return () => {
       alive = false;
     };
   }, [currentMedia?.id]);
+
+  async function retry() {
+    if (!currentMedia || loading) return;
+    const generation = requestGeneration.current + 1;
+    requestGeneration.current = generation;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await fetchLyrics(currentMedia, { forceRefresh: true });
+      if (generation === requestGeneration.current) setLyrics(result);
+    } catch (caught) {
+      if (generation === requestGeneration.current) {
+        setError(caught instanceof Error ? caught.message : 'Lyrics could not be loaded.');
+      }
+    } finally {
+      if (generation === requestGeneration.current) setLoading(false);
+    }
+  }
 
   const activeIndex = useMemo(() => {
     if (!lyrics?.synced?.length) return -1;
@@ -68,11 +97,22 @@ export function LyricsView() {
 
   if (!currentMedia) return null;
 
-  if (loading) {
+  if (loading && !lyrics) {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator color={colors.cyan} />
         <Text style={styles.stateText}>Finding the words…</Text>
+      </View>
+    );
+  }
+
+  if (error && !lyrics) {
+    return (
+      <View style={styles.stateWrap} accessibilityRole="alert">
+        <Ionicons name="cloud-offline-outline" size={28} color={colors.warning} />
+        <Text style={styles.errorTitle}>Lyrics could not be loaded</Text>
+        <Text style={styles.stateText}>{error}</Text>
+        <Button label="Retry lyrics" icon="refresh-outline" onPress={() => void retry()} />
       </View>
     );
   }
@@ -97,6 +137,13 @@ export function LyricsView() {
         }}
         contentContainerStyle={styles.syncedContent}
       >
+        {error ? (
+          <View style={styles.cachedNotice} accessibilityLiveRegion="polite">
+            <Ionicons name="warning-outline" size={17} color={colors.warning} />
+            <Text style={styles.cachedNoticeText}>Showing saved lyrics. {error}</Text>
+            <Pressable onPress={() => void retry()} accessibilityRole="button"><Text style={styles.retryText}>Retry</Text></Pressable>
+          </View>
+        ) : null}
         {lyrics.synced.map((line, i) => {
           const isActive = i === activeIndex;
           const isPast = i < activeIndex;
@@ -121,6 +168,13 @@ export function LyricsView() {
 
   return (
     <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.plainContent}>
+      {error ? (
+        <View style={styles.cachedNotice} accessibilityLiveRegion="polite">
+          <Ionicons name="warning-outline" size={17} color={colors.warning} />
+          <Text style={styles.cachedNoticeText}>Showing saved lyrics. {error}</Text>
+          <Pressable onPress={() => void retry()} accessibilityRole="button"><Text style={styles.retryText}>Retry</Text></Pressable>
+        </View>
+      ) : null}
       <Text style={styles.plain}>{lyrics.plain}</Text>
     </ScrollView>
   );
@@ -164,4 +218,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   stateText: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
+  errorTitle: { ...typography.subtitle, color: colors.textPrimary, textAlign: 'center' },
+  cachedNotice: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, marginBottom: spacing.md, borderRadius: 10, backgroundColor: 'rgba(242,183,93,0.08)' },
+  cachedNoticeText: { ...typography.caption, flex: 1, color: colors.textSecondary },
+  retryText: { ...typography.caption, fontFamily: 'Sora_600SemiBold', color: colors.cyan },
 });

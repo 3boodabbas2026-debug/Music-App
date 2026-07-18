@@ -24,11 +24,13 @@ import { watchJob } from '../services/api/jobSocket';
 import * as offlineMedia from '../services/storage/offlineMedia';
 import type { OfflineEntry } from '../services/storage/offlineMedia';
 import { useAuthStore } from '../store/authStore';
+import { useDashboardStore } from '../store/dashboardStore';
 import { requestSignOut } from '../store/signOutStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { toast } from '../store/toastStore';
 import { colors, radii, spacing, typography } from '../theme/tokens';
+import { useTheme } from '../theme/ThemeProvider';
 import { displayArtist, displayTitle } from '../utils/mediaDisplay';
 import { apiErrorMessage } from '../utils/apiError';
 import type { RootStackParamList } from '../navigation/types';
@@ -118,6 +120,9 @@ export function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { width } = useResponsive();
   const smallPhone = width < 390;
+  const { preference, setPreference } = useTheme();
+  const dashboardAccent = useDashboardStore((state) => state.accent);
+  const setDashboardAccent = useDashboardStore((state) => state.setAccent);
   const user = useAuthStore((s) => s.user);
   const setStoragePreference = useAuthStore((s) => s.setStoragePreference);
   const [savingStoragePref, setSavingStoragePref] = useState(false);
@@ -281,6 +286,41 @@ export function SettingsScreen() {
                 style={styles.screenHeading}
               />
             </View>
+          </Reveal>
+
+          <Reveal delay={30} distance={8}>
+            <SectionHeader title="Appearance" style={styles.sectionHeader} titleStyle={styles.sectionHeading} />
+            <GlassPanel style={styles.panel}>
+              <View style={[styles.panelBody, smallPhone && styles.panelBodySmall]}>
+                <View style={styles.appearanceControl}>
+                  <Text style={styles.fieldLabel}>App theme</Text>
+                  <Text style={styles.hint}>Follow this device, brighten the hollow for daylight, or keep the night sky always on.</Text>
+                  <SegmentedControl
+                    options={[
+                      { value: 'system', label: 'System', icon: 'contrast-outline' },
+                      { value: 'light', label: 'Daylight', icon: 'sunny-outline' },
+                      { value: 'dark', label: 'Night', icon: 'moon-outline' },
+                    ]}
+                    value={preference}
+                    onChange={setPreference}
+                    accessibilityLabel="App appearance"
+                  />
+                </View>
+                <View style={styles.appearanceControl}>
+                  <Text style={styles.fieldLabel}>Dashboard accent</Text>
+                  <Text style={styles.hint}>Choose the forest glow or a quieter cosmic highlight for Today.</Text>
+                  <SegmentedControl
+                    options={[
+                      { value: 'forest', label: 'Forest', icon: 'leaf-outline', tintColor: colors.cyan },
+                      { value: 'cosmic', label: 'Cosmic', icon: 'planet-outline', tintColor: colors.violet },
+                    ]}
+                    value={dashboardAccent}
+                    onChange={setDashboardAccent}
+                    accessibilityLabel="Dashboard accent"
+                  />
+                </View>
+              </View>
+            </GlassPanel>
           </Reveal>
 
           <Reveal delay={40} distance={8}>
@@ -481,6 +521,7 @@ const styles = StyleSheet.create({
   sectionHeading: { ...typography.title, fontSize: 17, lineHeight: 23, color: colors.textPrimary },
   panel: { borderRadius: radii.lg },
   panelBody: { padding: spacing.lg, gap: spacing.md },
+  appearanceControl: { gap: spacing.sm },
   panelBodySmall: { padding: spacing.md },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusDot: { width: 8, height: 8, borderRadius: radii.pill, backgroundColor: colors.textMuted },

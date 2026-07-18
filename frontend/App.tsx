@@ -11,7 +11,6 @@ import { Sora_600SemiBold } from '@expo-google-fonts/sora/600SemiBold';
 import { Sora_700Bold } from '@expo-google-fonts/sora/700Bold';
 
 import { BrandMark } from './src/components/ui/BrandMark';
-import { Toaster } from './src/components/ui/Toaster';
 import { SignOutConfirmSheet } from './src/components/ui/SignOutConfirmSheet';
 import { useReducedMotion } from './src/hooks/useReducedMotion';
 import { getInitialWebTheme, ThemeProvider, useTheme } from './src/theme/ThemeProvider';
@@ -286,7 +285,6 @@ function AppContent() {
           <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
           <RootNavigator />
           <SignOutConfirmSheet />
-          <Toaster />
         </SafeAreaProvider>
       </Animated.View>
     </GestureHandlerRootView>

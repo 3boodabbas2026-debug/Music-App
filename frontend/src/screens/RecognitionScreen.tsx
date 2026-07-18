@@ -16,6 +16,7 @@ import {
 import { Starwell } from '../components/scene/Starwell';
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
 import { useBottomChromeClearance } from '../hooks/useBottomChromeClearance';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useResponsive } from '../hooks/useResponsive';
 import { RippleField } from '../components/ui/RippleField';
@@ -81,6 +82,8 @@ export function RecognitionScreen() {
   const { isDesktop } = useResponsive();
   const bottomChromeClearance = useBottomChromeClearance();
   const reduceMotion = useReducedMotion();
+  const { networkOnline, backendOnline } = useOnlineStatus();
+  const offline = !networkOnline || backendOnline === false;
   // This tab stays mounted when the user switches to Home/Library — without
   // this, its RippleField + Starwell instance keeps animating invisibly.
   const isFocused = useIsFocused();
@@ -270,6 +273,10 @@ export function RecognitionScreen() {
 
   async function startListening() {
     if (captureStatus !== 'idle' || submitActive.current) return;
+    if (offline) {
+      setError('Identify needs the Starhollow server. Cached music remains available while you reconnect.');
+      return;
+    }
     const generation = captureGeneration.current + 1;
     captureGeneration.current = generation;
     setError(null);
@@ -573,9 +580,10 @@ export function RecognitionScreen() {
           )}
 
           <PressableScale
-            onPress={phase === 'idle' ? startListening : phase === 'listening' ? stopAndRecognize : undefined}
-            disabled={phase === 'analyzing' || phase === 'result' || captureStatus === 'cleaning_up'}
-            accessibilityLabel={phase === 'idle' ? (mode === 'humming' ? 'Start recording a hummed melody' : 'Start listening') : phase === 'listening' ? 'Stop and identify song' : phase === 'analyzing' ? 'Identifying song' : 'Recognition result shown'}
+            onPress={phase === 'idle' && !offline ? startListening : phase === 'listening' ? stopAndRecognize : undefined}
+            disabled={offline || phase === 'analyzing' || phase === 'result' || captureStatus === 'cleaning_up'}
+            accessibilityLabel={offline ? 'Identify unavailable while the server is offline' : phase === 'idle' ? (mode === 'humming' ? 'Start recording a hummed melody' : 'Start listening') : phase === 'listening' ? 'Stop and identify song' : phase === 'analyzing' ? 'Identifying song' : 'Recognition result shown'}
+            accessibilityHint={offline ? 'Reconnect to the Starhollow server. Cached library playback remains available.' : undefined}
             scaleTo={0.96}
           >
             <View style={styles.listenShadow}>
@@ -596,6 +604,15 @@ export function RecognitionScreen() {
         <View style={styles.footer}>
           {phase === 'idle' && (
             <>
+              {offline ? (
+                <View style={styles.offlineNotice} accessibilityRole="alert">
+                  <Ionicons name="cloud-offline-outline" size={19} color={colors.warning} />
+                  <View style={styles.offlineNoticeCopy}>
+                    <Text style={styles.offlineNoticeTitle}>Identify pauses while offline</Text>
+                    <Text style={styles.offlineNoticeText}>Reconnect before recording so a 15-second clip is never captured for a server that cannot receive it. Cached browsing and playback still work.</Text>
+                  </View>
+                </View>
+              ) : null}
               <Text style={styles.subtitle}>
                 {mode === 'humming'
                   ? 'Hum or sing the clearest part of the melody for up to 15 seconds.'
@@ -1040,6 +1057,10 @@ const styles = StyleSheet.create({
   downloadRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   wide: { alignSelf: 'stretch' },
   retryBlock: { alignSelf: 'stretch', gap: spacing.sm },
+  offlineNotice: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.md, borderRadius: radii.md, backgroundColor: 'rgba(242,183,93,0.08)', borderWidth: 1, borderColor: 'rgba(242,183,93,0.2)' },
+  offlineNoticeCopy: { flex: 1, gap: 3 },
+  offlineNoticeTitle: { ...typography.subtitle, fontSize: 14, color: colors.warning },
+  offlineNoticeText: { ...typography.caption, color: colors.textSecondary },
 
   manualRow: {
     flexDirection: 'row',

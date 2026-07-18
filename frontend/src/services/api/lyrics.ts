@@ -103,26 +103,42 @@ async function queryLrclib(media: Media, candidates: LyricsSearchCandidate[]): P
     attempts.push(`${base}/search?q=${encodeURIComponent(artist ? `${artist} ${title}` : title)}`);
   }
 
+  if (attempts.length === 0) throw new Error('This track does not have enough title or artist information to search for lyrics.');
+  let receivedValidResponse = false;
+  let failureReason: string | null = null;
   for (const url of attempts) {
     try {
       const res = await fetch(url);
-      if (!res.ok) continue;
-      const body = await res.json();
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) failureReason = 'The lyrics provider refused this request.';
+        else if (res.status === 429) failureReason = 'The lyrics provider is busy. Wait a moment, then retry.';
+        else if (res.status >= 500) failureReason = 'The lyrics provider is temporarily unavailable.';
+        continue;
+      }
+      let body: unknown;
+      try {
+        body = await res.json();
+      } catch {
+        failureReason = 'The lyrics provider returned a response that could not be read.';
+        continue;
+      }
+      receivedValidResponse = true;
       const record: LrclibRecord | undefined = Array.isArray(body) ? body[0] : body;
       if (record && (record.syncedLyrics || record.plainLyrics)) return record;
     } catch {
-      // Network hiccup — try the next strategy.
+      failureReason = 'Could not reach the lyrics provider. Check your connection and retry.';
     }
   }
+  if (!receivedValidResponse && failureReason) throw new Error(failureReason);
   return null;
 }
 
-export async function fetchLyrics(media: Media): Promise<Lyrics | null> {
+export async function fetchLyrics(media: Media, options?: { forceRefresh?: boolean }): Promise<Lyrics | null> {
   const candidates = buildLyricsSearchCandidates(media);
   const storageKey = lyricsCacheKey(media.id, candidates);
-  if (memoryCache.has(storageKey)) return memoryCache.get(storageKey) ?? null;
+  if (!options?.forceRefresh && memoryCache.has(storageKey)) return memoryCache.get(storageKey) ?? null;
 
-  try {
+  if (!options?.forceRefresh) try {
     const cached = await AsyncStorage.getItem(storageKey);
     if (cached) {
       const parsed = JSON.parse(cached) as Lyrics | null;

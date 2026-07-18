@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import {
@@ -8,7 +8,6 @@ import {
   type WidgetId,
 } from '../../store/dashboardStore';
 import { colors, radii, spacing, typography } from '../../theme/tokens';
-import { useTheme } from '../../theme/ThemeProvider';
 import { CompactGlassSheet } from '../ui/CompactGlassSheet';
 import { IconButton } from '../ui/IconButton';
 import { SegmentedControl } from '../ui/SegmentedControl';
@@ -29,15 +28,23 @@ export function DashboardCustomizer({ visible, onClose }: Props) {
   const order = useDashboardStore((s) => s.order);
   const hidden = useDashboardStore((s) => s.hidden);
   const density = useDashboardStore((s) => s.density);
-  const accent = useDashboardStore((s) => s.accent);
   const toggleWidget = useDashboardStore((s) => s.toggleWidget);
   const moveWidget = useDashboardStore((s) => s.moveWidget);
   const setDensity = useDashboardStore((s) => s.setDensity);
-  const setAccent = useDashboardStore((s) => s.setAccent);
   const reset = useDashboardStore((s) => s.reset);
-  const { preference, setPreference } = useTheme();
 
   const isWide = width >= 720;
+
+  function confirmReset() {
+    Alert.alert(
+      'Reset dashboard layout?',
+      'This restores widget order, visibility, and spacing. Your app appearance and dashboard accent stay unchanged.',
+      [
+        { text: 'Keep my layout', style: 'cancel' },
+        { text: 'Reset layout', style: 'destructive', onPress: reset },
+      ],
+    );
+  }
 
   function renderRow(id: WidgetId, index: number) {
     const meta = WIDGET_META[id];
@@ -94,20 +101,6 @@ export function DashboardCustomizer({ visible, onClose }: Props) {
         </View>
       }
     >
-      <View style={styles.appearanceGroup}>
-        <Text style={styles.sectionLabel}>APPEARANCE</Text>
-        <SegmentedControl
-          options={[
-            { value: 'system', label: 'System', icon: 'contrast-outline' },
-            { value: 'light', label: 'Daylight', icon: 'sunny-outline' },
-            { value: 'dark', label: 'Night', icon: 'moon-outline' },
-          ]}
-          value={preference}
-          onChange={setPreference}
-          accessibilityLabel="App appearance"
-        />
-      </View>
-
       <View style={[styles.preferences, isWide && styles.preferencesWide]}>
         <View style={styles.preferenceGroup}>
           <Text style={styles.sectionLabel}>LAYOUT</Text>
@@ -121,19 +114,6 @@ export function DashboardCustomizer({ visible, onClose }: Props) {
             accessibilityLabel="Dashboard density"
           />
         </View>
-
-        <View style={styles.preferenceGroup}>
-          <Text style={styles.sectionLabel}>ACCENT</Text>
-          <SegmentedControl
-            options={[
-              { value: 'forest', label: 'Forest', icon: 'leaf-outline', tintColor: colors.cyan },
-              { value: 'cosmic', label: 'Cosmic', icon: 'planet-outline', tintColor: colors.violet },
-            ]}
-            value={accent}
-            onChange={setAccent}
-            accessibilityLabel="Dashboard accent"
-          />
-        </View>
       </View>
 
       <ScrollView style={styles.widgetScroll} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
@@ -141,7 +121,7 @@ export function DashboardCustomizer({ visible, onClose }: Props) {
         <View style={styles.rows}>{order.map(renderRow)}</View>
 
         <Pressable
-          onPress={reset}
+          onPress={confirmReset}
           accessibilityRole="button"
           accessibilityLabel="Reset dashboard layout"
           style={({ pressed }) => [styles.resetRow, pressed && styles.pressed]}
@@ -164,7 +144,6 @@ const styles = StyleSheet.create({
   title: { ...typography.title, fontSize: 20, lineHeight: 26, color: colors.textPrimary },
   preferences: { gap: spacing.sm, marginTop: spacing.md, marginBottom: spacing.md },
   preferencesWide: { flexDirection: 'row', gap: spacing.md },
-  appearanceGroup: { width: '100%' },
   preferenceGroup: { flex: 1 },
   widgetScroll: { flexShrink: 1 },
   scroll: { paddingBottom: spacing.md },

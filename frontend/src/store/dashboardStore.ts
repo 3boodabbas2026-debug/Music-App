@@ -129,8 +129,9 @@ export const useDashboardStore = create<DashboardState>((set, get) => ({
   },
 
   reset() {
-    set({ order: DEFAULT_ORDER, hidden: [], density: 'spacious', accent: 'forest' });
-    void persist({ order: DEFAULT_ORDER, hidden: [], density: 'spacious', accent: 'forest' });
+    const { accent } = get();
+    set({ order: DEFAULT_ORDER, hidden: [], density: 'spacious' });
+    void persist({ order: DEFAULT_ORDER, hidden: [], density: 'spacious', accent });
   },
 
   async resetSession() {

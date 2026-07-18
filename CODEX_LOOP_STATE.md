@@ -20,13 +20,14 @@
 ## Status dashboard  (update every round)
 - Phase: **FIX-LOOP**
 - Issues found: 60 / 60  (DISCOVERY complete, TEST_FINDINGS.md written)
-- Issues resolved: 35 / 60  (R1-R4; R4 #4 #5 #6 #30 #31 #32 #33 #34 #35 #36 #37 — typecheck green)
-- Fix round: 5 (in progress)
+- Issues resolved: 41 / 60  (R1-R5; R5 #15 #16 #17 #18 #59 #60 — typecheck green)
+- Fix round: 6a (in progress)
 - Branch: `codex/apk-fast-path` (pushed to `origin/main`)
-- Last APK push: commit `4aeb59f` (R2+R3 bundled), ~03:09 UTC
-- Local unpushed commits: `8dcfaa0` (R4) — push at next 30-min window (due epoch >= 1784345938 ≈ 03:39 UTC)
-- last_apk_push_epoch: 1784344138
-- Current Codex task id: task-mrptc92t-p33git (FIX round 5 — Admin console)
+- Last APK push: commit `365edea` (R4+R5 bundled), ~03:45 UTC
+- Local unpushed commits: none (working tree clean at R6a launch)
+- last_apk_push_epoch: 1784346349   (next APK push due at epoch >= 1784348149 ≈ 04:15 UTC)
+- Current Codex task id: task-mrptrnng-f59cpw (FIX round 6a — global chrome/nav/Home)
+- Remaining open (19): R6a #3 #14 #20 #24 #25 #26 #27 #28 #29 #44 ; R6b #45 #46 #50 #51 #52 #53 #54 #55 #56
 
 ### Batch plan (adaptive; adjust from remaining-open each round)
 - R1 Account safety & form/overlay a11y: #1 #2 #19 #21 #22 #23 #57 #58
@@ -57,3 +58,4 @@
 - 03:09 UTC — FIX round 3 completed (8m 24s). All 6 issues marked [x] (RESOLVED R3). Files: RecognitionScreen, services/api/downloads, scanHistoryStore, +recognitionCaptureStore. typecheck GREEN. ~31min since last push (>=30) → committed `4aeb59f` and pushed `77706da..4aeb59f` → origin/main (bundled R2+R3, APK build triggered). Resolved 24/60. last_apk_push_epoch=1784344138. Launched FIX round 4 (`task-mrpsgaj2-s8zj82`, batch: #4 #5 #6 #30 #31 #32 #33 #34 #35 #36 #37 — Library/filters/playlists). Rescheduled poll ~600s.
 - 03:23 UTC — Polled R4: running (12.5m). Rescheduled ~600s.
 - 03:33 UTC — FIX round 4 completed (14m 18s). All 11 issues marked [x] (RESOLVED R4). Files: LibraryFilterSheet, LibraryMediaView, LibrarySheets, SmartCategoriesPane, HomeScreen, LibraryScreen, playlists api, api/types, libraryStore, playlistStore, +LibraryFreshnessBanner. typecheck GREEN. ~24min since last push (<30) → committed LOCALLY `8dcfaa0` (unpushed). Resolved 35/60. Launched FIX round 5 (`task-mrptc92t-p33git`, batch: #15 #16 #17 #18 #59 #60 — Admin). Rescheduled poll ~600s.
+- 03:45 UTC — FIX round 5 completed (8m 55s). All 6 issues marked [x] (RESOLVED R5). Files: admin AdminScreen/adminStyles/tabs(Feedback,Jobs,Logs,Users), services/api/admin, +AdminListControls. typecheck GREEN. ~36min since last push (>=30) → committed `365edea` and pushed `4aeb59f..365edea` → origin/main (bundled R4+R5, APK build triggered). Resolved 41/60. last_apk_push_epoch=1784346349. Launched FIX round 6a (`task-mrptrnng-f59cpw`, batch: #3 #14 #20 #24 #25 #26 #27 #28 #29 #44 — global chrome/nav/Home). Rescheduled poll ~600s.

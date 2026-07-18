@@ -287,10 +287,12 @@ export function HomeScreen() {
   const [videoQuality, setVideoQuality] = useState<downloadsApi.VideoQuality>('1080p');
   const [downloadPlaylist, setDownloadPlaylist] = useState(false);
   const [playlistInspection, setPlaylistInspection] = useState<downloadsApi.DownloadInspection | null>(null);
+  const [playlistInspectionError, setPlaylistInspectionError] = useState<string | null>(null);
   const [inspectingPlaylist, setInspectingPlaylist] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobsLoadError, setJobsLoadError] = useState<string | null>(null);
   const [submittedLinks, setSubmittedLinks] = useState<SubmittedLink[]>([]);
   const [customizing, setCustomizing] = useState(false);
   const [offlineEntries, setOfflineEntries] = useState<OfflineEntry[]>([]);
@@ -363,9 +365,14 @@ export function HomeScreen() {
 
   useEffect(() => {
     setPlaylistInspection(null);
+    setPlaylistInspectionError(null);
     setInspectingPlaylist(false);
     setDownloadPlaylist(false);
     if (!singleUrl) return undefined;
+    if (!networkOnline || backendOnline === false) {
+      setPlaylistInspectionError('Offline — playlist details cannot be checked. Your draft is safe.');
+      return undefined;
+    }
 
     let active = true;
     const timer = setTimeout(() => {
@@ -375,11 +382,12 @@ export function HomeScreen() {
         .then((inspection) => {
           if (!active) return;
           setPlaylistInspection(inspection);
+          setPlaylistInspectionError(null);
           if (!inspection.is_playlist) setDownloadPlaylist(false);
         })
-        .catch(() => {
-          // A playlist-looking URL can still expose the opt-in while offline;
-          // the create endpoint remains the final source of truth.
+        .catch((caught) => {
+          if (!active) return;
+          setPlaylistInspectionError(apiErrorMessage(caught, "Couldn't inspect this link. It may be private, unavailable, or temporarily unreachable."));
         })
         .finally(() => {
           if (active) setInspectingPlaylist(false);
@@ -390,7 +398,7 @@ export function HomeScreen() {
       active = false;
       clearTimeout(timer);
     };
-  }, [singleUrl]);
+  }, [backendOnline, networkOnline, singleUrl]);
 
   useFocusEffect(
     useCallback(() => {
@@ -398,10 +406,13 @@ export function HomeScreen() {
       void downloadsApi
         .listDownloads()
         .then((items) => {
-          if (active) setJobs([...items].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+          if (active) {
+            setJobs([...items].sort((a, b) => b.updated_at.localeCompare(a.updated_at)));
+            setJobsLoadError(null);
+          }
         })
-        .catch(() => {
-          // Today remains useful offline; Activity owns the explicit retry state.
+        .catch((caught) => {
+          if (active) setJobsLoadError(apiErrorMessage(caught, 'Activity could not refresh. Showing last-known progress.'));
         });
       if (offlineSupported()) {
         void listOffline()
@@ -432,6 +443,10 @@ export function HomeScreen() {
     if (submitting) return;
     if (parsedUrls.length === 0) {
       setError('Paste at least one complete http:// or https:// media link.');
+      return;
+    }
+    if (offline) {
+      setError('Imports need the Starhollow server. Your links will stay here — reconnect, then try again.');
       return;
     }
     setSubmitting(true);
@@ -466,11 +481,30 @@ export function HomeScreen() {
         toast('Your clipboard is empty.', 'info');
         return;
       }
-      setUrl(text);
+      const incoming = extractMediaLinks(text);
+      if (incoming.length === 0) {
+        toast('No complete http:// or https:// media link was found in the clipboard.', 'info');
+        return;
+      }
+      const current = extractMediaLinks(url);
+      const merged = [...new Set([...current, ...incoming])];
+      const duplicates = current.length + incoming.length - merged.length;
+      setUrl(merged.join('\n'));
       setError(null);
+      toast(
+        duplicates > 0
+          ? `Merged ${incoming.length - duplicates} new ${incoming.length - duplicates === 1 ? 'link' : 'links'}; ${duplicates} duplicate ${duplicates === 1 ? 'was' : 'were'} already in the draft.`
+          : `Added ${incoming.length} ${incoming.length === 1 ? 'link' : 'links'} to the draft.`,
+        'info',
+      );
     } catch (caught) {
       toast(apiErrorMessage(caught, "Couldn't read your clipboard."), 'error');
     }
+  }
+
+  function removeDraftLink(link: string) {
+    setUrl(parsedUrls.filter((candidate) => candidate !== link).join('\n'));
+    setError(null);
   }
 
   async function handleCancel(job: Job) {
@@ -561,6 +595,20 @@ export function HomeScreen() {
             </Pressable>
           </View>
 
+          {parsedUrls.length > 0 ? (
+            <View style={styles.draftList} accessibilityLabel={`${parsedUrls.length} links in import draft`}>
+              {parsedUrls.map((link, index) => (
+                <View key={link} style={styles.draftRow}>
+                  <View style={styles.draftIndex}><Text style={styles.draftIndexText}>{index + 1}</Text></View>
+                  <Text numberOfLines={1} style={styles.draftLink}>{link}</Text>
+                  <Pressable onPress={() => removeDraftLink(link)} accessibilityRole="button" accessibilityLabel={`Remove link ${index + 1} from import draft`} hitSlop={8} style={({ pressed }) => [styles.draftRemove, pressed && styles.pressed]}>
+                    <Ionicons name="close" size={16} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
           {playlistDetected ? (
             <View style={styles.playlistToggleRow}>
               <View style={styles.playlistToggleCopy}>
@@ -586,6 +634,13 @@ export function HomeScreen() {
                 trackColor={{ false: colors.surfaceBorderStrong, true: accent }}
                 thumbColor={downloadPlaylist ? colors.textInverse : colors.textSecondary}
               />
+            </View>
+          ) : null}
+
+          {playlistInspectionError ? (
+            <View style={styles.inspectionNotice} accessibilityLiveRegion="polite">
+              <Ionicons name="information-circle-outline" size={16} color={colors.warning} />
+              <Text style={styles.inspectionNoticeText}>{playlistInspectionError}</Text>
             </View>
           ) : null}
 
@@ -627,10 +682,21 @@ export function HomeScreen() {
             </View>
           ) : null}
 
+          <View style={styles.scopeRow} accessibilityLiveRegion="polite">
+            <Ionicons name={offline ? 'cloud-offline-outline' : downloadPlaylist && playlistDetected ? 'list' : 'link'} size={16} color={offline ? colors.warning : accent} />
+            <Text style={styles.scopeText}>
+              {offline
+                ? 'Server offline — cached browsing and playback still work; this draft will remain ready.'
+                : downloadPlaylist && playlistDetected
+                  ? 'Final scope: every available entry in the detected playlist.'
+                  : `Final scope: only the ${parsedUrls.length === 1 ? 'shared link' : `${parsedUrls.length} shared links`} shown above.`}
+            </Text>
+          </View>
+
           <Button
-            label={parsedUrls.length > 1 ? `Add ${parsedUrls.length} links to library` : 'Add to library'}
+            label={offline ? 'Reconnect to import' : parsedUrls.length > 1 ? `Add ${parsedUrls.length} links to library` : 'Add to library'}
             onPress={() => void handleSubmit()}
-            disabled={parsedUrls.length === 0}
+            disabled={parsedUrls.length === 0 || offline}
             loading={submitting}
             style={styles.importButton}
           />
@@ -670,13 +736,23 @@ export function HomeScreen() {
     ),
 
     inProgress: () =>
-      activeJobs.length === 0 ? null : (
+      activeJobs.length === 0 && !jobsLoadError ? null : (
         <View style={{ marginTop: sectionGap }}>
-          <SectionHeader title="In progress" actionLabel="See all" onAction={() => openTab('Activity')} style={styles.sectionHeader} />
+          <SectionHeader title="In progress" actionLabel={jobsLoadError ? 'Open Activity' : 'See all'} onAction={() => openTab('Activity')} style={styles.sectionHeader} />
           <GlassPanel style={styles.activityPanel}>
+            {jobsLoadError ? (
+              <Pressable onPress={() => openTab('Activity')} accessibilityRole="button" accessibilityLabel="Progress is stale. Open Activity to retry." style={({ pressed }) => [styles.jobsStale, pressed && styles.pressed]}>
+                <Ionicons name="cloud-offline-outline" size={18} color={colors.warning} />
+                <View style={styles.jobsStaleCopy}>
+                  <Text style={styles.jobsStaleTitle}>Progress may be out of date</Text>
+                  <Text style={styles.jobsStaleDetail}>{jobsLoadError} Open Activity to retry.</Text>
+                </View>
+                <Ionicons name="arrow-forward" size={17} color={colors.textMuted} />
+              </Pressable>
+            ) : null}
             {activeJobs.slice(0, 2).map((job, index) => (
               <View key={job.id}>
-                {index > 0 ? <View style={styles.divider} /> : null}
+                {index > 0 || jobsLoadError ? <View style={styles.divider} /> : null}
                 <ActiveJobRow job={job} accent={accent} onCancel={() => void handleCancel(job)} />
               </View>
             ))}
@@ -990,6 +1066,12 @@ const styles = StyleSheet.create({
   },
   pasteButtonSmall: { minWidth: 44, width: 44, paddingHorizontal: 0 },
   pasteLabel: { ...typography.caption, fontFamily: 'Sora_500Medium', color: colors.textSecondary },
+  draftList: { gap: 2, borderRadius: radii.md, overflow: 'hidden' },
+  draftRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm, backgroundColor: glass.fillDeep },
+  draftIndex: { width: 22, height: 22, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.tintPrimary },
+  draftIndexText: { ...typography.caption, fontSize: 10, color: colors.cyan },
+  draftLink: { ...typography.caption, flex: 1, color: colors.textSecondary },
+  draftRemove: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: radii.pill },
   playlistToggleRow: {
     minHeight: 66,
     flexDirection: 'row',
@@ -1005,6 +1087,8 @@ const styles = StyleSheet.create({
   playlistToggleHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   playlistToggleTitle: { ...typography.subtitle, flex: 1, fontSize: 13, color: colors.textPrimary },
   playlistToggleHint: { ...typography.caption, fontSize: 11, color: colors.textMuted },
+  inspectionNotice: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm, padding: spacing.sm, borderRadius: radii.md, backgroundColor: 'rgba(242,183,93,0.08)' },
+  inspectionNoticeText: { ...typography.caption, flex: 1, color: colors.textSecondary },
   formatLabel: { ...typography.eyebrow, fontSize: 9, lineHeight: 12, letterSpacing: 1.8, color: colors.textMuted, marginBottom: spacing.sm },
   formatRow: { gap: spacing.sm, paddingRight: spacing.sm },
   formatChip: {
@@ -1028,6 +1112,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(240,131,140,0.09)',
   },
   errorText: { ...typography.caption, flex: 1, color: colors.danger },
+  scopeRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.sm },
+  scopeText: { ...typography.caption, flex: 1, color: colors.textSecondary },
   importButton: { width: '100%' },
   helperText: { ...typography.caption, color: colors.textMuted, textAlign: 'center', marginTop: -spacing.sm },
   batchProgressBlock: {
@@ -1066,6 +1152,10 @@ const styles = StyleSheet.create({
   batchDivider: { height: 1, backgroundColor: glass.stroke },
   sectionHeader: { marginBottom: spacing.sm },
   activityPanel: { paddingHorizontal: spacing.md },
+  jobsStale: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
+  jobsStaleCopy: { flex: 1, gap: 2 },
+  jobsStaleTitle: { ...typography.subtitle, fontSize: 13, color: colors.warning },
+  jobsStaleDetail: { ...typography.caption, color: colors.textMuted },
   activeJobRow: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
   jobIcon: {
     width: 38,

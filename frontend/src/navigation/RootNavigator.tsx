@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, NavigationContainer, type LinkingOptions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
 
@@ -12,10 +12,9 @@ import { ReplayScreen } from '../screens/ReplayScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { TelegramScreen } from '../screens/TelegramScreen';
 import { AccountPopover } from '../components/ui/AccountPopover';
-import { AnnouncementBanner } from '../components/ui/AnnouncementBanner';
 import { DesktopSecondaryRail } from '../components/ui/DesktopSecondaryRail';
+import { GlobalNoticeStack } from '../components/ui/GlobalNoticeStack';
 import { Sidebar } from '../components/ui/Sidebar';
-import { UpdateBanner } from '../components/ui/UpdateBanner';
 import { GlobalVideoStage } from '../components/video/GlobalVideoStage';
 import { ForestBackdrop } from '../components/ui/ForestBackdrop';
 import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
@@ -29,6 +28,24 @@ import type { AuthStackParamList, RootStackParamList } from './types';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const RootStack = createNativeStackNavigator<RootStackParamList>();
+
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: ['starhollow://'],
+  config: {
+    screens: {
+      Main: {
+        initialRouteName: 'Home',
+        screens: { Home: '', Library: 'library', Recognize: 'identify', Activity: 'activity' },
+      },
+      Player: 'player',
+      Telegram: 'telegram',
+      Jobs: 'jobs',
+      Settings: 'settings',
+      Replay: 'replay',
+      Admin: 'admin',
+    },
+  },
+};
 
 function AuthNavigator() {
   const reduceMotion = useReducedMotion();
@@ -74,7 +91,8 @@ export function RootNavigator() {
   return (
     <View style={styles.root}>
       <ForestBackdrop />
-      <NavigationContainer ref={navigationRef} theme={navTheme}>
+      <GlobalNoticeStack />
+      <NavigationContainer ref={navigationRef} theme={navTheme} linking={linking}>
         {isAuthenticated ? (
           <>
             <RootStack.Navigator
@@ -104,14 +122,10 @@ export function RootNavigator() {
             <Sidebar />
             <AccountPopover />
             <GlobalVideoStage />
-            <AnnouncementBanner />
           </>
         ) : (
           <AuthNavigator />
         )}
-        {/* Available before login too — a stale bundle affects the auth
-            screens just as much as the rest of the app. */}
-        <UpdateBanner />
       </NavigationContainer>
     </View>
   );
