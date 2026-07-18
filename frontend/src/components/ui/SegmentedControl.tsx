@@ -104,7 +104,7 @@ export function SegmentedControl<T extends string>({
                 color={option.tintColor ?? (selected ? colors.textPrimary : colors.textMuted)}
               />
             ) : null}
-            <Text style={[styles.label, selected && styles.selectedLabel]} numberOfLines={1}>
+            <Text style={[styles.label, selected && styles.selectedLabel, option.disabled && styles.disabledLabel]} numberOfLines={1}>
               {option.label}
             </Text>
           </Pressable>
@@ -150,8 +150,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.tintPrimaryStroke,
   },
-  pressed: { opacity: 0.72 },
-  disabled: { opacity: 0.38 },
+  pressed: { backgroundColor: glass.fillBright, borderColor: glass.strokeStrong },
+  disabled: { backgroundColor: glass.fillDeep, borderColor: glass.stroke },
+  disabledLabel: { color: colors.textMuted },
   label: { fontFamily: 'Sora_500Medium', fontSize: 12, lineHeight: 16, color: colors.textMuted },
   selectedLabel: { color: colors.textPrimary },
 });

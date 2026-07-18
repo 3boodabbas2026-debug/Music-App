@@ -16,7 +16,7 @@ import {
   displayArtist,
   displayTitle,
 } from '../../utils/mediaDisplay';
-import { colors, glass, gradients, motion, radii, shadows, spacing, typography } from '../../theme/tokens';
+import { colors, glass, gradients, motion, radii, shadows, spacing, stateLayers, typography } from '../../theme/tokens';
 
 type MediaItemProps = {
   media: Media;
@@ -353,35 +353,46 @@ export function SkeletonGrid({
   cellSize: number;
   view: 'grid' | 'list';
 }) {
-  const pulse = useState(() => new Animated.Value(0.4))[0];
+  const sweep = useState(() => new Animated.Value(0))[0];
   const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     if (reduceMotion) {
-      pulse.setValue(0.58);
+      sweep.setValue(0.32);
       return;
     }
+    sweep.setValue(0);
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.9, duration: 700, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0.4, duration: 700, useNativeDriver: true }),
-      ]),
+      Animated.timing(sweep, { toValue: 1, duration: motion.duration.continuous, useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse, reduceMotion]);
+  }, [sweep, reduceMotion]);
 
   const count = view === 'grid' ? columns * 3 : 6;
   return (
     <View style={view === 'grid' ? styles.skeletonGridWrap : styles.skeletonListWrap}>
       {Array.from({ length: count }).map((_, index) =>
         view === 'grid' ? (
-          <Animated.View
-            key={index}
-            style={[styles.skeletonCard, { width: cellSize, height: cellSize, opacity: pulse }]}
-          />
+          <View key={index} style={[styles.skeletonCard, { width: cellSize, height: cellSize }]}>
+            <View style={styles.skeletonCardDisc} />
+            <View style={styles.skeletonCardCopy}>
+              <View style={[styles.skeletonTone, styles.skeletonCardTitle]} />
+              <View style={[styles.skeletonTone, styles.skeletonCardMeta]} />
+            </View>
+            <Animated.View pointerEvents="none" style={[styles.skeletonSweep, { opacity: reduceMotion ? 0.12 : 0.2, transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-cellSize, cellSize] }) }] }]} />
+          </View>
         ) : (
-          <Animated.View key={index} style={[styles.skeletonRow, { opacity: pulse }]} />
+          <View key={index} style={styles.skeletonRow}>
+            <View style={styles.skeletonRowArt} />
+            <View style={styles.skeletonRowCopy}>
+              <View style={[styles.skeletonTone, styles.skeletonRowTitle]} />
+              <View style={[styles.skeletonTone, styles.skeletonRowMeta]} />
+            </View>
+            <View style={[styles.skeletonTone, styles.skeletonRowColumn]} />
+            <View style={[styles.skeletonTone, styles.skeletonRowTime]} />
+            <Animated.View pointerEvents="none" style={[styles.skeletonSweep, { opacity: reduceMotion ? 0.12 : 0.2, transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-260, 520] }) }] }]} />
+          </View>
         ),
       )}
     </View>
@@ -542,6 +553,18 @@ const styles = StyleSheet.create({
   listDuration: { ...typography.numeric, width: 46, textAlign: 'right', fontSize: 11, color: colors.textSecondary },
   skeletonGridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   skeletonListWrap: { gap: spacing.md },
-  skeletonCard: { borderRadius: radii.lg, backgroundColor: glass.fill },
-  skeletonRow: { height: 68, borderRadius: radii.md, backgroundColor: glass.fill },
+  skeletonCard: { position: 'relative', overflow: 'hidden', justifyContent: 'flex-end', borderRadius: radii.cover, backgroundColor: stateLayers.skeleton.base, borderWidth: 1, borderColor: glass.stroke },
+  skeletonCardDisc: { position: 'absolute', width: '58%', height: '58%', top: '16%', left: '21%', borderRadius: radii.pill, borderWidth: 1, borderColor: glass.stroke, backgroundColor: stateLayers.skeleton.base },
+  skeletonCardCopy: { gap: spacing.xs, padding: spacing.sm, backgroundColor: glass.fillHeavy },
+  skeletonTone: { borderRadius: radii.pill, backgroundColor: stateLayers.skeleton.raised },
+  skeletonCardTitle: { width: '72%', height: 8 },
+  skeletonCardMeta: { width: '48%', height: 6 },
+  skeletonRow: { position: 'relative', overflow: 'hidden', minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.sm, borderRadius: radii.md, backgroundColor: stateLayers.skeleton.base, borderWidth: 1, borderColor: glass.stroke },
+  skeletonRowArt: { width: 48, height: 48, borderRadius: radii.cover, backgroundColor: stateLayers.skeleton.raised },
+  skeletonRowCopy: { flex: 1, minWidth: 0, gap: spacing.sm },
+  skeletonRowTitle: { width: '62%', height: 8 },
+  skeletonRowMeta: { width: '42%', height: 6 },
+  skeletonRowColumn: { width: 82, height: 7 },
+  skeletonRowTime: { width: 36, height: 7 },
+  skeletonSweep: { position: 'absolute', top: 0, bottom: 0, width: 76, backgroundColor: stateLayers.skeleton.sweep, transform: [{ rotate: '12deg' }] },
 });

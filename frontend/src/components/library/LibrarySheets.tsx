@@ -2,22 +2,20 @@ import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Artwork } from '../ui/Artwork';
 import { CompactGlassSheet } from '../ui/CompactGlassSheet';
 import { EmptyState } from '../ui/EmptyState';
 import { PressableScale } from '../ui/PressableScale';
-import { useResponsive } from '../../hooks/useResponsive';
+import { ConfirmationPanel } from '../ui/SignOutConfirmSheet';
+import { TextField } from '../ui/TextField';
 import * as libraryApi from '../../services/api/library';
 import type { Media, Playlist } from '../../services/api/types';
 import { usePlaylistStore } from '../../store/playlistStore';
@@ -114,13 +112,14 @@ export function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; on
       contentContainerStyle={[styles.listContent, playlists.length === 0 && styles.emptyListContent]}
       ListHeaderComponent={
         <View style={styles.createRow}>
-          <TextInput
+          <TextField
             value={name}
             onChangeText={setName}
             placeholder="New playlist name"
-            placeholderTextColor={colors.textMuted}
-            selectionColor={colors.cyan}
+            leadingIcon="add-circle-outline"
+            compact
             style={styles.createInput}
+            containerStyle={styles.createField}
             onSubmitEditing={handleCreate}
           />
           <PressableScale onPress={handleCreate} disabled={creating || !name.trim()} scaleTo={0.9}>
@@ -143,6 +142,7 @@ export function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; on
         <View style={styles.emptyListBody}>
           <EmptyState
             icon="list-outline"
+            motif="shelf"
             title="No playlists yet"
             subtitle="Name one above, then long-press any track to add it."
           />
@@ -260,13 +260,14 @@ export function PlaylistPickerModal({
       }
     >
       <View style={[styles.createRow, { marginBottom: spacing.md }]}>
-        <TextInput
+        <TextField
           value={name}
           onChangeText={setName}
           placeholder="New playlist name"
-          placeholderTextColor={colors.textMuted}
-          selectionColor={colors.cyan}
+          leadingIcon="add-circle-outline"
+          compact
           style={styles.createInput}
+          containerStyle={styles.createField}
           onSubmitEditing={createAndPick}
         />
         <PressableScale onPress={createAndPick} disabled={busy || !name.trim()} scaleTo={0.9}>
@@ -352,16 +353,17 @@ export function NewPlaylistWithItemsModal({
       }
     >
       <View style={styles.createRow}>
-        <TextInput
+        <TextField
           autoFocus
           value={name}
           onChangeText={setName}
           onSubmitEditing={submit}
           placeholder="Playlist name"
           accessibilityLabel="New playlist name"
-          placeholderTextColor={colors.textMuted}
-          selectionColor={colors.cyan}
+          leadingIcon="list-outline"
+          compact
           style={styles.createInput}
+          containerStyle={styles.createField}
         />
         <PressableScale onPress={submit} disabled={busy || !name.trim()} scaleTo={0.9}>
           <LinearGradient
@@ -387,8 +389,6 @@ export function PlaylistDetailModal({
   onClose: () => void;
   onPlayAll: (playlist: Playlist) => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const { isDesktop } = useResponsive();
   const playlist = usePlaylistStore((state) => state.playlists.find((item) => item.id === playlistId));
   const removeItem = usePlaylistStore((state) => state.removeItem);
   const addItem = usePlaylistStore((state) => state.addItem);
@@ -405,10 +405,6 @@ export function PlaylistDetailModal({
   if (!playlist) return null;
 
   async function handleDelete() {
-    if (!confirmDelete) {
-      setConfirmDelete(true);
-      return;
-    }
     try {
       await removePlaylist(playlistId);
       toast('Playlist deleted', 'success');
@@ -467,18 +463,24 @@ export function PlaylistDetailModal({
   }
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={[styles.modalRoot, isDesktop && styles.modalRootDesktop]}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View
-          style={[
-            styles.sheet,
-            styles.detailSheet,
-            isDesktop && styles.sheetDesktop,
-            { paddingBottom: insets.bottom + spacing.lg },
-          ]}
-        >
-          {!isDesktop && <View style={styles.sheetHandle} />}
+    <CompactGlassSheet
+      visible
+      onClose={onClose}
+      accessibilityLabel={`${playlist.name} playlist detail`}
+      closeAccessibilityLabel="Close playlist detail"
+      eyebrow="Playlist detail"
+      maxWidth={720}
+      maxHeightRatio={0.9}
+      bodyStyle={styles.detailBody}
+      header={<Text numberOfLines={1} style={styles.editTitle}>{playlist.name}</Text>}
+      footer={playlist.items.length > 0 ? (
+        <PressableScale onPress={() => onPlayAll(playlist)} scaleTo={0.97}>
+          <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.editSave}>
+            <Text style={styles.editSaveLabel}>Play all</Text>
+          </LinearGradient>
+        </PressableScale>
+      ) : undefined}
+    >
           <View style={styles.detailHeader}>
             <PlaylistCoverMosaic playlist={playlist} size={104} />
             <View style={styles.detailHeaderText}>
@@ -495,41 +497,33 @@ export function PlaylistDetailModal({
             >
               <Ionicons name={editing ? 'close' : 'create-outline'} size={18} color={colors.cyan} />
             </Pressable>
-            <Pressable onPress={handleDelete} hitSlop={8} style={styles.detailDelete}>
+            <Pressable onPress={() => setConfirmDelete(true)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete ${playlist.name} playlist`} style={styles.detailDelete}>
               <Ionicons name="trash-outline" size={18} color={colors.danger} />
-              {confirmDelete && <Text style={styles.detailDeleteLabel}>Sure?</Text>}
             </Pressable>
           </View>
 
+          {confirmDelete ? (
+            <ConfirmationPanel
+              affectedLabel={`“${playlist.name}” and its ${playlist.items.length} ${playlist.items.length === 1 ? 'track reference' : 'track references'} will be removed`}
+              consequence="The tracks stay in your Library; only this playlist and its ordering are deleted."
+              safeAlternative="Keep playlist"
+              confirmLabel="Delete playlist"
+              onCancel={() => setConfirmDelete(false)}
+              onConfirm={() => void handleDelete()}
+              icon="trash-outline"
+            />
+          ) : null}
+
           {editing ? (
             <View style={styles.playlistEditor}>
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Playlist name</Text>
-                <TextInput value={name} onChangeText={setName} accessibilityLabel="Playlist name" style={styles.editInput} selectionColor={colors.cyan} />
-              </View>
-              <View style={styles.editField}>
-                <Text style={styles.editLabel}>Artwork URL</Text>
-                <TextInput value={artworkUrl} onChangeText={setArtworkUrl} accessibilityLabel="Playlist artwork URL" autoCapitalize="none" style={styles.editInput} selectionColor={colors.cyan} placeholder="https://…" placeholderTextColor={colors.textMuted} />
-              </View>
+              <TextField label="Playlist name" value={name} onChangeText={setName} accessibilityLabel="Playlist name" style={styles.editInput} />
+              <TextField label="Artwork URL" value={artworkUrl} onChangeText={setArtworkUrl} accessibilityLabel="Playlist artwork URL" autoCapitalize="none" style={styles.editInput} placeholder="https://…" />
               <Pressable onPress={() => void savePlaylist()} disabled={busy || !name.trim()} accessibilityRole="button" style={styles.editorSave}>
                 {busy ? <ActivityIndicator size="small" color={colors.textInverse} /> : <Ionicons name="checkmark" size={17} color={colors.textInverse} />}
                 <Text style={styles.editorSaveLabel}>Save playlist</Text>
               </Pressable>
             </View>
           ) : null}
-
-          {playlist.items.length > 0 && (
-            <PressableScale onPress={() => onPlayAll(playlist)} scaleTo={0.97}>
-              <LinearGradient
-                colors={colors.gradientPrimary}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.editSave}
-              >
-                <Text style={styles.editSaveLabel}>Play all</Text>
-              </LinearGradient>
-            </PressableScale>
-          )}
 
           {removed ? (
             <View style={styles.undoBar} accessibilityRole="alert" accessibilityLiveRegion="polite">
@@ -585,9 +579,7 @@ export function PlaylistDetailModal({
               </View>
             )}
           />
-        </View>
-      </View>
-    </Modal>
+    </CompactGlassSheet>
   );
 }
 
@@ -619,8 +611,6 @@ export function EditMediaModal({
   onClose: () => void;
   onSaved: (updated: Media) => void;
 }) {
-  const insets = useSafeAreaInsets();
-  const { isDesktop } = useResponsive();
   const [title, setTitle] = useState(media.title ?? media.recognized_title ?? '');
   const [artist, setArtist] = useState(media.artist ?? media.recognized_artist ?? '');
   const [album, setAlbum] = useState(media.album ?? '');
@@ -671,12 +661,29 @@ export function EditMediaModal({
   }
 
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={requestClose}>
-      <View style={[styles.modalRoot, isDesktop && styles.modalRootDesktop]}>
-        <Pressable style={styles.modalBackdrop} onPress={requestClose} accessibilityLabel="Close edit details" />
-        <View style={[styles.sheet, isDesktop && styles.sheetDesktop, { paddingBottom: insets.bottom + spacing.lg }]}>
-          {!isDesktop && <View style={styles.sheetHandle} />}
-          <Text style={styles.editTitle}>Edit details</Text>
+    <CompactGlassSheet
+      visible
+      onClose={requestClose}
+      accessibilityLabel="Edit track details"
+      closeAccessibilityLabel="Close edit details"
+      eyebrow="Track identity"
+      header={<Text style={styles.editTitle}>Edit details</Text>}
+      maxWidth={560}
+      maxHeightRatio={0.88}
+      scrollable
+      footer={confirmDiscard ? undefined : (
+        <View style={styles.editActions}>
+          <Pressable onPress={requestClose} disabled={saving} style={styles.editCancel} accessibilityRole="button">
+            <Text style={styles.editCancelLabel}>Cancel</Text>
+          </Pressable>
+          <PressableScale onPress={save} disabled={saving || !dirty} scaleTo={0.97} style={styles.editSaveWrap}>
+            <LinearGradient colors={colors.gradientPrimary} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.editSave}>
+              {saving ? <ActivityIndicator size="small" color="#0B1411" /> : <Text style={styles.editSaveLabel}>{dirty ? 'Save' : 'Saved'}</Text>}
+            </LinearGradient>
+          </PressableScale>
+        </View>
+      )}
+    >
           {[
             { label: 'Title', value: title, set: setTitle },
             { label: 'Artist', value: artist, set: setArtist },
@@ -684,17 +691,14 @@ export function EditMediaModal({
             { label: 'Genre', value: genre, set: setGenre },
             { label: 'Release year', value: releaseYear, set: setReleaseYear },
           ].map((field) => (
-            <View key={field.label} style={styles.editField}>
-              <Text style={styles.editLabel}>{field.label}</Text>
-              <TextInput
+            <TextField
+                key={field.label}
+                label={field.label}
                 value={field.value}
                 onChangeText={field.set}
                 placeholder={field.label}
-                placeholderTextColor={colors.textMuted}
-                selectionColor={colors.cyan}
                 style={styles.editInput}
               />
-            </View>
           ))}
           <Pressable
             onPress={() => setIsRemix((value) => !value)}
@@ -708,42 +712,16 @@ export function EditMediaModal({
             <Text style={styles.editLabel}>This track is a remix</Text>
           </Pressable>
           {confirmDiscard ? (
-            <View style={styles.discardPrompt} accessibilityRole="alert">
-              <View style={styles.discardCopy}>
-                <Text style={styles.discardTitle}>Discard unsaved changes?</Text>
-                <Text style={styles.sheetSub}>Your edits will be lost.</Text>
-              </View>
-              <Pressable onPress={() => setConfirmDiscard(false)} style={styles.discardButton} accessibilityRole="button">
-                <Text style={styles.discardKeepLabel}>Keep editing</Text>
-              </Pressable>
-              <Pressable onPress={onClose} style={[styles.discardButton, styles.discardDanger]} accessibilityRole="button">
-                <Text style={styles.discardDangerLabel}>Discard</Text>
-              </Pressable>
-            </View>
+            <ConfirmationPanel
+              affectedLabel="Discard unsaved changes?"
+              consequence="Your edits will be lost. The saved track details remain unchanged."
+              safeAlternative="Keep editing"
+              confirmLabel="Discard"
+              onCancel={() => setConfirmDiscard(false)}
+              onConfirm={onClose}
+            />
           ) : null}
-          <View style={styles.editActions}>
-            <Pressable onPress={requestClose} disabled={saving} style={styles.editCancel} accessibilityRole="button">
-              <Text style={styles.editCancelLabel}>Cancel</Text>
-            </Pressable>
-          <PressableScale onPress={save} disabled={saving || !dirty} scaleTo={0.97} style={styles.editSaveWrap}>
-            <LinearGradient
-              colors={colors.gradientPrimary}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.editSave}
-            >
-              {saving ? (
-                <ActivityIndicator size="small" color="#0B1411" />
-              ) : (
-                <Text style={styles.editSaveLabel}>{dirty ? 'Save' : 'Saved'}</Text>
-              )}
-            </LinearGradient>
-          </PressableScale>
-          </View>
-
-        </View>
-      </View>
-    </Modal>
+    </CompactGlassSheet>
   );
 }
 
@@ -912,6 +890,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.cover,
     backgroundColor: glass.fillDeep,
   },
+  createField: { flex: 1, minWidth: 0 },
   playlistMosaicCell: { width: '50%', height: '50%', overflow: 'hidden' },
   playlistMosaicFrame: {
     ...(StyleSheet.absoluteFill as object),
@@ -937,7 +916,8 @@ const styles = StyleSheet.create({
     backgroundColor: glass.tintDanger,
   },
   detailDeleteLabel: { ...typography.caption, fontSize: 12, color: colors.danger },
-  detailList: { marginTop: spacing.md },
+  detailBody: { minHeight: 260, flexShrink: 1 },
+  detailList: { marginTop: spacing.md, flexShrink: 1 },
   playlistEditor: { padding: spacing.md, marginBottom: spacing.md, borderRadius: radii.lg, backgroundColor: glass.fillDeep },
   editorSave: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: radii.md, backgroundColor: colors.cyan },
   editorSaveLabel: { ...typography.subtitle, fontSize: 13, color: colors.textInverse },

@@ -54,7 +54,7 @@ export function JobsTab({ jobs, total, query, loading, onQueryChange, onLoadMore
         busy={loading && jobs.length === 0}
       />
       {jobs.length === 0 ? (
-        <EmptyState title="No matching jobs" subtitle="Try another account, job, source, or status filter." icon="download-outline" />
+        <EmptyState motif="signal" title="No matching jobs" subtitle="Try another account, job, source, or status filter." icon="download-outline" />
       ) : (
         <View style={adminStyles.list}>
           {jobs.map((job) => {

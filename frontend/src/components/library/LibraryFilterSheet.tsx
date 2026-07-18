@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import type { LibraryQuery, LibrarySourceFilter } from '../../services/api/library';
@@ -7,6 +7,7 @@ import type { MediaType, Playlist } from '../../services/api/types';
 import { toast } from '../../store/toastStore';
 import { colors, glass, radii, spacing, typography } from '../../theme/tokens';
 import { CompactGlassSheet } from '../ui/CompactGlassSheet';
+import { TextField } from '../ui/TextField';
 
 export type LibraryAdvancedFilters = {
   source: LibrarySourceFilter | null;
@@ -321,7 +322,7 @@ export function LibraryFilterSheet({
         <View style={styles.fieldGroupLast}>
           <Text style={styles.fieldLabel}>Duration in minutes</Text>
           <View style={styles.inputRow}>
-          <TextInput
+          <TextField
             value={draft.minDurationMinutes}
             onChangeText={(minDurationMinutes) => patch({ minDurationMinutes })}
             placeholder="Minimum"
@@ -329,9 +330,9 @@ export function LibraryFilterSheet({
             keyboardType="decimal-pad"
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.cyan}
-            style={styles.input}
+            compact style={styles.input} containerStyle={styles.fieldFlex}
           />
-          <TextInput
+          <TextField
             value={draft.maxDurationMinutes}
             onChangeText={(maxDurationMinutes) => patch({ maxDurationMinutes })}
             placeholder="Maximum"
@@ -339,7 +340,7 @@ export function LibraryFilterSheet({
             keyboardType="decimal-pad"
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.cyan}
-            style={styles.input}
+            compact style={styles.input} containerStyle={styles.fieldFlex}
           />
           </View>
         </View>
@@ -349,7 +350,7 @@ export function LibraryFilterSheet({
         <View style={styles.fieldGroupLast}>
           <Text style={styles.fieldLabel}>Archive range</Text>
           <View style={styles.inputRow}>
-          <TextInput
+          <TextField
             value={draft.addedAfter}
             onChangeText={(addedAfter) => patch({ addedAfter })}
             placeholder="After YYYY-MM-DD"
@@ -357,9 +358,9 @@ export function LibraryFilterSheet({
             autoCapitalize="none"
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.cyan}
-            style={styles.input}
+            compact style={styles.input} containerStyle={styles.fieldFlex}
           />
-          <TextInput
+          <TextField
             value={draft.addedBefore}
             onChangeText={(addedBefore) => patch({ addedBefore })}
             placeholder="Before YYYY-MM-DD"
@@ -367,7 +368,7 @@ export function LibraryFilterSheet({
             autoCapitalize="none"
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.cyan}
-            style={styles.input}
+            compact style={styles.input} containerStyle={styles.fieldFlex}
           />
           </View>
         </View>
@@ -376,14 +377,14 @@ export function LibraryFilterSheet({
       <FilterGroup title="Artist" icon="person-outline">
         <View style={styles.fieldGroupLast}>
           <Text style={styles.fieldLabel}>Artist contains</Text>
-          <TextInput
+          <TextField
             value={draft.artist}
             onChangeText={(artist) => patch({ artist })}
             placeholder="Artist name"
             autoCapitalize="none"
             placeholderTextColor={colors.textMuted}
             selectionColor={colors.cyan}
-            style={styles.input}
+            compact style={styles.input} containerStyle={styles.fieldFlex}
           />
         </View>
       </FilterGroup>
@@ -480,6 +481,7 @@ const styles = StyleSheet.create({
   choiceLabel: { ...typography.caption, color: colors.textSecondary },
   choiceLabelActive: { color: colors.cyan, fontFamily: 'Sora_600SemiBold' },
   inputRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  fieldFlex: { minWidth: 150, flexGrow: 1, flexBasis: 0 },
   input: {
     ...typography.body,
     minWidth: 150,

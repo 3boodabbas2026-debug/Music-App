@@ -144,6 +144,28 @@ export const iconography = {
   treatment: { inactive: 'outline', active: 'filled' },
 } as const;
 
+/** Shared visual grammar for loading, connection, error, and control states. */
+export const stateLayers = {
+  skeleton: {
+    base: glass.fillDeep,
+    raised: glass.fill,
+    sweep: glass.edgeQuiet,
+  },
+  info: { fill: glass.tintPrimary, stroke: glass.tintPrimaryStroke, edge: palette.primary },
+  success: { fill: glass.tintSuccess, stroke: glass.tintSuccessStroke, edge: palette.success },
+  warning: { fill: glass.tintWarning, stroke: glass.tintWarningStroke, edge: palette.warning },
+  danger: { fill: glass.tintDanger, stroke: glass.tintDangerStroke, edge: palette.danger },
+} as const;
+
+export const controlLayers = {
+  primary: { fill: glass.tintPrimary, stroke: glass.tintPrimaryStroke, icon: palette.primary },
+  surface: { fill: glass.fillBright, stroke: glass.strokeStrong, icon: palette.textPrimary },
+  ghost: { fill: glass.fillDeep, stroke: glass.stroke, icon: palette.textSecondary },
+  selected: { fill: glass.tintPrimary, stroke: glass.tintPrimaryStroke, icon: palette.primary },
+  disabled: { fill: glass.fillDeep, stroke: glass.stroke, icon: palette.textMuted },
+  destructive: { fill: glass.tintDanger, stroke: glass.tintDangerStroke, icon: palette.danger },
+} as const;
+
 export const contentGrid = layout.grid;
 
 export { gradients, layout, shadows, motion } from './theme';

@@ -142,6 +142,7 @@ export function ReplayScreen() {
             <View style={styles.emptyBody}>
               <EmptyState
                 icon="sparkles-outline"
+                motif="record"
                 title="Nothing to replay yet"
                 subtitle="Listen through a few tracks and your recap will start filling in here."
               />

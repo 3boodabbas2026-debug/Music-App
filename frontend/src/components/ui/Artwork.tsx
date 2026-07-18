@@ -103,6 +103,13 @@ export function Artwork({
       ]}
     >
       <LinearGradient colors={[...coverGradient(key)]} style={StyleSheet.absoluteFill}>
+        <View pointerEvents="none" style={styles.grooveField}>
+          <View style={[styles.groove, styles.grooveOuter]} />
+          <View style={[styles.groove, styles.grooveMiddle]} />
+          <View style={[styles.groove, styles.grooveInner]} />
+          <View style={styles.horizon} />
+          <View style={styles.horizonNotch} />
+        </View>
         <View style={styles.fallbackIcon}>
           <View
             style={[
@@ -148,6 +155,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  grooveField: { ...StyleSheet.absoluteFill as object, alignItems: 'center', justifyContent: 'center', opacity: 0.9 },
+  groove: { position: 'absolute', borderRadius: radii.pill, borderWidth: 1, borderColor: 'rgba(194,232,217,0.10)' },
+  grooveOuter: { width: '82%', height: '82%' },
+  grooveMiddle: { width: '64%', height: '64%' },
+  grooveInner: { width: '46%', height: '46%', borderColor: 'rgba(233,205,126,0.12)' },
+  horizon: { position: 'absolute', left: '12%', right: '12%', bottom: '14%', height: 1, backgroundColor: 'rgba(99,214,181,0.24)' },
+  horizonNotch: { position: 'absolute', bottom: '14%', width: 12, height: 3, borderRadius: radii.pill, backgroundColor: 'rgba(233,205,126,0.54)' },
   fallbackBadge: {
     alignItems: 'center',
     justifyContent: 'center',

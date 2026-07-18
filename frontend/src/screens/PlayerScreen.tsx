@@ -29,6 +29,7 @@ import { QueueList } from '../components/player/QueueList';
 import { TrackDetails } from '../components/player/TrackDetails';
 import { WaveformScrubber } from '../components/player/WaveformScrubber';
 import { CompactGlassSheet } from '../components/ui/CompactGlassSheet';
+import { ContinuityFrame } from '../components/ui/EmptyState';
 import { PressableScale } from '../components/ui/PressableScale';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useResponsive } from '../hooks/useResponsive';
@@ -328,6 +329,7 @@ export function PlayerScreen() {
             <Ionicons name="chevron-down" size={22} color={colors.textPrimary} />
           </Pressable>
         </View>
+        <ContinuityFrame stateKey="empty-player" minHeight={360} style={styles.emptyContinuity}>
         <View style={[styles.emptyCard, { paddingBottom: insets.bottom + spacing.xl }]} accessibilityRole="summary">
           <View style={styles.emptyConstellation} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
             <Ionicons name="musical-notes" size={42} color={colors.cyan} />
@@ -354,6 +356,7 @@ export function PlayerScreen() {
             </Pressable>
           </View>
         </View>
+        </ContinuityFrame>
       </View>
     );
   }
@@ -736,6 +739,7 @@ const styles = StyleSheet.create({
   emptyVeil: { ...(StyleSheet.absoluteFill as object), backgroundColor: glass.fillHeavy },
   emptyTopBar: { position: 'absolute', zIndex: 2, top: 0, left: spacing.lg },
   emptyCard: { width: '100%', maxWidth: 560, alignItems: 'center', paddingHorizontal: spacing.xl },
+  emptyContinuity: { alignItems: 'center', justifyContent: 'center' },
   emptyConstellation: { width: 96, height: 96, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke, shadowColor: colors.cyan, shadowOpacity: 0.28, shadowRadius: 28, shadowOffset: { width: 0, height: 0 }, elevation: 10 },
   emptyEyebrow: { ...typography.eyebrow, marginTop: spacing.xl, fontSize: 10, letterSpacing: 2.2, color: colors.cyan },
   emptyTitle: { ...typography.title, marginTop: spacing.sm, fontSize: 28, lineHeight: 35, textAlign: 'center', color: colors.textPrimary },

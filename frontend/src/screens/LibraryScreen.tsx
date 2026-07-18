@@ -9,7 +9,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type GestureResponderEvent,
   useWindowDimensions,
@@ -55,11 +54,13 @@ import { LibraryFreshnessBanner } from '../components/library/LibraryFreshnessBa
 import { useBottomChromeClearance, useDockClearance } from '../hooks/useBottomChromeClearance';
 import { RAIL_WIDTH, useResponsive } from '../hooks/useResponsive';
 import { useReducedMotion } from '../hooks/useReducedMotion';
-import { EmptyState } from '../components/ui/EmptyState';
+import { ContinuityFrame, EmptyState } from '../components/ui/EmptyState';
+import { TextField } from '../components/ui/TextField';
 import { Artwork } from '../components/ui/Artwork';
 import { Reveal } from '../components/ui/Reveal';
 import { TabChipRow } from '../components/ui/TabChipRow';
 import { CompactGlassSheet, type SheetAnchor } from '../components/ui/CompactGlassSheet';
+import { ConfirmationPanel } from '../components/ui/SignOutConfirmSheet';
 import { tokenStorage } from '../services/storage/tokenStorage';
 import { PressableScale } from '../components/ui/PressableScale';
 import { ScreenContainer } from '../components/ui/ScreenContainer';
@@ -189,6 +190,7 @@ export function LibraryScreen() {
   const [selectedIds, setSelectedIds] = useState<Record<string, true>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [naming, setNaming] = useState(false);
   const [namingProgress, setNamingProgress] = useState<{ processed: number; matched: number; total: number } | null>(null);
@@ -670,12 +672,7 @@ export function LibraryScreen() {
   async function handleDeleteSelected() {
     const ids = Object.keys(selectedIds);
     if (ids.length === 0) return;
-    if (!confirmBulkDelete) {
-      // First tap arms the button; the second actually deletes.
-      setConfirmBulkDelete(true);
-      return;
-    }
-    setConfirmBulkDelete(false);
+    setBulkDeleting(true);
     const failedIds: string[] = [];
     let removedCount = 0;
     for (const id of ids) {
@@ -687,12 +684,16 @@ export function LibraryScreen() {
       }
     }
     if (failedIds.length === 0) {
+      setBulkDeleting(false);
+      setConfirmBulkDelete(false);
       toast(`Removed ${removedCount} track${removedCount === 1 ? '' : 's'}`, 'success');
       exitSelectMode();
       return;
     }
     setSelectedIds(Object.fromEntries(failedIds.map((id) => [id, true])));
     setSelectMode(true);
+    setBulkDeleting(false);
+    setConfirmBulkDelete(false);
     toast(
       `Removed ${removedCount}; ${failedIds.length} failed and remain selected. Retry delete when you're ready.`,
       'error',
@@ -860,15 +861,16 @@ export function LibraryScreen() {
         <View style={[styles.commandDeck, glassBlur]}>
         <View style={styles.commandPrimary}>
         <View style={styles.searchCapsule}>
-          <Ionicons name="search" size={17} color={colors.textMuted} />
-          <TextInput
+          <TextField
             value={query}
             onChangeText={setQuery}
             placeholder="Search title or artist"
-            placeholderTextColor={colors.textMuted}
-            selectionColor={colors.cyan}
             autoCapitalize="none"
+            accessibilityLabel="Search title or artist"
+            leadingIcon="search"
+            compact
             style={styles.searchInput}
+            containerStyle={styles.searchField}
           />
           {query.length > 0 && (
             <Pressable onPress={() => setQuery('')} accessibilityLabel="Clear search" hitSlop={8}>
@@ -1032,6 +1034,11 @@ export function LibraryScreen() {
         </Reveal>
         )}
 
+        <ContinuityFrame
+          stateKey={tab === 'playlists' ? `playlists-${playlists.length ? 'content' : 'empty'}` : tab === 'categories' && !categoryFilter ? 'categories' : isLoading && visible.length === 0 ? 'loading' : visible.length > 0 ? 'content' : 'empty'}
+          minHeight={320}
+          style={styles.libraryContinuity}
+        >
         {tab === 'playlists' ? (
           <PlaylistsPane
             playlists={playlists.filter((p) => !query || p.name.toLowerCase().includes(query.toLowerCase()))}
@@ -1074,6 +1081,8 @@ export function LibraryScreen() {
               ListEmptyComponent={
                 <EmptyState
                   icon={hasActiveFilters ? 'search-outline' : 'albums-outline'}
+                  motif={hasActiveFilters ? 'signal' : 'shelf'}
+                  minHeight={Math.max(280, cellSize * 1.5)}
                   title={hasActiveFilters ? 'Nothing matches' : 'Your library is ready'}
                   subtitle={
                     hasActiveFilters
@@ -1128,6 +1137,7 @@ export function LibraryScreen() {
             />
           </Reveal>
         )}
+        </ContinuityFrame>
       </ScreenContainer>
 
       {draggingMediaId && selectedMedia.length > 0 && (
@@ -1212,18 +1222,36 @@ export function LibraryScreen() {
               </Text>
             </Pressable>
             <Pressable
-              onPress={handleDeleteSelected}
+               onPress={() => setConfirmBulkDelete(true)}
               disabled={selectedCount === 0}
               style={[styles.bulkButton, styles.bulkButtonDanger, selectedCount === 0 && { opacity: 0.4 }]}
             >
-              <Ionicons name={confirmBulkDelete ? 'alert-circle' : 'trash-outline'} size={15} color={colors.danger} />
-              <Text style={[styles.bulkButtonLabel, { color: colors.danger }]}>
-                {confirmBulkDelete ? 'Sure? Tap again' : 'Delete'}
-              </Text>
+              <Ionicons name="trash-outline" size={15} color={colors.danger} />
+              <Text style={[styles.bulkButtonLabel, { color: colors.danger }]}>Delete</Text>
             </Pressable>
           </ScrollView>
         </View>
       )}
+      <CompactGlassSheet
+        visible={confirmBulkDelete}
+        onClose={() => !bulkDeleting && setConfirmBulkDelete(false)}
+        accessibilityLabel="Confirm bulk delete"
+        closeAccessibilityLabel="Cancel bulk delete"
+        eyebrow="Protected action"
+        header={<Text style={styles.sheetTitle}>Delete selected tracks?</Text>}
+        maxWidth={460}
+      >
+        <ConfirmationPanel
+          affectedLabel={`${selectedCount} selected ${selectedCount === 1 ? 'track' : 'tracks'} will be removed`}
+          consequence="These tracks leave your Library and saved views. This cannot be undone here."
+          safeAlternative="Keep selected tracks"
+          confirmLabel="Delete selected tracks"
+          onCancel={() => setConfirmBulkDelete(false)}
+          onConfirm={() => void handleDeleteSelected()}
+          loading={bulkDeleting}
+          icon="trash-outline"
+        />
+      </CompactGlassSheet>
       <MiniPlayerBar />
 
       {/* Track actions sheet */}
@@ -1519,6 +1547,7 @@ const styles = StyleSheet.create({
     height: 48,
   },
   searchInput: { ...typography.body, flex: 1, color: colors.textPrimary, paddingVertical: 0 },
+  searchField: { flex: 1, minWidth: 0 },
   controlsRow: {
     gap: spacing.sm,
     paddingHorizontal: spacing.xs,
@@ -1579,6 +1608,7 @@ const styles = StyleSheet.create({
   resetFiltersLabel: { ...typography.caption, fontSize: 11, color: colors.textSecondary },
   gridRow: { gap: spacing.md },
   listReveal: { flex: 1 },
+  libraryContinuity: { flex: 1 },
   list: { flex: 1 },
   listContent: { gap: spacing.md },
   listContentRows: {

@@ -1,15 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useToastStore, type Toast } from '../../store/toastStore';
-import { colors, glass, radii, shadows, spacing, typography } from '../../theme/tokens';
+import { colors, glass, radii, shadows, spacing, stateLayers, typography } from '../../theme/tokens';
 
 const TONE_META = {
-  info: { icon: 'information-circle' as const, color: colors.cyan },
-  success: { icon: 'checkmark-circle' as const, color: colors.success },
-  error: { icon: 'alert-circle' as const, color: colors.danger },
+  info: { icon: 'information-circle' as const, color: colors.cyan, fill: stateLayers.info.fill, stroke: stateLayers.info.stroke },
+  success: { icon: 'checkmark-circle' as const, color: colors.success, fill: stateLayers.success.fill, stroke: stateLayers.success.stroke },
+  error: { icon: 'alert-circle' as const, color: colors.danger, fill: stateLayers.danger.fill, stroke: stateLayers.danger.stroke },
 };
 
 export function Toaster({ toast }: { toast: Toast }) {
@@ -40,7 +40,10 @@ export function Toaster({ toast }: { toast: Toast }) {
       accessibilityLabel={`${toast.tone}: ${toast.message}`}
       style={[styles.card, { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }] }]}
     >
-      <Ionicons name={meta.icon} size={18} color={meta.color} />
+      <View pointerEvents="none" style={[styles.edge, { backgroundColor: meta.color }]} />
+      <View style={[styles.iconWell, { backgroundColor: meta.fill, borderColor: meta.stroke }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Ionicons name={meta.icon} size={17} color={meta.color} />
+      </View>
       <Text numberOfLines={2} style={styles.message}>{toast.message}</Text>
       <Pressable onPress={() => dismiss(toast.id)} accessibilityRole="button" accessibilityLabel="Dismiss notification" hitSlop={8} style={({ pressed }) => [styles.dismiss, pressed && styles.dismissPressed]}>
         <Ionicons name="close" size={18} color={colors.textSecondary} />
@@ -50,8 +53,10 @@ export function Toaster({ toast }: { toast: Toast }) {
 }
 
 const styles = StyleSheet.create({
-  card: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: glass.fillHeavy, borderRadius: radii.md, paddingVertical: spacing.sm + 2, paddingHorizontal: spacing.md, ...shadows.card },
+  card: { position: 'relative', overflow: 'hidden', width: '100%', flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: glass.fillHeavy, borderRadius: radii.md, borderWidth: 1, borderColor: glass.strokeStrong, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, ...shadows.card },
+  edge: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
+  iconWell: { width: 34, height: 34, borderRadius: radii.control, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   message: { ...typography.body, fontSize: 14, color: colors.textPrimary, flex: 1 },
-  dismiss: { width: 36, height: 36, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center' },
+  dismiss: { width: 36, height: 36, borderRadius: radii.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: glass.fillDeep, borderWidth: 1, borderColor: glass.stroke },
   dismissPressed: { backgroundColor: glass.fillBright },
 });

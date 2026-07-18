@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, glass, radii, spacing, typography } from '../../theme/tokens';
+import { colors, glass, radii, spacing, stateLayers, typography } from '../../theme/tokens';
 
 function lastUpdatedLabel(value: string | null): string {
   if (!value) return 'Last successful update is unknown.';
@@ -23,34 +23,75 @@ export function LibraryFreshnessBanner({
 }) {
   if (!stale) return null;
   return (
+    <ConnectionSignal
+      title="Showing your saved library"
+      detail="Couldn’t reach Star Hollow. Saved data is still usable."
+      timestamp={lastUpdatedLabel(lastUpdatedAt)}
+      actionLabel={refreshing ? 'Retrying' : 'Retry'}
+      actionAccessibilityLabel="Retry library refresh"
+      loading={refreshing}
+      onAction={onRetry}
+    />
+  );
+}
+
+export function ConnectionSignal({
+  title,
+  detail,
+  timestamp,
+  actionLabel,
+  actionAccessibilityLabel,
+  loading = false,
+  onAction,
+  compact = false,
+  icon = 'cloud-offline-outline',
+}: {
+  title: string;
+  detail: string;
+  timestamp?: string;
+  actionLabel?: string;
+  actionAccessibilityLabel?: string;
+  loading?: boolean;
+  onAction?: () => void;
+  compact?: boolean;
+  icon?: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
     <View
       accessibilityRole="alert"
       accessibilityLiveRegion="polite"
-      style={styles.banner}
+      style={[styles.banner, compact && styles.bannerCompact]}
     >
+      <View pointerEvents="none" style={styles.edge} />
       <View style={styles.iconWell}>
-        <Ionicons name="cloud-offline-outline" size={18} color={colors.warning} />
+        <Ionicons name={icon} size={18} color={colors.warning} />
       </View>
       <View style={styles.copy}>
-        <Text style={styles.title}>Showing your saved library</Text>
-        <Text style={styles.detail}>Couldn’t reach Star Hollow. {lastUpdatedLabel(lastUpdatedAt)}</Text>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.detail}>{detail}</Text>
+        {timestamp ? <Text style={styles.timestamp}>{timestamp}</Text> : null}
       </View>
-      <Pressable
-        onPress={onRetry}
-        disabled={refreshing}
-        accessibilityRole="button"
-        accessibilityLabel="Retry library refresh"
-        style={({ pressed }) => [styles.retry, pressed && styles.retryPressed, refreshing && styles.retryDisabled]}
-      >
-        {refreshing ? <ActivityIndicator size="small" color={colors.cyan} /> : <Ionicons name="refresh" size={16} color={colors.cyan} />}
-        <Text style={styles.retryLabel}>{refreshing ? 'Retrying' : 'Retry'}</Text>
-      </Pressable>
+      {actionLabel && onAction ? (
+        <Pressable
+          onPress={onAction}
+          disabled={loading}
+          accessibilityRole="button"
+          accessibilityLabel={actionAccessibilityLabel ?? actionLabel}
+          accessibilityState={{ disabled: loading, busy: loading }}
+          style={({ pressed }) => [styles.retry, pressed && styles.retryPressed, loading && styles.retryDisabled]}
+        >
+          {loading ? <ActivityIndicator size="small" color={colors.warning} /> : <Ionicons name="refresh" size={16} color={colors.warning} />}
+          <Text style={styles.retryLabel}>{actionLabel}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   banner: {
+    position: 'relative',
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
@@ -59,20 +100,25 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: colors.warning,
+    borderColor: stateLayers.warning.stroke,
     backgroundColor: glass.fillHeavy,
   },
+  bannerCompact: { paddingVertical: spacing.sm, marginBottom: 0 },
+  edge: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: colors.warning },
   iconWell: {
     width: 36,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: radii.pill,
-    backgroundColor: glass.fillBright,
+    backgroundColor: stateLayers.warning.fill,
+    borderWidth: 1,
+    borderColor: stateLayers.warning.stroke,
   },
   copy: { flex: 1, minWidth: 180 },
   title: { ...typography.subtitle, fontSize: 13, color: colors.textPrimary },
   detail: { ...typography.caption, color: colors.textMuted },
+  timestamp: { ...typography.metadata, marginTop: 2, fontSize: 10, color: colors.warning },
   retry: {
     minWidth: 88,
     minHeight: 44,
@@ -82,9 +128,11 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: spacing.md,
     borderRadius: radii.pill,
-    backgroundColor: glass.fillBright,
+    backgroundColor: stateLayers.warning.fill,
+    borderWidth: 1,
+    borderColor: stateLayers.warning.stroke,
   },
-  retryPressed: { backgroundColor: glass.tintPrimary },
-  retryDisabled: { opacity: 0.65 },
-  retryLabel: { ...typography.subtitle, fontSize: 12, color: colors.cyan },
+  retryPressed: { backgroundColor: glass.fillBright, borderColor: colors.warning },
+  retryDisabled: { backgroundColor: glass.fillDeep, borderColor: glass.stroke },
+  retryLabel: { ...typography.subtitle, fontSize: 12, color: colors.warning },
 });

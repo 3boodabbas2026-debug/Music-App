@@ -1,17 +1,45 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { Button } from '../ui/Button';
+import { RecoverableError } from '../ui/FormError';
 import { fetchLyrics, type Lyrics, type SyncedLine } from '../../services/api/lyrics';
 import { usePlayerStore } from '../../store/playerStore';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { motionPresets } from '../../theme/motion';
-import { colors, spacing, typography } from '../../theme/tokens';
+import { colors, glass, motion, radii, spacing, stateLayers, typography } from '../../theme/tokens';
 
 /** How far ahead of the audio clock a line lights up — feels "on the beat". */
 const SYNC_LEAD_SECONDS = 0.25;
 const ANNOUNCEMENT_INTERVAL_SECONDS = 15;
+
+function LyricsSkeleton() {
+  const reduceMotion = useReducedMotion();
+  const sweep = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    sweep.stopAnimation();
+    if (reduceMotion) { sweep.setValue(0.3); return; }
+    sweep.setValue(0);
+    const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: motion.duration.continuous, easing: Easing.inOut(Easing.sin), useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [reduceMotion, sweep]);
+  return (
+    <View style={styles.stateWrap} accessibilityRole="progressbar" accessibilityLabel="Finding the words">
+      <Text style={styles.stateEyebrow}>LYRIC FIELD</Text>
+      <View style={styles.lyricSkeletonList}>
+        {[78, 54, 86, 64, 72].map((width, index) => (
+          <View key={`${width}-${index}`} style={[styles.lyricSkeletonLine, { width: `${width}%` }]}>
+            <View style={styles.lyricSkeletonMarker} />
+            <Animated.View pointerEvents="none" style={[styles.lyricSkeletonSweep, { opacity: reduceMotion ? 0.1 : 0.18, transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-80, 560] }) }] }]} />
+          </View>
+        ))}
+      </View>
+      <Text style={styles.stateTitle}>Finding the words…</Text>
+      <Text style={styles.stateText}>Setting the page to the rhythm of this track.</Text>
+    </View>
+  );
+}
 
 function seekLabel(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
@@ -190,24 +218,13 @@ export function LyricsView() {
   if (!currentMedia) return null;
 
   if (loading && !lyrics) {
-    return (
-      <View style={styles.stateWrap}>
-        <Text style={styles.stateEyebrow}>LYRIC FIELD</Text>
-        <ActivityIndicator color={colors.cyan} />
-        <Text style={styles.stateTitle}>Finding the words…</Text>
-        <Text style={styles.stateText}>Setting the page to the rhythm of this track.</Text>
-      </View>
-    );
+    return <LyricsSkeleton />;
   }
 
   if (error && !lyrics) {
     return (
-      <View style={styles.stateWrap} accessibilityRole="alert">
-        <Text style={styles.stateEyebrow}>LYRIC FIELD</Text>
-        <Ionicons name="cloud-offline-outline" size={28} color={colors.warning} />
-        <Text style={styles.errorTitle}>Lyrics could not be loaded</Text>
-        <Text style={styles.stateText}>{error}</Text>
-        <Button label="Retry lyrics" icon="refresh-outline" onPress={() => void retry()} />
+      <View style={styles.stateWrap}>
+        <RecoverableError title="Lyrics could not be loaded" message={error} actionLabel="Retry lyrics" onAction={() => void retry()} icon="document-text-outline" />
       </View>
     );
   }
@@ -334,6 +351,10 @@ const styles = StyleSheet.create({
   stateEyebrow: { ...typography.eyebrow, fontSize: 9, letterSpacing: 2.2, color: colors.cyan, marginBottom: spacing.sm },
   stateTitle: { ...typography.sectionTitle, fontSize: 19, lineHeight: 26, color: colors.textPrimary, textAlign: 'center' },
   stateText: { ...typography.body, maxWidth: 410, color: colors.textMuted, textAlign: 'center' },
+  lyricSkeletonList: { width: '100%', maxWidth: 560, gap: spacing.sm, marginBottom: spacing.md },
+  lyricSkeletonLine: { position: 'relative', overflow: 'hidden', height: 34, justifyContent: 'center', borderRadius: radii.control, backgroundColor: stateLayers.skeleton.base, borderWidth: 1, borderColor: glass.stroke },
+  lyricSkeletonMarker: { width: 2, height: 18, marginLeft: spacing.sm, borderRadius: radii.pill, backgroundColor: stateLayers.skeleton.raised },
+  lyricSkeletonSweep: { position: 'absolute', top: 0, bottom: 0, width: 72, backgroundColor: stateLayers.skeleton.sweep },
   errorTitle: { ...typography.sectionTitle, fontSize: 19, lineHeight: 26, color: colors.textPrimary, textAlign: 'center' },
   cachedNotice: { width: '100%', maxWidth: 560, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.sm, marginBottom: spacing.md, borderRadius: 10, backgroundColor: 'rgba(242,183,93,0.08)' },
   cachedNoticeText: { ...typography.caption, flex: 1, color: colors.textSecondary },

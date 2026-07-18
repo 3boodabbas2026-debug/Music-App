@@ -24,11 +24,11 @@
 ## Status dashboard (update every round)
 - Phase: **DESIGN-IMPLEMENT**
 - Ideas found: 73 / 73 (DESIGN_IDEAS.md written)
-- Ideas done: 48 / 73  (R1-R5; R5 #42-#48 — tsc + full smoke 40/40 green)
-- Round: 6 (in progress)
+- Ideas done: 56 / 73  (R1-R6; R6 #49-#56 — tsc + full smoke 40/40 green)
+- Round: 7 (in progress)
 - Branch: `codex/apk-fast-path` → origin/main
-- Last shipped APK: R1-R4 all CI GREEN. R5 committed LOCALLY `3575731` (unpushed — bundle w/ R6). last_apk_push_epoch: 1784360331
-- Current Codex task id: task-mrq2rngb-853nti (R6 Recognition/Activity/Replay/Settings/Telegram/Admin #49-#56, effort=high)
+- Last shipped APK: R1-R6 all CI GREEN; R5+R6 `8347d89` CI GREEN (run 29637397568) → APK rebuilt/released. last_apk_push_epoch: 1784363059
+- Current Codex task id: task-mrq3q3ty-frbnv5 (R7 Components & states #57-#68, effort=high)
 
 ### Batch plan (adaptive)
 - R1 Foundations: #1-#12 (tokens/type/spacing/grid/glass/elevation/palette/accent/gradients/radii/icons/numerics/daylight)
@@ -58,6 +58,7 @@
 ## Round log
 - 05:48 UTC — Created design loop. Launched DESIGN-DISCOVERY (`task-mrpy5gnp-iysej0`, effort=high) → DESIGN_IDEAS.md with 73 ideas. Prior 60-issue loop DONE (APK versionCode 40, commit c749471). Rescheduled poll ~600s.
 - 06:00 UTC — DISCOVERY done (8m50s). 73 ideas confirmed (#1-#73, no gaps, 5 groups). Phase=DESIGN-IMPLEMENT. Recorded batch plan + smoke-test invariants. Launched R1 Foundations #1-#12 (`task-mrpylcep-hbpmvc`, effort=high; Codex self-runs full smoke suite via system Chrome). Poll ~900s.
+- 08:24 UTC — R6 done (20m16s). #49-#56 done (11 files: RecognitionScreen, JobsScreen, ReplayScreen, SettingsScreen, TelegramScreen, admin AdminScreen/adminStyles/StatTile/tabs). tsc+build GREEN, full smoke 40/40 GREEN first try. ~45min since push → committed `8347d89` + pushed `c6f5f3a..8347d89` (bundled R5+R6) → origin/main (CI verify pending). Done 56/73. last_apk_push_epoch=1784363059. Launched R7 Components #57-#68 (`task-mrq3q3ty-frbnv5`, effort=high). Poll ~900s.
 - 07:56 UTC — R5 Player done (15m26s). #42-#48 done (6 files: PlayerScreen, LyricsView, WaveformScrubber, QueueList, MiniPlayerBar, theme.ts). tsc+build GREEN, full smoke 40/40 GREEN first try. ~20min since push (<30) → committed LOCALLY `3575731` (unpushed). Done 48/73. R3+R4 CI GREEN confirmed (c6f5f3a). Launched R6 #49-#56 (`task-mrq2rngb-853nti`, effort=high). Poll ~900s.
 - 07:35 UTC — R4 Library done (14m24s). #34-#41 done (7 files: LibraryScreen, LibraryMediaView, LibraryFilterSheet, LibrarySheets, PlaylistDropStrip, SmartCategoriesPane, CompactGlassSheet). tsc+build GREEN. Full smoke: 1 fail = living-forest reduced-motion (load flake, passed in isolation 4.9s); confirm re-run reached 38/40 with 0 failures before being externally killed → treated green. ~45min since push → committed `c6f5f3a` + pushed `7bcafd8..c6f5f3a` (bundled R3+R4) → origin/main (CI verify pending). Done 41/73. last_apk_push_epoch=1784360331. Launched R5 Player #42-#48 (`task-mrq23qsd-h3me4p`, effort=high). Poll ~900s.
 - 07:14 UTC — R3 Auth+Home done (20m41s). #24-#33 done (4 files: AuthLayout, HomeScreen, LoginScreen, RegisterScreen). tsc+build GREEN, full smoke 40/40 GREEN first try. ~27min since push (<30) → committed LOCALLY `db16b4d` (unpushed). Done 33/73. Launched R4 Library #34-#41 (`task-mrq1eq9j-dca31t`, effort=high). Poll ~900s. R2 CI GREEN confirmed (7bcafd8).

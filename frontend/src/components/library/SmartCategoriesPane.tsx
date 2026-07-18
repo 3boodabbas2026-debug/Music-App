@@ -52,6 +52,7 @@ export function SmartCategoriesPane({ items, bottomClearance, onSelect, onNameTr
         <View style={styles.emptyWrap}>
           <EmptyState
             icon="pricetags-outline"
+            motif="shelf"
             title="Categories need track details"
             subtitle="Star Hollow builds these views from genre metadata. Name recognized tracks or edit their Genre field to create categories."
             actionLabel="Name tracks"

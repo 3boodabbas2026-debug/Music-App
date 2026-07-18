@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import * as adminApi from '../../../services/api/admin';
@@ -7,6 +7,7 @@ import type { AdminFeedback } from '../../../services/api/admin';
 import { Button } from '../../../components/ui/Button';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { GlassPanel } from '../../../components/ui/GlassPanel';
+import { TextField } from '../../../components/ui/TextField';
 import { toast } from '../../../store/toastStore';
 import { apiErrorMessage } from '../../../utils/apiError';
 import { colors, spacing } from '../../../theme/tokens';
@@ -53,7 +54,7 @@ export function FeedbackTab({ items, total, query, loading, onQueryChange, onLoa
         sorts={[{ value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }, { value: 'account', label: 'Account A–Z' }]}
         onSortChange={(sort) => onQueryChange({ ...query, sort })} busy={loading && items.length === 0}
       />
-      {items.length === 0 ? <EmptyState title="No matching feedback" subtitle="Try another account, message, or status filter." icon="chatbubble-ellipses-outline" /> : (
+      {items.length === 0 ? <EmptyState motif="signal" title="No matching feedback" subtitle="Try another account, message, or status filter." icon="chatbubble-ellipses-outline" /> : (
         <View style={adminStyles.list}>
           {items.map((item) => (
             <GlassPanel key={item.id} style={[adminStyles.row, item.status === 'open' ? adminStyles.rowIntervention : adminStyles.rowHealthy]}>
@@ -69,7 +70,7 @@ export function FeedbackTab({ items, total, query, loading, onQueryChange, onLoa
                 <Text style={adminStyles.feedbackMessage}>{item.message}</Text>
                 {item.admin_reply ? <Text style={adminStyles.mutedLine}>Internal note (admins only): {item.admin_reply}</Text> : (
                   <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                    <TextInput accessibilityLabel={`Internal note for feedback from ${item.user_email}`} value={noteDrafts[item.id] ?? ''} onChangeText={(text) => setNoteDrafts((prev) => ({ ...prev, [item.id]: text }))} placeholder="Internal note — not sent to user" placeholderTextColor={colors.textMuted} style={[adminStyles.emailInput, { flex: 1 }]} />
+                    <TextField accessibilityLabel={`Internal note for feedback from ${item.user_email}`} value={noteDrafts[item.id] ?? ''} onChangeText={(text) => setNoteDrafts((prev) => ({ ...prev, [item.id]: text }))} placeholder="Internal note — not sent to user" leadingIcon="document-text-outline" compact style={adminStyles.emailInput} containerStyle={adminStyles.emailField} />
                     <Button label="Save internal note" variant="secondary" disabled={!(noteDrafts[item.id] ?? '').trim() || busyId === item.id} loading={busyId === item.id} onPress={() => void saveInternalNote(item)} style={adminStyles.replyButton} />
                   </View>
                 )}

@@ -34,7 +34,7 @@ export function LogsTab({ events, total, query, loading, onQueryChange, onLoadMo
         sorts={[{ value: 'newest', label: 'Newest' }, { value: 'oldest', label: 'Oldest' }, { value: 'account', label: 'Account A–Z' }]}
         onSortChange={(sort) => onQueryChange({ ...query, sort })} busy={loading && events.length === 0}
       />
-      {events.length === 0 ? <EmptyState title="No matching log events" subtitle="Try another account, detail, event type, or sort." icon="list-outline" /> : (
+      {events.length === 0 ? <EmptyState motif="signal" title="No matching log events" subtitle="Try another account, detail, event type, or sort." icon="list-outline" /> : (
         <View style={adminStyles.list}>
           {events.map((event) => { const presentation = EVENT_PRESENTATION[event.event_type] ?? DEFAULT_PRESENTATION; return <DataRow key={event.id} title={EVENT_LABELS[event.event_type] ?? event.event_type} status={{ label: presentation.label, tone: presentation.tone }} icon={presentation.icon} subtitle={event.user_email ?? undefined} meta={event.detail ?? undefined} metaTone={presentation.tone === 'attention' ? 'attention' : 'muted'} timestamp={timeAgo(event.created_at)} />; })}
           <PagedListFooter shown={events.length} total={total} loading={loading} onLoadMore={onLoadMore} />

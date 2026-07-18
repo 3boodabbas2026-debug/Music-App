@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
@@ -20,7 +19,9 @@ import { DashboardCustomizer } from '../components/dashboard/DashboardCustomizer
 import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
 import { Artwork } from '../components/ui/Artwork';
 import { Button } from '../components/ui/Button';
-import { LibraryFreshnessBanner } from '../components/library/LibraryFreshnessBanner';
+import { ContinuityFrame } from '../components/ui/EmptyState';
+import { TextField } from '../components/ui/TextField';
+import { ConnectionSignal, LibraryFreshnessBanner } from '../components/library/LibraryFreshnessBanner';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { IconButton } from '../components/ui/IconButton';
 import { ProgressBar } from '../components/ui/ProgressBar';
@@ -630,7 +631,7 @@ export function HomeScreen() {
             <View style={styles.observatoryStepRule} />
           </View>
           <View style={[styles.inputRow, styles.inputRowMultiline, glassBlur]}>
-            <TextInput
+            <TextField
               value={url}
               onChangeText={(value) => {
                 setUrl(value);
@@ -639,7 +640,6 @@ export function HomeScreen() {
               accessibilityLabel="Media link"
               accessibilityHint="Paste one or more links separated by spaces or new lines"
               placeholder="Paste links — one per line or space-separated"
-              placeholderTextColor={colors.textMuted}
               selectionColor={accent}
               keyboardType="url"
               autoCapitalize="none"
@@ -647,6 +647,7 @@ export function HomeScreen() {
               multiline
               textAlignVertical="top"
               style={styles.input}
+              containerStyle={styles.importField}
             />
             <Pressable
               onPress={() => void handlePaste()}
@@ -831,14 +832,16 @@ export function HomeScreen() {
           <SectionHeader title="In progress" actionLabel={jobsLoadError ? 'Open Activity' : 'See all'} onAction={() => openTab('Activity')} style={styles.sectionHeader} />
           <GlassPanel style={styles.activityPanel}>
             {jobsLoadError ? (
-              <Pressable onPress={() => openTab('Activity')} accessibilityRole="button" accessibilityLabel="Progress is stale. Open Activity to retry." style={({ pressed }) => [styles.jobsStale, pressed && styles.pressed]}>
-                <Ionicons name="cloud-offline-outline" size={18} color={colors.warning} />
-                <View style={styles.jobsStaleCopy}>
-                  <Text style={styles.jobsStaleTitle}>Progress may be out of date</Text>
-                  <Text style={styles.jobsStaleDetail}>{jobsLoadError} Open Activity to retry.</Text>
-                </View>
-                <Ionicons name="arrow-forward" size={17} color={colors.textMuted} />
-              </Pressable>
+              <ConnectionSignal
+                compact
+                title="Progress may be out of date"
+                detail={`${jobsLoadError} Saved job history is still usable.`}
+                timestamp="Open Activity to refresh the signal."
+                actionLabel="Open Activity"
+                actionAccessibilityLabel="Progress is stale. Open Activity to retry."
+                onAction={() => openTab('Activity')}
+                icon="pulse-outline"
+              />
             ) : null}
             {activeJobs.slice(0, 2).map((job, index) => (
               <View key={job.id}>
@@ -1069,6 +1072,7 @@ export function HomeScreen() {
             onRetry={() => void refreshLibrary()}
           />
 
+          <ContinuityFrame stateKey={showFirstUse ? 'empty' : 'content'} minHeight={360}>
           {visibleWidgets.map((id, index) => {
             const rendered = widgetRenderers[id]();
             if (!rendered) return null;
@@ -1127,6 +1131,7 @@ export function HomeScreen() {
               </GlassPanel>
             </Reveal>
           ) : null}
+          </ContinuityFrame>
 
           {libraryLoading && recentItems.length === 0 ? (
             <View style={styles.libraryLoading} accessibilityLabel="Loading your library">
@@ -1207,6 +1212,7 @@ const styles = StyleSheet.create({
     ...shadows.low,
   },
   inputRowMultiline: { alignItems: 'flex-start', paddingVertical: 5 },
+  importField: { flex: 1, minWidth: 0 },
   input: {
     ...typography.body,
     flex: 1,

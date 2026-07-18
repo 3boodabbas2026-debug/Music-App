@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { File } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +24,10 @@ import { Button } from '../components/ui/Button';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { Artwork } from '../components/ui/Artwork';
 import { CompactGlassSheet } from '../components/ui/CompactGlassSheet';
+import { ContinuityFrame } from '../components/ui/EmptyState';
+import { TextField } from '../components/ui/TextField';
+import { RecoverableError } from '../components/ui/FormError';
+import { ConnectionSignal } from '../components/library/LibraryFreshnessBanner';
 import { PressableScale } from '../components/ui/PressableScale';
 import { ProgressBar } from '../components/ui/ProgressBar';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
@@ -37,7 +41,7 @@ import { useRecognitionCaptureStore } from '../store/recognitionCaptureStore';
 import { SCAN_HISTORY_LIMIT, type ScanEntry, useScanHistoryStore } from '../store/scanHistoryStore';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage, friendlyJobError, friendlyJobStage } from '../utils/apiError';
-import { colors, glass, gradients, motion, numericTypography, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, gradients, motion, numericTypography, radii, spacing, stateLayers, typography } from '../theme/tokens';
 
 const LISTEN_SECONDS = 15;
 
@@ -75,6 +79,34 @@ function discardClipFile(uri: string | null) {
 function meteringToAmplitude(metering: number | undefined): number {
   if (metering === undefined || !Number.isFinite(metering)) return 0;
   return Math.max(0, Math.min(1, (metering + 60) / 60));
+}
+
+function CandidateSkeleton() {
+  const reduceMotion = useReducedMotion();
+  const sweep = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    sweep.stopAnimation();
+    if (reduceMotion) { sweep.setValue(0.3); return; }
+    sweep.setValue(0);
+    const loop = Animated.loop(Animated.timing(sweep, { toValue: 1, duration: motion.duration.continuous, easing: Easing.inOut(Easing.sin), useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [reduceMotion, sweep]);
+  return (
+    <View style={styles.candidateList} accessibilityRole="progressbar" accessibilityLabel="Finding source candidates">
+      {[0, 1, 2].map((index) => (
+        <View key={index} style={styles.candidateSkeleton}>
+          <View style={styles.candidateSkeletonArt} />
+          <View style={styles.candidateSkeletonCopy}>
+            <View style={[styles.skeletonTone, styles.candidateSkeletonTitle]} />
+            <View style={[styles.skeletonTone, styles.candidateSkeletonMeta]} />
+            <View style={[styles.skeletonTone, styles.candidateSkeletonAction]} />
+          </View>
+          <Animated.View pointerEvents="none" style={[styles.candidateSkeletonSweep, { opacity: reduceMotion ? 0.1 : 0.18, transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-80, 620] }) }] }]} />
+        </View>
+      ))}
+    </View>
+  );
 }
 
 export function RecognitionScreen() {
@@ -672,17 +704,17 @@ export function RecognitionScreen() {
           </PressableScale>
         </Animated.View>
 
+        <ContinuityFrame stateKey={phase} minHeight={220} style={styles.footerContinuity}>
         <View style={styles.footer}>
           {phase === 'idle' && (
             <>
               {offline ? (
-                <View style={styles.offlineNotice} accessibilityRole="alert">
-                  <Ionicons name="cloud-offline-outline" size={19} color={colors.warning} />
-                  <View style={styles.offlineNoticeCopy}>
-                    <Text style={styles.offlineNoticeTitle}>Identify pauses while offline</Text>
-                    <Text style={styles.offlineNoticeText}>Reconnect before recording so a 15-second clip is never captured for a server that cannot receive it. Cached browsing and playback still work.</Text>
-                  </View>
-                </View>
+                <ConnectionSignal
+                  compact
+                  title="Identify pauses while offline"
+                  detail="Reconnect before recording so a 15-second clip is never captured for a server that cannot receive it."
+                  timestamp="Saved browsing and playback data is still usable."
+                />
               ) : null}
               <Text style={styles.subtitle}>
                 {mode === 'humming'
@@ -840,13 +872,14 @@ export function RecognitionScreen() {
                       : 'No match — get closer to the source, or search by name:'}
                   </Text>
                   <View style={styles.manualRow}>
-                    <TextInput
+                    <TextField
                       value={manualQuery}
                       onChangeText={setManualQuery}
                       placeholder="Song title or artist"
-                      placeholderTextColor={colors.textMuted}
-                      selectionColor={colors.cyan}
+                      leadingIcon="search"
+                      compact
                       style={styles.manualInput}
+                      containerStyle={styles.manualField}
                       onSubmitEditing={manualSearch}
                     />
                     <PressableScale onPress={manualSearch} disabled={!manualQuery.trim() || downloadBusy} accessibilityLabel={downloadBusy ? 'Searching for song' : 'Search and add song'} accessibilityHint={!manualQuery.trim() ? 'Enter a song title or artist first' : undefined} scaleTo={0.9}>
@@ -890,6 +923,7 @@ export function RecognitionScreen() {
             </Animated.View>
           )}
         </View>
+        </ContinuityFrame>
       </View>
       <CompactGlassSheet
         visible={historyVisible}
@@ -905,13 +939,14 @@ export function RecognitionScreen() {
         }
       >
         <View style={styles.historySearchRow}>
-          <TextInput
+          <TextField
             value={manualQuery}
             onChangeText={setManualQuery}
             placeholder="Search title or artist"
-            placeholderTextColor={colors.textMuted}
-            selectionColor={colors.cyan}
+            leadingIcon="search"
+            compact
             style={styles.manualInput}
+            containerStyle={styles.manualField}
             onSubmitEditing={manualSearch}
           />
           <Button label="Search" icon="search-outline" onPress={manualSearch} disabled={!manualQuery.trim()} style={styles.sheetActionButton} />
@@ -979,15 +1014,9 @@ export function RecognitionScreen() {
           <Text style={styles.candidateQuery}>{candidateQuery}</Text>
         </View>
         {candidateLoading ? (
-          <View style={styles.sheetLoading} accessibilityLiveRegion="polite">
-            <ActivityIndicator color={colors.cyan} />
-            <Text style={styles.sheetSubtitle}>Finding source candidates…</Text>
-          </View>
+          <CandidateSkeleton />
         ) : candidateError ? (
-          <View style={styles.retryBlock} accessibilityLiveRegion="polite">
-            <Text style={styles.error}>{candidateError}</Text>
-            <Button label="Retry candidate search" icon="refresh-outline" onPress={() => void loadCandidates()} style={styles.wide} />
-          </View>
+          <RecoverableError title="Source search was interrupted" message={candidateError} actionLabel="Retry candidate search" onAction={() => void loadCandidates()} />
         ) : (
           <View style={styles.candidateList}>
             {candidates.map((candidate) => {
@@ -1182,6 +1211,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
   },
+  footerContinuity: { alignItems: 'center' },
   analysisLabel: { ...typography.caption, color: colors.textMuted, textAlign: 'center' },
   resultBlock: { width: '100%', gap: spacing.md, alignItems: 'center' },
   resultPanel: { width: '100%' },
@@ -1248,6 +1278,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md - 6,
   },
+  manualField: { flex: 1, minWidth: 0 },
   manualGo: {
     width: 42,
     height: 42,
@@ -1314,6 +1345,14 @@ const styles = StyleSheet.create({
   candidateQuery: { ...typography.body, color: colors.textSecondary },
   sheetLoading: { minHeight: 150, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   candidateList: { gap: spacing.md },
+  candidateSkeleton: { position: 'relative', overflow: 'hidden', minHeight: 96, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md, borderRadius: radii.lg, backgroundColor: stateLayers.skeleton.base, borderWidth: 1, borderColor: glass.stroke },
+  candidateSkeletonArt: { width: 68, height: 68, borderRadius: radii.md, backgroundColor: stateLayers.skeleton.raised },
+  candidateSkeletonCopy: { flex: 1, gap: spacing.sm },
+  skeletonTone: { borderRadius: radii.pill, backgroundColor: stateLayers.skeleton.raised },
+  candidateSkeletonTitle: { width: '74%', height: 9 },
+  candidateSkeletonMeta: { width: '52%', height: 7 },
+  candidateSkeletonAction: { alignSelf: 'flex-end', width: 92, height: 28 },
+  candidateSkeletonSweep: { position: 'absolute', top: 0, bottom: 0, width: 76, backgroundColor: stateLayers.skeleton.sweep },
   candidateCard: { position: 'relative', padding: spacing.md, gap: spacing.md },
   candidateCardSelected: { borderColor: colors.cyan, backgroundColor: glass.tintPrimary },
   candidateSelectionEdge: { position: 'absolute', left: 0, top: spacing.md, bottom: spacing.md, width: 3, borderRadius: radii.pill, backgroundColor: 'transparent' },

@@ -6,7 +6,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type StyleProp,
   type ViewStyle,
@@ -14,6 +13,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 
 import { Artwork } from '../ui/Artwork';
+import { CompactGlassSheet } from '../ui/CompactGlassSheet';
+import { ConfirmationPanel } from '../ui/SignOutConfirmSheet';
+import { TextField } from '../ui/TextField';
 import { usePlayerStore } from '../../store/playerStore';
 import { usePlaylistStore } from '../../store/playlistStore';
 import { toast } from '../../store/toastStore';
@@ -72,6 +74,7 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
   const [saving, setSaving] = useState(false);
   const [showSave, setShowSave] = useState(false);
   const [playlistName, setPlaylistName] = useState('');
+  const [confirmClear, setConfirmClear] = useState(false);
 
   const removableCount = Math.max(0, queue.length - 1);
 
@@ -96,6 +99,7 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
   const handleClear = () => {
     clearQueue();
     setRemoved(null);
+    setConfirmClear(false);
     toast('Queue cleared · current track kept playing', 'success');
   };
 
@@ -126,6 +130,7 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
   }
 
   return (
+    <>
     <FlatList
       style={[styles.list, style]}
       data={queue}
@@ -151,7 +156,7 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
                 <Text style={styles.toolLabel}>Save</Text>
               </Pressable>
               <Pressable
-                onPress={handleClear}
+                onPress={() => setConfirmClear(true)}
                 disabled={removableCount === 0}
                 accessibilityRole="button"
                 accessibilityLabel="Clear queue except current track"
@@ -167,16 +172,17 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
 
           {showSave ? (
             <View style={styles.saveRow}>
-              <TextInput
+              <TextField
                 autoFocus
                 value={playlistName}
                 onChangeText={setPlaylistName}
                 onSubmitEditing={() => void handleSave()}
                 placeholder="Playlist name"
-                placeholderTextColor={colors.textMuted}
-                selectionColor={colors.cyan}
                 accessibilityLabel="Playlist name"
+                leadingIcon="bookmark-outline"
+                compact
                 style={styles.saveInput}
+                containerStyle={styles.saveField}
               />
               <Pressable
                 onPress={() => void handleSave()}
@@ -207,8 +213,9 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
         const canMoveUp = !isCurrent && index > 0 && index - 1 !== queueIndex;
         const canMoveDown = !isCurrent && index < queue.length - 1 && index + 1 !== queueIndex;
         const identity = <QueueIdentity item={item} index={index} queueIndex={queueIndex} current={isCurrent} playing={playing} />;
-        return (
-          <View style={[styles.row, isCurrent && styles.rowCurrent]}>
+          return (
+            <View style={[styles.row, isCurrent && styles.rowCurrent]}>
+              <View pointerEvents="none" style={[styles.rowStateEdge, isCurrent && styles.rowStateEdgeCurrent]} />
             {isCurrent ? (
               <View accessibilityRole="summary" accessibilityLabel={`${displayTitle(item)}, current track`} style={styles.identityAction}>{identity}</View>
             ) : (
@@ -238,6 +245,25 @@ export function QueueList({ style }: { style?: StyleProp<ViewStyle> }) {
         );
       }}
     />
+    <CompactGlassSheet
+      visible={confirmClear}
+      onClose={() => setConfirmClear(false)}
+      accessibilityLabel="Confirm queue clear"
+      closeAccessibilityLabel="Cancel queue clear"
+      eyebrow="Protected action"
+      header={<Text style={styles.confirmTitle}>Clear the queue?</Text>}
+      maxWidth={440}
+    >
+      <ConfirmationPanel
+        affectedLabel={`${removableCount} queued ${removableCount === 1 ? 'track' : 'tracks'} will be removed`}
+        consequence="The current track keeps playing; only the tracks waiting after it are cleared."
+        safeAlternative="Keep the queue"
+        confirmLabel="Clear queued tracks"
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={handleClear}
+      />
+    </CompactGlassSheet>
+    </>
   );
 }
 
@@ -253,13 +279,17 @@ const styles = StyleSheet.create({
   toolLabel: { ...typography.caption, fontSize: 10, color: colors.textSecondary },
   saveRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   saveInput: { flex: 1, minHeight: 44, borderRadius: radii.md, paddingHorizontal: spacing.md, color: colors.textPrimary, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.surfaceBorderStrong, ...typography.body },
+  saveField: { flex: 1, minWidth: 0 },
+  confirmTitle: { ...typography.subtitle, color: colors.textPrimary },
   saveButton: { width: 44, height: 44, borderRadius: radii.control, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.cyan },
   undoRow: { minHeight: 44, paddingLeft: spacing.md, paddingRight: spacing.sm, borderRadius: radii.md, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke },
   undoText: { ...typography.caption, flex: 1, color: colors.textSecondary },
   undoButton: { minWidth: 72, minHeight: 36, borderRadius: radii.control, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, backgroundColor: glass.fill, borderWidth: 1, borderColor: colors.surfaceBorder },
   undoLabel: { ...typography.caption, color: colors.cyan, fontFamily: 'Sora_600SemiBold' },
-  row: { flexDirection: 'row', alignItems: 'center', borderRadius: radii.md - 4, overflow: 'hidden', marginBottom: 2 },
+  row: { position: 'relative', flexDirection: 'row', alignItems: 'center', minHeight: 68, paddingLeft: 4, borderRadius: radii.md - 4, overflow: 'hidden', marginBottom: 2, borderWidth: 1, borderColor: 'transparent' },
   rowCurrent: { backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke, shadowColor: colors.cyan, shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
+  rowStateEdge: { position: 'absolute', left: 0, top: 8, bottom: 8, width: 4, borderRadius: radii.pill, backgroundColor: glass.strokeStrong },
+  rowStateEdgeCurrent: { top: 0, bottom: 0, backgroundColor: colors.cyan },
   rowPressed: { backgroundColor: glass.fillBright },
   identityAction: { flex: 1, minWidth: 0, minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm, paddingLeft: spacing.xs, paddingRight: spacing.sm, borderRadius: radii.md - 4 },
   signalRail: { width: 28, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' },

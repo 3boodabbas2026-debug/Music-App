@@ -9,6 +9,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Text,
   View,
   type StyleProp,
   type ViewStyle,
@@ -18,7 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useResponsive } from '../../hooks/useResponsive';
-import { motion, radii, spacing } from '../../theme/tokens';
+import { colors, glass, motion, radii, spacing, typography } from '../../theme/tokens';
 import { GlassPanel } from './GlassPanel';
 import { IconButton } from './IconButton';
 
@@ -30,6 +31,8 @@ type Props = PropsWithChildren<{
   accessibilityLabel: string;
   closeAccessibilityLabel?: string;
   header?: ReactNode;
+  eyebrow?: string;
+  identity?: ReactNode;
   footer?: ReactNode;
   anchor?: SheetAnchor | null;
   maxWidth?: number;
@@ -51,6 +54,8 @@ export function CompactGlassSheet({
   accessibilityLabel,
   closeAccessibilityLabel = 'Close panel',
   header,
+  eyebrow,
+  identity,
   footer,
   anchor,
   maxWidth = 480,
@@ -248,9 +253,14 @@ export function CompactGlassSheet({
               style={styles.content}
             >
               <View style={styles.headerRow}>
-                <View style={styles.headerContent}>{header}</View>
+                <View style={styles.headerContent}>
+                  {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+                  {header}
+                </View>
                 <IconButton icon="close" accessibilityLabel={closeAccessibilityLabel} onPress={onClose} />
               </View>
+              {identity ? <View style={styles.identity}>{identity}</View> : null}
+              <View pointerEvents="none" style={styles.divider} />
               {scrollable ? (
                 <ScrollView
                   style={[styles.scrollBody, bodyStyle]}
@@ -283,8 +293,11 @@ const styles = StyleSheet.create({
   animatedPanel: { position: 'relative', flexShrink: 1, zIndex: 1 },
   panel: { width: '100%', maxHeight: '100%', borderRadius: radii.sheet },
   content: { flexShrink: 1, padding: spacing.md },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
-  headerContent: { flex: 1 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerContent: { flex: 1, minWidth: 0, gap: 2 },
+  eyebrow: { ...typography.eyebrow, fontSize: 9, lineHeight: 13, color: colors.cyan },
+  identity: { marginTop: spacing.sm },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: spacing.sm, backgroundColor: glass.strokeStrong },
   body: { flexShrink: 1 },
   scrollBody: { flexGrow: 0, flexShrink: 1 },
   scrollContent: { paddingBottom: spacing.sm },
@@ -296,7 +309,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.md,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(158,181,170,0.16)',
-    backgroundColor: 'rgba(4,10,18,0.42)',
+    borderTopColor: glass.stroke,
+    backgroundColor: glass.fillDeep,
   },
 });

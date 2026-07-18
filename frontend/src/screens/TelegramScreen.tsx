@@ -6,13 +6,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { Button } from '../components/ui/Button';
+import { CompactGlassSheet } from '../components/ui/CompactGlassSheet';
+import { ConfirmationPanel } from '../components/ui/SignOutConfirmSheet';
 import { EmptyState } from '../components/ui/EmptyState';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { IconButton } from '../components/ui/IconButton';
@@ -21,6 +22,7 @@ import { ScreenContainer } from '../components/ui/ScreenContainer';
 import { SectionHeader } from '../components/ui/SectionHeader';
 import { SegmentedControl } from '../components/ui/SegmentedControl';
 import { TextField } from '../components/ui/TextField';
+import { ConnectionSignal } from '../components/library/LibraryFreshnessBanner';
 import * as telegramApi from '../services/api/telegram';
 import { watchJob } from '../services/api/jobSocket';
 import type { Job } from '../services/api/types';
@@ -83,6 +85,8 @@ export function TelegramScreen({ navigation }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [hasSavedSettings, setHasSavedSettings] = useState(false);
   const [disconnectArmed, setDisconnectArmed] = useState(false);
+  const [statusUnavailable, setStatusUnavailable] = useState(false);
+  const [statusRefreshing, setStatusRefreshing] = useState(false);
 
   const [pickerTab, setPickerTab] = useState<'chats' | 'folders'>('chats');
   const [dialogs, setDialogs] = useState<telegramApi.TelegramDialog[] | null>(null);
@@ -119,10 +123,15 @@ export function TelegramScreen({ navigation }: Props) {
       .then((status) => {
         if (!alive) return;
         if (status.phone) setPhone(status.phone);
+        setStatusUnavailable(false);
         setHasSavedSettings(status.configured);
         setPhase(status.authorized ? 'linked' : 'setup');
       })
-      .catch(() => alive && setPhase('setup'));
+      .catch(() => {
+        if (!alive) return;
+        setStatusUnavailable(true);
+        setPhase('setup');
+      });
     return () => {
       alive = false;
       unsubscribeImport.current?.();
@@ -131,6 +140,21 @@ export function TelegramScreen({ navigation }: Props) {
 
   function fail(err: unknown, fallback: string) {
     setError(apiErrorMessage(err, fallback));
+  }
+
+  async function refreshTelegramStatus() {
+    setStatusRefreshing(true);
+    try {
+      const status = await telegramApi.getStatus();
+      if (status.phone) setPhone(status.phone);
+      setHasSavedSettings(status.configured);
+      setPhase(status.authorized ? 'linked' : 'setup');
+      setStatusUnavailable(false);
+    } catch {
+      setStatusUnavailable(true);
+    } finally {
+      setStatusRefreshing(false);
+    }
   }
 
   async function handleConnect() {
@@ -168,10 +192,6 @@ export function TelegramScreen({ navigation }: Props) {
   }
 
   async function handleDisconnect() {
-    if (!disconnectArmed) {
-      setDisconnectArmed(true);
-      return;
-    }
     setBusy(true);
     setError(null);
     try {
@@ -311,6 +331,18 @@ export function TelegramScreen({ navigation }: Props) {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+          {statusUnavailable ? (
+            <ConnectionSignal
+              title="Telegram status is unavailable"
+              detail="The saved connection could not be checked. Music already in your Library is still usable."
+              timestamp="Retry before starting a new Telegram import."
+              actionLabel={statusRefreshing ? 'Retrying' : 'Retry status'}
+              actionAccessibilityLabel="Retry Telegram connection status"
+              loading={statusRefreshing}
+              onAction={() => void refreshTelegramStatus()}
+              icon="paper-plane-outline"
+            />
+          ) : null}
           {phase !== 'loading' ? <StepCorridor activeStep={corridorStep} /> : null}
           {phase === 'loading' ? (
             <View accessibilityLiveRegion="polite" style={styles.loadingState}>
@@ -411,12 +443,11 @@ export function TelegramScreen({ navigation }: Props) {
                   </View>
 
                   <Button
-                    label={disconnectArmed ? 'Disconnect and revoke session' : 'Disconnect Telegram'}
+                    label="Disconnect Telegram"
                     variant="danger"
-                    icon={disconnectArmed ? 'warning-outline' : 'unlink-outline'}
-                    loading={busy && disconnectArmed}
-                    onPress={handleDisconnect}
-                    accessibilityHint={disconnectArmed ? 'Tap again to confirm' : 'Requires confirmation'}
+                    icon="unlink-outline"
+                    onPress={() => setDisconnectArmed(true)}
+                    accessibilityHint="Requires confirmation"
                   />
 
                   {!dialogs ? (
@@ -440,15 +471,15 @@ export function TelegramScreen({ navigation }: Props) {
                         <>
                           <Text style={styles.hint}>Tap to select one or more chats — imports pull from all of them.</Text>
                           <View style={styles.searchCapsule}>
-                            <Ionicons name="search" size={15} color={colors.textMuted} />
-                            <TextInput
+                            <TextField
                               accessibilityLabel="Search Telegram chats"
                               value={dialogQuery}
                               onChangeText={setDialogQuery}
                               placeholder="Search chats"
-                              placeholderTextColor={colors.textMuted}
-                              selectionColor={colors.cyan}
+                              leadingIcon="search"
+                              compact
                               style={styles.searchInput}
+                              containerStyle={styles.searchField}
                             />
                           </View>
                           <View style={styles.dialogList}>
@@ -479,7 +510,7 @@ export function TelegramScreen({ navigation }: Props) {
                               );
                             })}
                             {filteredDialogs?.length === 0 ? (
-                              <EmptyState compact icon="search-outline" title="No matching chats" subtitle="Try a different name or clear the search." />
+                              <EmptyState compact motif="signal" icon="search-outline" title="No matching chats" subtitle="Try a different name or clear the search." />
                             ) : null}
                             {filteredDialogs && filteredDialogs.length < matchingDialogCount ? (
                               <Pressable
@@ -526,7 +557,7 @@ export function TelegramScreen({ navigation }: Props) {
                               );
                             })}
                             {folders?.length === 0 ? (
-                              <EmptyState compact icon="folder-open-outline" title="No Telegram folders" subtitle="Create a custom folder in Telegram, then reload your chats." />
+                              <EmptyState compact motif="shelf" icon="folder-open-outline" title="No Telegram folders" subtitle="Create a custom folder in Telegram, then reload your chats." />
                             ) : null}
                           </View>
                         </>
@@ -610,6 +641,26 @@ export function TelegramScreen({ navigation }: Props) {
           )}
         </ScrollView>
       </ScreenContainer>
+      <CompactGlassSheet
+        visible={disconnectArmed}
+        onClose={() => !busy && setDisconnectArmed(false)}
+        accessibilityLabel="Confirm Telegram disconnect"
+        closeAccessibilityLabel="Cancel Telegram disconnect"
+        eyebrow="Protected action"
+        header={<Text style={styles.panelTitle}>Disconnect Telegram?</Text>}
+        maxWidth={460}
+      >
+        <ConfirmationPanel
+          affectedLabel="Your Telegram connection and saved session will be revoked"
+          consequence="Imports stop until you link Telegram again. Music already in your Starhollow Library stays available."
+          safeAlternative="Keep Telegram linked"
+          confirmLabel="Disconnect and revoke session"
+          onCancel={() => setDisconnectArmed(false)}
+          onConfirm={() => void handleDisconnect()}
+          loading={busy}
+          icon="unlink-outline"
+        />
+      </CompactGlassSheet>
     </View>
   );
 }
@@ -691,6 +742,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   searchInput: { ...typography.body, flex: 1, color: colors.textPrimary, paddingVertical: 0 },
+  searchField: { flex: 1, minWidth: 0 },
   dialogList: { gap: 2 },
   dialogRow: {
     flexDirection: 'row',

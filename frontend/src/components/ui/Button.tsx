@@ -1,7 +1,7 @@
 import { ActivityIndicator, Animated, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { colors, glass, glassBlur, iconography, radii, shadows, spacing, typography } from '../../theme/tokens';
+import { colors, controlLayers, glass, glassBlur, iconography, radii, shadows, spacing, typography } from '../../theme/tokens';
 import { useTactileGlass } from '../../hooks/useTactileGlass';
 
 type Props = {
@@ -62,6 +62,10 @@ export function Button({
         style,
       ]}
     >
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.pressedLayer, { opacity: tactile.highlight.interpolate({ inputRange: [0.92, 1], outputRange: [1, 0] }) }]}
+      />
       <Animated.View style={[styles.content, { opacity: tactile.highlight, transform: [{ scale: tactile.scale }] }]}>
         {loading ? (
           <ActivityIndicator size="small" color={isDanger ? colors.danger : colors.cyan} />
@@ -90,6 +94,8 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
+    position: 'relative',
+    overflow: 'hidden',
     minHeight: 52,
     borderRadius: radii.control,
     paddingVertical: 13,
@@ -99,6 +105,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
+  pressedLayer: { ...(StyleSheet.absoluteFill as object), backgroundColor: glass.fillBright },
   // Every variant is a glass pane: translucent tint + luminous stroke, with
   // the shared backdrop blur applied inline so the sky reflects through.
   primary: {
@@ -120,17 +127,18 @@ const styles = StyleSheet.create({
   },
   hoverBorder: { ...(StyleSheet.absoluteFill as object), borderRadius: radii.control, borderWidth: 1, borderColor: glass.edgeModal },
   disabledPrimary: {
-    backgroundColor: glass.fillDeep,
-    borderColor: glass.stroke,
+    backgroundColor: controlLayers.disabled.fill,
+    borderColor: controlLayers.disabled.stroke,
     shadowOpacity: 0,
     elevation: 0,
   },
   disabledSecondary: {
-    backgroundColor: glass.fillDeep,
-    borderColor: glass.stroke,
+    backgroundColor: controlLayers.disabled.fill,
+    borderColor: controlLayers.disabled.stroke,
   },
   disabledGhost: {
-    borderColor: glass.stroke,
+    backgroundColor: controlLayers.disabled.fill,
+    borderColor: controlLayers.disabled.stroke,
   },
   disabledDanger: {
     backgroundColor: 'rgba(240,131,140,0.05)',

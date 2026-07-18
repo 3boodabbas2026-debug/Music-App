@@ -46,6 +46,10 @@ const darkGlassSeed = {
   edgeModal: 'rgba(255, 255, 255, 0.24)',
   tintPrimary: 'rgba(99, 214, 181, 0.18)',
   tintPrimaryStroke: 'rgba(99, 214, 181, 0.44)',
+  tintWarning: 'rgba(233, 205, 126, 0.10)',
+  tintWarningStroke: 'rgba(233, 205, 126, 0.34)',
+  tintSuccess: 'rgba(113, 206, 156, 0.10)',
+  tintSuccessStroke: 'rgba(113, 206, 156, 0.34)',
   tintDanger: 'rgba(240, 131, 140, 0.12)',
   tintDangerStroke: 'rgba(240, 131, 140, 0.30)',
 } as const;
@@ -90,6 +94,10 @@ const lightGlassSeed: ColorScale<typeof darkGlassSeed> = {
   edgeModal: 'rgba(255, 255, 255, 0.96)',
   tintPrimary: 'rgba(23, 111, 89, 0.13)',
   tintPrimaryStroke: 'rgba(23, 111, 89, 0.38)',
+  tintWarning: 'rgba(133, 101, 21, 0.09)',
+  tintWarningStroke: 'rgba(133, 101, 21, 0.30)',
+  tintSuccess: 'rgba(38, 119, 73, 0.09)',
+  tintSuccessStroke: 'rgba(38, 119, 73, 0.30)',
   tintDanger: 'rgba(182, 61, 76, 0.09)',
   tintDangerStroke: 'rgba(182, 61, 76, 0.28)',
 };

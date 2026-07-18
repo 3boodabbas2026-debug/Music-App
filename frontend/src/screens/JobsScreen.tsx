@@ -9,6 +9,7 @@ import { MiniPlayerBar } from '../components/player/MiniPlayerBar';
 import { Button } from '../components/ui/Button';
 import { DataRow, type DataRowTone } from '../components/ui/DataRow';
 import { EmptyState } from '../components/ui/EmptyState';
+import { RecoverableError } from '../components/ui/FormError';
 import { GlassPanel } from '../components/ui/GlassPanel';
 import { PressableScale } from '../components/ui/PressableScale';
 import { ProgressRing } from '../components/ui/ProgressRing';
@@ -24,7 +25,7 @@ import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { toast } from '../store/toastStore';
 import { useVideoPlayerStore } from '../store/videoPlayerStore';
-import { colors, glass, motion, numericTypography, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, motion, numericTypography, radii, spacing, stateLayers, typography } from '../theme/tokens';
 import { apiErrorMessage, friendlyJobError, friendlyJobStage } from '../utils/apiError';
 import { displayTitle } from '../utils/mediaDisplay';
 import { confirmJobCancellation } from '../utils/confirmJobCancellation';
@@ -85,49 +86,43 @@ function jobTitle(job: Job): string {
 
 function ActivitySkeleton() {
   const reduceMotion = useReducedMotion();
-  const pulse = useRef(new Animated.Value(0.46)).current;
+  const sweep = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    pulse.stopAnimation();
+    sweep.stopAnimation();
     if (reduceMotion) {
-      pulse.setValue(0.68);
-      return () => pulse.stopAnimation();
+      sweep.setValue(0.32);
+      return () => sweep.stopAnimation();
     }
-
+    sweep.setValue(0);
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 0.82,
-          duration: motion.duration.slow * 2,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0.46,
-          duration: motion.duration.slow * 2,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
+      Animated.timing(sweep, { toValue: 1, duration: motion.duration.continuous, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse, reduceMotion]);
+  }, [reduceMotion, sweep]);
 
   return (
     <View style={styles.loadingState} accessibilityRole="progressbar" accessibilityLabel="Loading activity">
-      <Animated.View style={[styles.loadingList, { opacity: pulse }]}>
+      <View style={styles.loadingList}>
         {[0, 1, 2].map((index) => (
           <GlassPanel key={index} style={styles.skeletonRow}>
+            <View pointerEvents="none" style={styles.skeletonEdge} />
             <View style={styles.skeletonIcon} />
             <View style={styles.skeletonCopy}>
+              <View style={styles.skeletonTop}>
+                <View style={styles.skeletonStatus} />
+                <View style={[styles.skeletonLine, styles.skeletonTime]} />
+              </View>
               <View style={[styles.skeletonLine, styles.skeletonTitle]} />
               <View style={[styles.skeletonLine, styles.skeletonMeta]} />
+              <View style={[styles.skeletonLine, styles.skeletonDetail]} />
             </View>
-            <View style={styles.skeletonStatus} />
+            <View style={styles.skeletonAction} />
+            <Animated.View pointerEvents="none" style={[styles.skeletonSweep, { opacity: reduceMotion ? 0.1 : 0.18, transform: [{ translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-100, 620] }) }] }]} />
           </GlassPanel>
         ))}
-      </Animated.View>
+      </View>
       <Text style={styles.loadingText}>Gathering your recent activity…</Text>
     </View>
   );
@@ -364,18 +359,20 @@ export function JobsScreen({ embedded = false }: { embedded?: boolean }) {
           {jobs === null ? (
             <ActivitySkeleton />
           ) : loadError ? (
-            <GlassPanel style={styles.errorPanel}>
-              <View style={styles.errorIcon}><Ionicons name="cloud-offline-outline" size={24} color={colors.danger} /></View>
-              <Text style={styles.errorTitle}>Activity is unavailable</Text>
-              <Text style={styles.errorBody}>{loadError}</Text>
-              <Button label="Try again" variant="ghost" onPress={() => void load()} style={styles.retryLoadButton} />
-            </GlassPanel>
+            <RecoverableError
+              title="Activity is unavailable"
+              message={loadError}
+              actionLabel="Try again"
+              onAction={() => void load()}
+            />
           ) : jobs.length === 0 ? (
             <View style={styles.emptyWrap}>
               <EmptyState
                 title="Nothing in motion"
                 subtitle="Imports you start on Today will appear here with live progress."
                 icon="pulse-outline"
+                motif="signal"
+                minHeight={240}
                 actionLabel="Import your first track"
                 onAction={goToday}
               />
@@ -484,12 +481,18 @@ const styles = StyleSheet.create({
   loadingState: { minHeight: 240, width: '100%', justifyContent: 'center', gap: spacing.md },
   loadingList: { width: '100%', gap: spacing.sm },
   skeletonRow: { minHeight: 82, flexDirection: 'row', alignItems: 'center', gap: spacing.md, padding: spacing.md },
-  skeletonIcon: { width: 48, height: 48, borderRadius: radii.pill, backgroundColor: glass.fillBright },
+  skeletonEdge: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, backgroundColor: glass.strokeStrong },
+  skeletonIcon: { width: 48, height: 48, borderRadius: radii.control, backgroundColor: stateLayers.skeleton.raised, borderWidth: 1, borderColor: glass.stroke },
   skeletonCopy: { flex: 1, gap: spacing.sm },
-  skeletonLine: { height: 9, borderRadius: radii.pill, backgroundColor: glass.fillBright },
+  skeletonTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  skeletonLine: { height: 9, borderRadius: radii.pill, backgroundColor: stateLayers.skeleton.raised },
   skeletonTitle: { width: '68%' },
   skeletonMeta: { width: '42%', height: 7 },
-  skeletonStatus: { width: 64, height: 24, borderRadius: radii.pill, backgroundColor: glass.fillBright },
+  skeletonDetail: { width: '78%', height: 6 },
+  skeletonTime: { width: 42, height: 6 },
+  skeletonStatus: { width: 64, height: 20, borderRadius: radii.pill, backgroundColor: stateLayers.skeleton.raised },
+  skeletonAction: { width: 38, height: 38, borderRadius: radii.control, backgroundColor: stateLayers.skeleton.raised },
+  skeletonSweep: { position: 'absolute', top: 0, bottom: 0, width: 82, backgroundColor: stateLayers.skeleton.sweep },
   loadingText: { ...typography.caption, color: colors.textMuted },
   errorPanel: { alignItems: 'center', padding: spacing.xl, gap: spacing.sm },
   errorIcon: {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import * as adminApi from '../../../services/api/admin';
@@ -7,6 +7,7 @@ import * as authApi from '../../../services/api/auth';
 import type { AdminUser } from '../../../services/api/admin';
 import { Button } from '../../../components/ui/Button';
 import { CompactGlassSheet } from '../../../components/ui/CompactGlassSheet';
+import { ConfirmationPanel } from '../../../components/ui/SignOutConfirmSheet';
 import { DataRow } from '../../../components/ui/DataRow';
 import { EmptyState } from '../../../components/ui/EmptyState';
 import { TextField } from '../../../components/ui/TextField';
@@ -116,7 +117,7 @@ export function UsersTab({ users, total, query, loading, currentAdminEmail, onQu
     <>
       {controls}
       {users.length === 0 ? (
-        <EmptyState title="No matching users" subtitle="Try a different account search or role filter." icon="people-outline" />
+        <EmptyState motif="signal" title="No matching users" subtitle="Try a different account search or role filter." icon="people-outline" />
       ) : (
         <View style={adminStyles.list}>
           {users.map((user) => (
@@ -126,7 +127,7 @@ export function UsersTab({ users, total, query, loading, currentAdminEmail, onQu
               status={{ label: user.is_admin ? 'Admin' : 'User', tone: user.is_admin ? 'active' : 'neutral' }}
               subtitle={editingEmailFor === user.id ? (
                 <View style={adminStyles.emailEditor}>
-                  <TextInput
+                  <TextField
                     accessibilityLabel={`Email for ${user.display_name}`}
                     value={emailDraft}
                     onChangeText={(value) => { setEmailDraft(value); setEmailError(null); }}
@@ -135,7 +136,9 @@ export function UsersTab({ users, total, query, loading, currentAdminEmail, onQu
                     autoCorrect={false}
                     keyboardType="email-address"
                     autoFocus
+                    compact
                     style={adminStyles.emailInput}
+                    containerStyle={adminStyles.emailField}
                   />
                   {emailError ? <Text accessibilityLiveRegion="polite" style={adminStyles.fieldError}>{emailError}</Text> : null}
                   <View style={adminStyles.emailActions}>
@@ -185,16 +188,23 @@ export function UsersTab({ users, total, query, loading, currentAdminEmail, onQu
         accessibilityLabel="Confirm admin role change"
         closeAccessibilityLabel="Cancel role change"
         maxWidth={500}
+        eyebrow="Protected action"
         header={<Text style={adminStyles.confirmTitle}>{roleTarget?.is_admin ? 'Revoke admin access?' : 'Grant admin access?'}</Text>}
       >
         {roleTarget ? (
-          <View style={adminStyles.emailEditor}>
-            <Text style={adminStyles.confirmEmail}>{roleTarget.email}</Text>
-            <Text style={adminStyles.confirmBody}>
-              {roleTarget.is_admin
-                ? 'This account will lose access to users, jobs, feedback, announcements, and operational logs.'
-                : 'This account will be able to manage users, jobs, feedback, announcements, and operational logs.'}
-            </Text>
+          <ConfirmationPanel
+            affectedLabel={roleTarget.email}
+            consequence={roleTarget.is_admin
+              ? 'This account will lose access to users, jobs, feedback, announcements, and operational logs.'
+              : 'This account will be able to manage users, jobs, feedback, announcements, and operational logs.'}
+            safeAlternative="Cancel"
+            confirmLabel={roleTarget.is_admin ? 'Confirm revoke' : 'Confirm grant'}
+            onCancel={closeRoleConfirmation}
+            onConfirm={() => void confirmRoleChange()}
+            confirmDisabled={!password}
+            loading={busyId === roleTarget.id}
+            icon={roleTarget.is_admin ? 'shield-outline' : 'shield-checkmark-outline'}
+          >
             <TextField
               label="Your current password"
               value={password}
@@ -205,18 +215,7 @@ export function UsersTab({ users, total, query, loading, currentAdminEmail, onQu
               hint="Reauthentication is required. This change is recorded in the admin log."
               onSubmitEditing={() => void confirmRoleChange()}
             />
-            <View style={adminStyles.confirmActions}>
-              <Button label="Cancel" variant="ghost" onPress={closeRoleConfirmation} disabled={!!busyId} style={adminStyles.confirmButton} />
-              <Button
-                label={roleTarget.is_admin ? 'Confirm revoke' : 'Confirm grant'}
-                variant={roleTarget.is_admin ? 'danger' : 'primary'}
-                onPress={() => void confirmRoleChange()}
-                disabled={!password}
-                loading={busyId === roleTarget.id}
-                style={adminStyles.confirmButton}
-              />
-            </View>
-          </View>
+          </ConfirmationPanel>
         ) : null}
       </CompactGlassSheet>
     </>

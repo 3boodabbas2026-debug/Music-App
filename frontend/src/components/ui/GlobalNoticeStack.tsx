@@ -1,16 +1,32 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useLatestAnnouncement } from '../../hooks/useAnnouncements';
 import { useAppUpdate } from '../../hooks/useAppUpdate';
 import { useToastStore } from '../../store/toastStore';
 import { spacing } from '../../theme/tokens';
+import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { AnnouncementBanner } from './AnnouncementBanner';
 import { Toaster } from './Toaster';
 import { UpdateBanner } from './UpdateBanner';
 
 type Notice = { key: string; priority: number; render: () => ReactNode };
+
+function NoticeSlot({ children }: { children: ReactNode }) {
+  const reduceMotion = useReducedMotion();
+  const progress = useRef(new Animated.Value(reduceMotion ? 1 : 0)).current;
+  useEffect(() => {
+    progress.stopAnimation();
+    if (reduceMotion) { progress.setValue(1); return; }
+    Animated.timing(progress, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [progress, reduceMotion]);
+  return (
+    <Animated.View style={[styles.slot, { opacity: progress, transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }] }]}>
+      {children}
+    </Animated.View>
+  );
+}
 
 /** One safe-area-aware lane that reserves space for every global notice. */
 export function GlobalNoticeStack() {
@@ -56,7 +72,7 @@ export function GlobalNoticeStack() {
       style={[styles.lane, { paddingTop: insets.top + spacing.sm }]}
       accessibilityLabel={`${notices.length} app ${notices.length === 1 ? 'notice' : 'notices'}`}
     >
-      {visibleNotices.map((notice) => <View key={notice.key} style={styles.slot}>{notice.render()}</View>)}
+      {visibleNotices.map((notice) => <NoticeSlot key={notice.key}>{notice.render()}</NoticeSlot>)}
     </View>
   );
 }

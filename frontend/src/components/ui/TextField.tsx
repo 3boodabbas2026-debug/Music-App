@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, TextInput, TextInputProps, View, type StyleProp, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useReducedMotion } from '../../hooks/useReducedMotion';
@@ -10,6 +10,9 @@ type Props = TextInputProps & {
   error?: string;
   hint?: string;
   credentialType?: 'username' | 'current-password' | 'new-password' | 'name' | 'one-time-code';
+  leadingIcon?: keyof typeof Ionicons.glyphMap;
+  compact?: boolean;
+  containerStyle?: StyleProp<ViewStyle>;
 };
 
 const CREDENTIAL_META = {
@@ -32,6 +35,9 @@ export function TextField({
   credentialType,
   autoComplete,
   textContentType,
+  leadingIcon,
+  compact = false,
+  containerStyle,
   ...rest
 }: Props) {
   const [focused, setFocused] = useState(false);
@@ -56,7 +62,7 @@ export function TextField({
   }, [focusProgress, focused, reduceMotion]);
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, containerStyle]}>
       {label ? <Text style={[styles.label, focused && styles.labelFocused]}>{label}</Text> : null}
       <Animated.View
         style={{
@@ -66,6 +72,11 @@ export function TextField({
           ],
         }}
       >
+        {leadingIcon ? (
+          <View pointerEvents="none" style={styles.leadingIcon}>
+            <Ionicons name={leadingIcon} size={18} color={focused ? colors.cyan : colors.textMuted} />
+          </View>
+        ) : null}
         <TextInput
           {...rest}
           accessibilityLabel={accessibilityLabel ?? label}
@@ -85,10 +96,12 @@ export function TextField({
           }}
           style={[
             styles.input,
+            compact && styles.inputCompact,
             glassBlur,
             focused && styles.inputFocused,
             error && styles.inputError,
             isSecure && styles.inputSecure,
+            leadingIcon && styles.inputWithLeading,
             style,
           ]}
         />
@@ -144,6 +157,9 @@ const styles = StyleSheet.create({
     borderColor: colors.cyan,
     backgroundColor: glass.fillBright,
   },
+  inputCompact: { minHeight: 44, paddingVertical: 10 },
+  inputWithLeading: { paddingLeft: 44 },
+  leadingIcon: { position: 'absolute', zIndex: 1, left: 0, top: 0, bottom: 0, width: 44, alignItems: 'center', justifyContent: 'center' },
   inputSecure: { paddingRight: 52 },
   inputError: {
     backgroundColor: 'rgba(239,120,136,0.07)',

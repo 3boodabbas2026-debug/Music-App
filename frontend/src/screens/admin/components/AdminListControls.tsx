@@ -1,8 +1,6 @@
-import { Pressable, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-
+import { Pressable, Text, View } from 'react-native';
 import { Button } from '../../../components/ui/Button';
-import { colors } from '../../../theme/tokens';
+import { TextField } from '../../../components/ui/TextField';
 import { adminStyles } from '../adminStyles';
 
 export type ControlOption<T extends string> = { value: T; label: string };
@@ -38,17 +36,18 @@ export function AdminListControls<TFilter extends string, TSort extends string>(
     <View style={adminStyles.controlsPanel}>
       <View style={adminStyles.searchRow}>
         <View style={adminStyles.searchInputWrap}>
-          <Ionicons name="search" size={17} color={colors.textMuted} />
-          <TextInput
+          <TextField
             accessibilityLabel={searchPlaceholder}
             value={search}
             onChangeText={onSearchChange}
             onSubmitEditing={onSearch}
             placeholder={searchPlaceholder}
-            placeholderTextColor={colors.textMuted}
             returnKeyType="search"
             autoCapitalize="none"
+            leadingIcon="search"
+            compact
             style={adminStyles.searchInput}
+            containerStyle={adminStyles.searchField}
           />
         </View>
         <Button label="Search" variant="secondary" onPress={onSearch} loading={busy} style={adminStyles.searchButton} />

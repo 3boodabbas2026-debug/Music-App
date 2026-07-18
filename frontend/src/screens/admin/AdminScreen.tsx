@@ -124,7 +124,7 @@ export function AdminScreen() {
   }, [isAdmin]);
 
   if (!isAdmin) {
-    return <View style={adminStyles.root}><ScreenContainer maxWidth={800}><View style={adminStyles.headerRow}><IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" /><SectionHeader eyebrow="Restricted" title="Admin" subtitle="Operational controls are limited to the admin account." style={adminStyles.screenHeading} /></View><EmptyState title="Not available" subtitle="This area is only visible to the app's admin account." icon="lock-closed-outline" /></ScreenContainer></View>;
+    return <View style={adminStyles.root}><ScreenContainer maxWidth={800}><View style={adminStyles.headerRow}><IconButton icon="chevron-back" accessibilityLabel="Go back" onPress={() => navigation.goBack()} variant="surface" /><SectionHeader eyebrow="Restricted" title="Admin" subtitle="Operational controls are limited to the admin account." style={adminStyles.screenHeading} /></View><EmptyState motif="locked" title="Not available" subtitle="This area is only visible to the app's admin account." icon="lock-closed-outline" /></ScreenContainer></View>;
   }
 
   const refreshing = SECTION_KEYS.some((key) => loading[key]);
@@ -164,6 +164,6 @@ export function AdminScreen() {
 
 function SectionGate({ loading, error, hasData, onRetry, children }: { loading: boolean; error: string | null; hasData: boolean; onRetry: () => void; children: ReactNode }) {
   if (loading && !hasData) return <View accessibilityLiveRegion="polite" style={adminStyles.loadingState}><ActivityIndicator color={colors.cyan} /><Text style={adminStyles.mutedLine}>Loading this section…</Text></View>;
-  if (error && !hasData) return <EmptyState icon="cloud-offline-outline" title="This section is unavailable" subtitle={error} actionLabel="Try this section again" onAction={onRetry} />;
+  if (error && !hasData) return <EmptyState motif="offline" icon="cloud-offline-outline" title="This section is unavailable" subtitle={error} actionLabel="Try this section again" onAction={onRetry} />;
   return <>{error ? <View accessibilityLiveRegion="polite" style={adminStyles.sectionError}><Text style={adminStyles.sectionErrorTitle}>Refresh failed; showing the last usable data</Text><View style={adminStyles.sectionErrorRow}><Text style={adminStyles.sectionErrorCopy}>{error}</Text><Button label="Retry" variant="secondary" onPress={onRetry} style={adminStyles.retryButton} /></View></View> : null}{children}</>;
 }
