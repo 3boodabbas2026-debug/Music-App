@@ -30,6 +30,7 @@ type Props = PropsWithChildren<{
   accessibilityLabel: string;
   closeAccessibilityLabel?: string;
   header?: ReactNode;
+  footer?: ReactNode;
   anchor?: SheetAnchor | null;
   maxWidth?: number;
   maxHeightRatio?: number;
@@ -50,6 +51,7 @@ export function CompactGlassSheet({
   accessibilityLabel,
   closeAccessibilityLabel = 'Close panel',
   header,
+  footer,
   anchor,
   maxWidth = 480,
   maxHeightRatio = 0.78,
@@ -261,6 +263,7 @@ export function CompactGlassSheet({
               ) : (
                 <View style={[styles.body, bodyStyle]}>{children}</View>
               )}
+              {footer ? <View style={styles.footer}>{footer}</View> : null}
             </View>
           </GlassPanel>
         </Animated.View>
@@ -285,4 +288,15 @@ const styles = StyleSheet.create({
   body: { flexShrink: 1 },
   scrollBody: { flexGrow: 0, flexShrink: 1 },
   scrollContent: { paddingBottom: spacing.sm },
+  footer: {
+    marginHorizontal: -spacing.md,
+    marginBottom: -spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(158,181,170,0.16)',
+    backgroundColor: 'rgba(4,10,18,0.42)',
+  },
 });

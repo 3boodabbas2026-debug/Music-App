@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type ReactNode } from 'react';
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Animated, Platform, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,7 +16,7 @@ import {
   displayArtist,
   displayTitle,
 } from '../../utils/mediaDisplay';
-import { colors, glass, gradients, radii, spacing, typography } from '../../theme/tokens';
+import { colors, glass, gradients, motion, radii, shadows, spacing, typography } from '../../theme/tokens';
 
 type MediaItemProps = {
   media: Media;
@@ -30,6 +30,8 @@ type MediaItemProps = {
   onDragStart?: (absoluteX: number, absoluteY: number) => void;
   onDragMove?: (absoluteX: number, absoluteY: number) => void;
   onDragEnd?: (absoluteX: number, absoluteY: number, cancelled: boolean) => void;
+  active?: boolean;
+  compact?: boolean;
 };
 
 function DragSurface({
@@ -131,8 +133,22 @@ export const GridCard = memo(function GridCard({
   onDragEnd,
 }: MediaItemProps & { size: number }) {
   const [hovered, setHovered] = useState(false);
+  const hoverProgress = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReducedMotion();
   const artist = displayArtist(media);
   const metadata = metadataLine(media);
+
+  useEffect(() => () => hoverProgress.stopAnimation(), [hoverProgress]);
+
+  function setCardHover(next: boolean) {
+    setHovered(next);
+    hoverProgress.stopAnimation();
+    Animated.timing(hoverProgress, {
+      toValue: next ? 1 : 0,
+      duration: reduceMotion ? 0 : motion.duration.fast,
+      useNativeDriver: true,
+    }).start();
+  }
 
   return (
     <DragSurface
@@ -149,8 +165,9 @@ export const GridCard = memo(function GridCard({
       accessibilityState={selectMode ? { selected: !!selected } : undefined}
       aria-selected={selectMode ? !!selected : undefined}
       delayLongPress={350}
-      onHoverIn={Platform.OS === 'web' ? () => setHovered(true) : undefined}
-      onHoverOut={Platform.OS === 'web' ? () => setHovered(false) : undefined}
+      onHoverIn={Platform.OS === 'web' ? () => setCardHover(true) : undefined}
+      onHoverOut={Platform.OS === 'web' ? () => setCardHover(false) : undefined}
+      style={selected && styles.selectedCardShell}
     >
       <View
         style={[
@@ -170,6 +187,7 @@ export const GridCard = memo(function GridCard({
           style={StyleSheet.absoluteFill}
         />
         <LinearGradient colors={gradients.artworkScrim} style={styles.scrim} />
+        <View pointerEvents="none" style={styles.litFrame} />
         {selectMode && selected && <View pointerEvents="none" style={styles.selectionTint} />}
 
         {!selectMode && (
@@ -194,17 +212,24 @@ export const GridCard = memo(function GridCard({
           </View>
         )}
 
-        {hovered && !selectMode && (
-          <View pointerEvents="none" style={styles.playFabWrap}>
-            <LinearGradient
-              colors={colors.gradientPrimary}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.playFab}
-            >
-              <Ionicons name="play" size={22} color="#0B1411" style={{ marginLeft: 2 }} />
-            </LinearGradient>
-          </View>
+        {!selectMode && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.playFabWrap,
+              {
+                opacity: hoverProgress,
+                transform: [
+                  { translateY: hoverProgress.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) },
+                  { scale: hoverProgress.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.playFab}>
+              <Ionicons name="play" size={20} color={colors.cyan} style={{ marginLeft: 2 }} />
+            </View>
+          </Animated.View>
         )}
 
         <View style={styles.meta}>
@@ -240,6 +265,8 @@ export const ListRow = memo(function ListRow({
   onDragStart,
   onDragMove,
   onDragEnd,
+  active = false,
+  compact = false,
 }: MediaItemProps) {
   const [hovered, setHovered] = useState(false);
   const artist = displayArtist(media);
@@ -265,10 +292,14 @@ export const ListRow = memo(function ListRow({
       style={({ pressed }) => [
         styles.listRow,
         hovered && styles.listRowHovered,
+        active && styles.listRowActive,
         selected && styles.listRowSelected,
         pressed && styles.listRowPressed,
       ]}
     >
+      {(active || selected) && (
+        <View pointerEvents="none" style={[styles.rowEdge, selected && styles.rowEdgeSelected]} />
+      )}
       {selectMode && (
         <View style={[styles.selectCheckInline, selected && styles.selectCheckActive]}>
           {selected && <Ionicons name="checkmark" size={12} color="#0B1411" />}
@@ -280,18 +311,23 @@ export const ListRow = memo(function ListRow({
         borderRadius={radii.sm}
         contentFit={media.media_type === 'video' ? 'contain' : 'cover'}
       />
-      <View style={styles.listText}>
+      <View style={[styles.listText, !compact && styles.listTitleColumn]}>
         <Text numberOfLines={1} style={styles.cardTitle}>{displayTitle(media)}</Text>
-        {artist && <Text numberOfLines={1} style={styles.cardArtist}>{artist}</Text>}
-        {!!metadata && <Text numberOfLines={1} style={styles.cardMetadata}>{metadata}</Text>}
+        {compact && artist && <Text numberOfLines={1} style={styles.cardArtist}>{artist}</Text>}
+        {compact && !!metadata && <Text numberOfLines={1} style={styles.cardMetadata}>{metadata}</Text>}
       </View>
-      <Ionicons
-        name={media.media_type === 'video' ? 'videocam-outline' : 'musical-notes-outline'}
-        size={13}
-        color={colors.textMuted}
-      />
-      {favorite && <Ionicons name="heart" size={14} color={colors.pink} />}
-      <Text style={styles.durationText}>{formatDuration(media.duration_seconds)}</Text>
+      {!compact && <Text numberOfLines={1} style={styles.listArtistColumn}>{artist}</Text>}
+      {!compact && <Text numberOfLines={1} style={styles.listMetadataColumn}>{metadata || '—'}</Text>}
+      <View style={styles.typeColumn}>
+        <Ionicons
+          name={media.media_type === 'video' ? 'videocam-outline' : 'musical-notes-outline'}
+          size={13}
+          color={active ? colors.cyan : colors.textMuted}
+        />
+        {!compact && <Text style={styles.typeLabel}>{media.media_type === 'video' ? 'Video' : 'Audio'}</Text>}
+      </View>
+      {favorite && <Ionicons name="heart" size={14} color={colors.gold} />}
+      {!selectMode && <Text style={styles.listDuration}>{formatDuration(media.duration_seconds)}</Text>}
       </Pressable>
       {!selectMode && (
         <Pressable
@@ -354,14 +390,29 @@ export function SkeletonGrid({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: radii.lg,
+    borderRadius: radii.cover,
     overflow: 'hidden',
     justifyContent: 'flex-end',
     borderWidth: 1,
-    borderColor: 'rgba(158,181,170,0.12)',
+    borderColor: 'rgba(194,232,217,0.18)',
+    backgroundColor: colors.bgElevated,
   },
-  cardHovered: { borderColor: 'rgba(99,214,181,0.45)' },
-  cardSelected: { borderColor: glass.tintPrimaryStroke },
+  cardHovered: { borderColor: 'rgba(124,232,199,0.56)' },
+  cardSelected: { borderColor: colors.cyan, borderWidth: 1.5 },
+  selectedCardShell: {
+    transform: [{ translateY: -3 }],
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 7,
+  },
+  litFrame: {
+    ...(StyleSheet.absoluteFill as object),
+    borderWidth: 1,
+    borderColor: 'rgba(232,255,247,0.08)',
+    borderRadius: radii.cover,
+  },
   selectionTint: {
     ...(StyleSheet.absoluteFill as object),
     backgroundColor: glass.tintPrimary,
@@ -396,7 +447,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: radii.pill,
-    backgroundColor: 'rgba(5,10,11,0.55)',
+    backgroundColor: 'rgba(5,12,18,0.58)',
+    borderWidth: 1,
+    borderColor: 'rgba(194,232,217,0.14)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
@@ -407,22 +460,22 @@ const styles = StyleSheet.create({
     right: spacing.sm + 2,
     bottom: 54,
     borderRadius: radii.pill,
-    shadowColor: colors.cyan,
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
+    ...shadows.card,
   },
   playFab: {
-    width: 44,
-    height: 44,
+    width: 42,
+    height: 42,
     borderRadius: radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(7,20,26,0.82)',
+    borderWidth: 1,
+    borderColor: glass.tintPrimaryStroke,
   },
   rowMoreButton: {
     position: 'absolute',
-    right: 42,
-    top: 12,
+    right: 8,
+    top: 10,
     width: 44,
     height: 44,
     borderRadius: radii.pill,
@@ -430,7 +483,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '60%' },
+  scrim: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '68%' },
   durationChip: {
     position: 'absolute',
     top: spacing.sm,
@@ -446,7 +499,7 @@ const styles = StyleSheet.create({
   heartChip: {
     position: 'absolute',
     top: spacing.sm,
-    left: spacing.sm,
+    left: 58,
     backgroundColor: 'rgba(5,10,11,0.65)',
     borderRadius: radii.pill,
     padding: 5,
@@ -458,24 +511,35 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   meta: { padding: spacing.sm + 2 },
-  cardTitle: { ...typography.subtitle, fontSize: 15, lineHeight: 19, color: colors.textPrimary },
+  cardTitle: { ...typography.cardTitle, fontSize: 15, lineHeight: 19, color: colors.textPrimary },
   cardArtist: { ...typography.caption, fontSize: 12, color: colors.textMuted },
   cardMetadata: { ...typography.caption, fontSize: 11, color: colors.cyan, opacity: 0.88 },
   listRow: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    backgroundColor: glass.fill,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    borderRadius: radii.md,
-    padding: spacing.sm,
-    paddingRight: 92,
+    minHeight: 66,
+    backgroundColor: 'rgba(7,16,24,0.34)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(158,181,170,0.12)',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingRight: 64,
   },
   listRowHovered: { backgroundColor: glass.fillBright },
   listRowPressed: { backgroundColor: glass.tintPrimary },
-  listRowSelected: { backgroundColor: glass.tintPrimary, borderColor: glass.tintPrimaryStroke },
-  listText: { flex: 1 },
+  listRowActive: { backgroundColor: 'rgba(33,93,76,0.13)' },
+  listRowSelected: { backgroundColor: glass.tintPrimary },
+  rowEdge: { position: 'absolute', left: 0, top: 11, bottom: 11, width: 2, borderRadius: radii.pill, backgroundColor: colors.cyan },
+  rowEdgeSelected: { width: 3 },
+  listText: { flex: 1, minWidth: 0 },
+  listTitleColumn: { flexBasis: 190 },
+  listArtistColumn: { ...typography.caption, width: 150, color: colors.textSecondary },
+  listMetadataColumn: { ...typography.caption, width: 138, color: colors.textMuted },
+  typeColumn: { width: 62, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  typeLabel: { ...typography.caption, fontSize: 10, color: colors.textMuted },
+  listDuration: { ...typography.numeric, width: 46, textAlign: 'right', fontSize: 11, color: colors.textSecondary },
   skeletonGridWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   skeletonListWrap: { gap: spacing.md },
   skeletonCard: { borderRadius: radii.lg, backgroundColor: glass.fill },

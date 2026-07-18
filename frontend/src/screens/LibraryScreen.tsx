@@ -81,7 +81,7 @@ import { useUiStore } from '../store/uiStore';
 import { toast } from '../store/toastStore';
 import { apiErrorMessage } from '../utils/apiError';
 import { categoryForGenre, MEDIA_CATEGORIES, type MediaCategoryId } from '../utils/mediaCategory';
-import { colors, glass, gradients, radii, spacing, typography } from '../theme/tokens';
+import { colors, glass, glassBlur, gradients, radii, shadows, spacing, typography } from '../theme/tokens';
 import type { MainTabParamList, RootStackParamList } from '../navigation/types';
 
 type Tab = 'all' | 'audio' | 'video' | 'favorites' | 'categories' | 'playlists';
@@ -137,6 +137,7 @@ export function LibraryScreen() {
     remove,
   } = useLibraryStore();
   const playQueue = usePlayerStore((s) => s.playQueue);
+  const currentMedia = usePlayerStore((s) => s.currentMedia);
   const playNextInQueue = usePlayerStore((s) => s.playNextInQueue);
   const addToQueue = usePlayerStore((s) => s.addToQueue);
   const favoriteIds = useFavoritesStore((s) => s.ids);
@@ -766,6 +767,7 @@ export function LibraryScreen() {
     <View style={styles.root}>
       <ScreenContainer maxWidth={LIBRARY_MAX_WIDTH}>
         <Reveal>
+          <View style={[styles.archiveMasthead, selectMode && styles.archiveMastheadSelection]}>
           {selectMode ? (
             <View style={styles.selectionContext}>
               <View style={styles.selectionTopRow}>
@@ -778,10 +780,11 @@ export function LibraryScreen() {
                   <Ionicons name="close" size={20} color={colors.textPrimary} />
                 </Pressable>
                 <View style={styles.selectionTitleWrap}>
+                  <Text style={styles.selectionEyebrow}>ARCHIVE SELECTION</Text>
                   <Text accessibilityRole="header" style={styles.selectionTitle}>
                     {selectedCount} selected
                   </Text>
-                  <Text style={styles.selectionSubtitle}>Hold a selected song, then drag the stack below.</Text>
+                  <Text style={styles.selectionSubtitle}>Shape a set, then move, save, or clear it below.</Text>
                 </View>
                 <View style={styles.selectionHeaderActions}>
                   <Pressable onPress={selectAllVisible} style={styles.selectionHeaderButton}>
@@ -792,28 +795,25 @@ export function LibraryScreen() {
                   </Pressable>
                 </View>
               </View>
-              <PlaylistDropStrip
-                ref={playlistDropStripRef}
-                playlists={playlists}
-                selectedCount={selectedCount}
-                hoveredKey={hoveredDropKey}
-                onPick={(target) => void handlePlaylistTarget(target)}
-              />
             </View>
           ) : (
             <View style={styles.headerRow}>
               <View style={styles.headerText}>
                 <Text style={styles.eyebrow}>YOUR MUSIC</Text>
-                <Text style={styles.megaTitle}>Library</Text>
+                <Text accessibilityRole="header" style={styles.megaTitle}>Library</Text>
                 <Text style={styles.librarySummary}>
                   {canonicalItems.length === 0
-                    ? 'A private collection, ready when you are.'
-                    : `${canonicalItems.length} item${canonicalItems.length === 1 ? '' : 's'} · ${Object.keys(offlineIds).length} offline`}
+                    ? 'A private archive for every sound you bring into the hollow.'
+                    : `${canonicalItems.length} ${canonicalItems.length === 1 ? 'piece' : 'pieces'} in the archive  ·  ${Object.keys(offlineIds).length} offline  ·  ${playlists.length} ${playlists.length === 1 ? 'playlist' : 'playlists'}`}
                 </Text>
               </View>
               <SidebarTrigger />
             </View>
           )}
+          <View style={styles.mastheadRule}>
+            <View style={styles.mastheadRuleGlow} />
+          </View>
+          </View>
         </Reveal>
 
         <LibraryFreshnessBanner
@@ -843,7 +843,22 @@ export function LibraryScreen() {
           </View>
         ) : null}
 
-        {!selectMode && <Reveal delay={70}>
+        {selectMode ? (
+          <Reveal delay={70}>
+            <View style={[styles.commandDeck, styles.selectionDeck, glassBlur]}>
+              <PlaylistDropStrip
+                ref={playlistDropStripRef}
+                playlists={playlists}
+                selectedCount={selectedCount}
+                hoveredKey={hoveredDropKey}
+                onPick={(target) => void handlePlaylistTarget(target)}
+              />
+            </View>
+          </Reveal>
+        ) : (
+        <Reveal delay={70}>
+        <View style={[styles.commandDeck, glassBlur]}>
+        <View style={styles.commandPrimary}>
         <View style={styles.searchCapsule}>
           <Ionicons name="search" size={17} color={colors.textMuted} />
           <TextInput
@@ -861,10 +876,6 @@ export function LibraryScreen() {
             </Pressable>
           )}
         </View>
-        </Reveal>}
-
-        {!selectMode && <Reveal delay={120}>
-        <View style={styles.controlsRow}>
           <TabChipRow
             options={TABS.map((item) => ({ value: item.key, label: item.label }))}
             value={tab}
@@ -879,6 +890,10 @@ export function LibraryScreen() {
               }
             }}
           />
+        </View>
+
+        <View style={styles.commandDivider} />
+        <View style={styles.controlsRow}>
           {tab !== 'playlists' && !(tab === 'categories' && !categoryFilter) && (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.toolRow}>
               {tab === 'categories' && categoryFilter ? (
@@ -991,6 +1006,8 @@ export function LibraryScreen() {
             </ScrollView>
           )}
           {activeAdvancedChips.length > 0 && (
+            <View style={styles.annotationBand}>
+            <Text style={styles.annotationLabel}>ACTIVE NOTES</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activeFilterRow}>
               {activeAdvancedChips.map((chip) => (
                 <Pressable
@@ -1008,9 +1025,12 @@ export function LibraryScreen() {
                 <Text style={styles.resetFiltersLabel}>Reset</Text>
               </Pressable>
             </ScrollView>
+            </View>
           )}
         </View>
-        </Reveal>}
+        </View>
+        </Reveal>
+        )}
 
         {tab === 'playlists' ? (
           <PlaylistsPane
@@ -1047,6 +1067,7 @@ export function LibraryScreen() {
               columnWrapperStyle={view === 'grid' ? styles.gridRow : undefined}
               contentContainerStyle={[
                 styles.listContent,
+                view === 'list' && styles.listContentRows,
                 { paddingBottom: bottomChromeClearance },
                 visible.length === 0 && styles.emptyListContent,
               ]}
@@ -1071,6 +1092,7 @@ export function LibraryScreen() {
                     favorite={!!favoriteIds[item.id]}
                     selectMode={selectMode}
                     selected={!!selectedIds[item.id]}
+                    active={currentMedia?.id === item.id}
                     onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
                     onLongPress={() => {
                       if (!selectMode) enterSelection(item.id);
@@ -1088,6 +1110,8 @@ export function LibraryScreen() {
                     favorite={!!favoriteIds[item.id]}
                     selectMode={selectMode}
                     selected={!!selectedIds[item.id]}
+                    active={currentMedia?.id === item.id}
+                    compact={!isDesktop || width < 860}
                     onPress={() => (selectMode ? toggleSelect(item.id) : handlePlay(item))}
                     onLongPress={() => {
                       if (!selectMode) enterSelection(item.id);
@@ -1374,11 +1398,29 @@ export function LibraryScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'transparent' },
-  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  archiveMasthead: {
+    position: 'relative',
+    minHeight: 122,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    paddingBottom: spacing.md,
+  },
+  archiveMastheadSelection: { minHeight: 122 },
+  mastheadRule: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(158,181,170,0.14)',
+  },
+  mastheadRuleGlow: { width: '28%', minWidth: 92, height: 1, backgroundColor: colors.cyan, opacity: 0.86 },
+  headerRow: { width: '100%', flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   headerText: { flex: 1, paddingRight: spacing.md },
   eyebrow: { ...typography.eyebrow, color: colors.cyan, marginBottom: spacing.xs },
   megaTitle: { ...typography.mega, color: colors.textPrimary },
-  librarySummary: { ...typography.caption, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.md },
+  librarySummary: { ...typography.caption, maxWidth: 680, color: colors.textMuted, marginTop: spacing.xs },
   filterError: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1413,13 +1455,8 @@ const styles = StyleSheet.create({
   nativeQueueNext: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: spacing.lg, borderRadius: radii.md, backgroundColor: colors.cyan },
   nativeQueueNextLabel: { ...typography.subtitle, fontSize: 13, color: colors.textInverse },
   selectionContext: {
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-    padding: spacing.md,
-    borderRadius: radii.lg,
-    backgroundColor: glass.fillHeavy,
-    borderWidth: 1,
-    borderColor: glass.tintPrimaryStroke,
+    width: '100%',
+    justifyContent: 'center',
   },
   selectionTopRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
   selectionClose: {
@@ -1431,7 +1468,8 @@ const styles = StyleSheet.create({
     backgroundColor: glass.fillDeep,
   },
   selectionTitleWrap: { flex: 1, minWidth: 150 },
-  selectionTitle: { ...typography.title, fontSize: 18, lineHeight: 23, color: colors.textPrimary },
+  selectionEyebrow: { ...typography.eyebrow, marginBottom: 2, color: colors.cyan },
+  selectionTitle: { ...typography.screenTitle, fontSize: 30, lineHeight: 36, color: colors.textPrimary },
   selectionSubtitle: { ...typography.caption, fontSize: 11, color: colors.textMuted },
   selectionHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   selectionHeaderButton: {
@@ -1443,22 +1481,48 @@ const styles = StyleSheet.create({
   },
   selectionHeaderLabel: { ...typography.caption, color: colors.cyan },
   disabledLabel: { color: colors.textMuted, opacity: 0.5 },
+  commandDeck: {
+    width: '100%',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.sm,
+    overflow: 'hidden',
+    borderRadius: radii.hero,
+    borderWidth: 1,
+    borderColor: glass.strokeStrong,
+    backgroundColor: glass.fillHeavy,
+    ...shadows.low,
+  },
+  selectionDeck: {
+    minHeight: 104,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderColor: glass.tintPrimaryStroke,
+    backgroundColor: 'rgba(18,55,49,0.32)',
+  },
+  commandPrimary: {
+    gap: spacing.sm,
+    padding: spacing.xs,
+    borderRadius: radii.lg,
+    backgroundColor: 'rgba(8,18,28,0.34)',
+  },
+  commandDivider: { height: 1, marginHorizontal: spacing.xs, backgroundColor: 'rgba(158,181,170,0.12)' },
   searchCapsule: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: glass.fill,
+    backgroundColor: glass.fillDeep,
     borderWidth: 1,
     borderColor: glass.stroke,
     borderRadius: radii.pill,
     paddingHorizontal: spacing.md,
     height: 48,
-    marginBottom: spacing.sm,
   },
   searchInput: { ...typography.body, flex: 1, color: colors.textPrimary, paddingVertical: 0 },
   controlsRow: {
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    paddingHorizontal: spacing.xs,
+    paddingBottom: spacing.xs,
   },
   tabRow: { flexDirection: 'row', gap: 6, paddingRight: spacing.lg },
   tabChip: {
@@ -1478,7 +1542,9 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: spacing.sm + 2,
     borderRadius: radii.pill,
-    backgroundColor: glass.fill,
+    backgroundColor: 'rgba(9,20,29,0.42)',
+    borderWidth: 1,
+    borderColor: 'rgba(158,181,170,0.08)',
   },
   toolLabel: { ...typography.caption, fontSize: 12, color: colors.textSecondary },
   toolChipActive: { backgroundColor: glass.tintPrimary },
@@ -1493,6 +1559,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   fixNamesChip: { backgroundColor: glass.tintPrimary, borderWidth: 1, borderColor: glass.tintPrimaryStroke },
+  annotationBand: { gap: spacing.xs, paddingTop: spacing.xs },
+  annotationLabel: { ...typography.eyebrow, fontSize: 9, letterSpacing: 1.25, color: colors.textMuted },
   activeFilterRow: { flexDirection: 'row', gap: spacing.xs, paddingRight: spacing.lg },
   activeFilterChip: {
     minHeight: 32,
@@ -1513,6 +1581,14 @@ const styles = StyleSheet.create({
   listReveal: { flex: 1 },
   list: { flex: 1 },
   listContent: { gap: spacing.md },
+  listContentRows: {
+    gap: 0,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(158,181,170,0.12)',
+    borderRadius: radii.lg,
+    backgroundColor: 'rgba(4,12,20,0.24)',
+  },
   emptyListContent: { flexGrow: 1, justifyContent: 'center' },
   dragCluster: {
     position: 'absolute',
@@ -1531,6 +1607,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgElevated,
     borderWidth: 1,
     borderColor: colors.cyan,
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   dragCountBadge: {
     position: 'absolute',
@@ -1546,12 +1626,19 @@ const styles = StyleSheet.create({
   },
   dragCountLabel: { ...typography.caption, fontFamily: 'Sora_700Bold', color: colors.textInverse },
   bulkBar: {
+    position: 'relative',
+    zIndex: 30,
     gap: spacing.xs,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
-    backgroundColor: glass.fillHeavy,
+    backgroundColor: 'rgba(12,38,35,0.94)',
     borderTopWidth: 1,
-    borderTopColor: glass.stroke,
+    borderTopColor: glass.tintPrimaryStroke,
+    shadowColor: colors.cyan,
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: -8 },
+    elevation: 18,
   },
   bulkActions: { flexDirection: 'row', gap: spacing.sm, paddingRight: spacing.lg },
   bulkButton: {

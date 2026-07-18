@@ -161,6 +161,28 @@ function ChoiceRow<T extends string | boolean | null>({
   );
 }
 
+function FilterGroup({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.workbenchGroup}>
+      <View style={styles.groupHeading}>
+        <View style={styles.groupIcon}>
+          <Ionicons name={icon} size={14} color={colors.cyan} />
+        </View>
+        <Text style={styles.groupTitle}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
 export function LibraryFilterSheet({
   visible,
   value,
@@ -209,6 +231,8 @@ export function LibraryFilterSheet({
     onClose();
   }
 
+  const draftFilterCount = libraryFilterCount(draft);
+
   return (
     <CompactGlassSheet
       visible={visible}
@@ -218,6 +242,7 @@ export function LibraryFilterSheet({
       maxWidth={560}
       maxHeightRatio={0.88}
       scrollable
+      contentContainerStyle={styles.workbench}
       header={
         <View style={styles.header}>
           <View style={styles.headerIcon}><Ionicons name="options" size={18} color={colors.cyan} /></View>
@@ -227,47 +252,75 @@ export function LibraryFilterSheet({
           </View>
         </View>
       }
+      footer={
+        <View style={styles.footer}>
+          <View style={styles.footerSummary} accessibilityLiveRegion="polite">
+            <Text style={styles.footerCount}>{draftFilterCount}</Text>
+            <View style={styles.footerSummaryCopy}>
+              <Text style={styles.footerSummaryTitle}>
+                {draftFilterCount} {draftFilterCount === 1 ? 'filter' : 'filters'} will apply
+              </Text>
+              <Text style={styles.footerSummaryHint}>Changes stay in draft until you apply them.</Text>
+            </View>
+          </View>
+          <View style={styles.footerActions}>
+            <Pressable onPress={() => setDraft(EMPTY_LIBRARY_FILTERS)} style={styles.resetButton}>
+              <Text style={styles.resetLabel}>Reset</Text>
+            </Pressable>
+            <Pressable onPress={apply} style={styles.applyButton}>
+              <Ionicons name="checkmark" size={17} color={colors.textInverse} />
+              <Text style={styles.applyLabel}>Apply filters</Text>
+            </Pressable>
+          </View>
+        </View>
+      }
     >
-      <ChoiceRow
-        label="Source"
-        value={draft.source}
-        options={SOURCE_OPTIONS}
-        onChange={(source) => patch({ source })}
-      />
-      <ChoiceRow
-        label="Media type"
-        value={draft.mediaType}
-        options={[
-          { value: null, label: 'Any' },
-          { value: 'audio', label: 'Audio' },
-          { value: 'video', label: 'Video' },
-        ]}
-        onChange={(mediaType) => patch({ mediaType })}
-      />
-      <ChoiceRow
-        label="Naming"
-        value={draft.named}
-        options={[
-          { value: null, label: 'Any' },
-          { value: true, label: 'Named' },
-          { value: false, label: 'Unnamed' },
-        ]}
-        onChange={(named) => patch({ named })}
-      />
-      <ChoiceRow
-        label="Favorites"
-        value={draft.favorite}
-        options={[
-          { value: null, label: 'Any' },
-          { value: true, label: 'Favorites' },
-          { value: false, label: 'Not favorites' },
-        ]}
-        onChange={(favorite) => patch({ favorite })}
-      />
+      <FilterGroup title="Origin" icon="cloud-outline">
+        <ChoiceRow
+          label="Source"
+          value={draft.source}
+          options={SOURCE_OPTIONS}
+          onChange={(source) => patch({ source })}
+        />
+      </FilterGroup>
 
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Duration in minutes</Text>
-        <View style={styles.inputRow}>
+      <FilterGroup title="Media & naming" icon="albums-outline">
+        <ChoiceRow
+          label="Media type"
+          value={draft.mediaType}
+          options={[
+            { value: null, label: 'Any' },
+            { value: 'audio', label: 'Audio' },
+            { value: 'video', label: 'Video' },
+          ]}
+          onChange={(mediaType) => patch({ mediaType })}
+        />
+        <ChoiceRow
+          label="Naming"
+          value={draft.named}
+          options={[
+            { value: null, label: 'Any' },
+            { value: true, label: 'Named' },
+            { value: false, label: 'Unnamed' },
+          ]}
+          onChange={(named) => patch({ named })}
+        />
+        <ChoiceRow
+          label="Favorites"
+          value={draft.favorite}
+          options={[
+            { value: null, label: 'Any' },
+            { value: true, label: 'Favorites' },
+            { value: false, label: 'Not favorites' },
+          ]}
+          onChange={(favorite) => patch({ favorite })}
+        />
+      </FilterGroup>
+
+      <FilterGroup title="Duration" icon="time-outline">
+        <View style={styles.fieldGroupLast}>
+          <Text style={styles.fieldLabel}>Duration in minutes</Text>
+          <View style={styles.inputRow}>
           <TextInput
             value={draft.minDurationMinutes}
             onChangeText={(minDurationMinutes) => patch({ minDurationMinutes })}
@@ -288,12 +341,14 @@ export function LibraryFilterSheet({
             selectionColor={colors.cyan}
             style={styles.input}
           />
+          </View>
         </View>
-      </View>
+      </FilterGroup>
 
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Date added</Text>
-        <View style={styles.inputRow}>
+      <FilterGroup title="Date added" icon="calendar-outline">
+        <View style={styles.fieldGroupLast}>
+          <Text style={styles.fieldLabel}>Archive range</Text>
+          <View style={styles.inputRow}>
           <TextInput
             value={draft.addedAfter}
             onChangeText={(addedAfter) => patch({ addedAfter })}
@@ -314,25 +369,28 @@ export function LibraryFilterSheet({
             selectionColor={colors.cyan}
             style={styles.input}
           />
+          </View>
         </View>
-      </View>
+      </FilterGroup>
 
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Artist contains</Text>
-        <TextInput
-          value={draft.artist}
-          onChangeText={(artist) => patch({ artist })
-          }
-          placeholder="Artist name"
-          autoCapitalize="none"
-          placeholderTextColor={colors.textMuted}
-          selectionColor={colors.cyan}
-          style={styles.input}
-        />
-      </View>
+      <FilterGroup title="Artist" icon="person-outline">
+        <View style={styles.fieldGroupLast}>
+          <Text style={styles.fieldLabel}>Artist contains</Text>
+          <TextInput
+            value={draft.artist}
+            onChangeText={(artist) => patch({ artist })}
+            placeholder="Artist name"
+            autoCapitalize="none"
+            placeholderTextColor={colors.textMuted}
+            selectionColor={colors.cyan}
+            style={styles.input}
+          />
+        </View>
+      </FilterGroup>
 
-      <View style={styles.fieldGroup}>
-        <Text style={styles.fieldLabel}>Playlist membership</Text>
+      <FilterGroup title="Playlist" icon="list-outline">
+        <View style={styles.fieldGroupLast}>
+          <Text style={styles.fieldLabel}>Playlist membership</Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -364,17 +422,8 @@ export function LibraryFilterSheet({
             );
           })}
         </ScrollView>
-      </View>
-
-      <View style={styles.footer}>
-        <Pressable onPress={() => setDraft(EMPTY_LIBRARY_FILTERS)} style={styles.resetButton}>
-          <Text style={styles.resetLabel}>Reset</Text>
-        </Pressable>
-        <Pressable onPress={apply} style={styles.applyButton}>
-          <Ionicons name="checkmark" size={17} color={colors.textInverse} />
-          <Text style={styles.applyLabel}>Apply filters</Text>
-        </Pressable>
-      </View>
+        </View>
+      </FilterGroup>
     </CompactGlassSheet>
   );
 }
@@ -392,7 +441,26 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   title: { ...typography.title, fontSize: 20, lineHeight: 25, color: colors.textPrimary },
   subtitle: { ...typography.caption, color: colors.textMuted },
+  workbench: { gap: spacing.sm },
+  workbenchGroup: {
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: glass.stroke,
+    backgroundColor: glass.fillDeep,
+  },
+  groupHeading: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md },
+  groupIcon: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.pill,
+    backgroundColor: glass.tintPrimary,
+  },
+  groupTitle: { ...typography.eyebrow, fontSize: 10, letterSpacing: 1.35, color: colors.textSecondary },
   fieldGroup: { gap: spacing.sm, marginBottom: spacing.lg },
+  fieldGroupLast: { gap: spacing.sm },
   fieldLabel: { ...typography.eyebrow, fontSize: 10, letterSpacing: 1.2, color: colors.textMuted },
   choiceWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   choice: {
@@ -424,7 +492,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm + 2,
   },
   playlistRow: { gap: spacing.sm, paddingRight: spacing.md },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.sm },
+  footer: { gap: spacing.md },
+  footerSummary: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  footerCount: {
+    ...typography.numeric,
+    minWidth: 34,
+    height: 34,
+    textAlign: 'center',
+    lineHeight: 34,
+    color: colors.textInverse,
+    borderRadius: radii.pill,
+    backgroundColor: colors.cyan,
+  },
+  footerSummaryCopy: { flex: 1 },
+  footerSummaryTitle: { ...typography.subtitle, fontSize: 13, color: colors.textPrimary },
+  footerSummaryHint: { ...typography.caption, fontSize: 10, color: colors.textMuted },
+  footerActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: spacing.sm },
   resetButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg, borderRadius: radii.md },
   resetLabel: { ...typography.subtitle, fontSize: 13, color: colors.textSecondary },
   applyButton: {

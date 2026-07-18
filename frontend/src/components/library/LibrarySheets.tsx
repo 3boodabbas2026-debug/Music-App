@@ -23,11 +23,66 @@ import type { Media, Playlist } from '../../services/api/types';
 import { usePlaylistStore } from '../../store/playlistStore';
 import { toast } from '../../store/toastStore';
 import { apiErrorMessage } from '../../utils/apiError';
-import { displayArtist as artistOf, displayTitle, firstPlaylistArtworkItem } from '../../utils/mediaDisplay';
+import { displayArtist as artistOf, displayTitle } from '../../utils/mediaDisplay';
 import { colors, glass, layout, radii, shadows, spacing, typography } from '../../theme/tokens';
 
 function displayArtist(media: Media): string {
   return artistOf(media) ?? 'Unknown artist';
+}
+
+function PlaylistCoverMosaic({
+  playlist,
+  size,
+}: {
+  playlist: Playlist;
+  size: number;
+}) {
+  if (playlist.artwork_url) {
+    return (
+      <Artwork
+        media={{
+          id: `playlist-art-${playlist.id}`,
+          title: playlist.name,
+          thumbnail_url: playlist.artwork_url,
+          media_type: 'audio',
+        }}
+        size={size}
+        borderRadius={radii.cover}
+        accessibilityLabel={`${playlist.name} playlist artwork`}
+      />
+    );
+  }
+
+  const cells = Array.from({ length: 4 }, (_, index) => (
+    playlist.items.length > 0
+      ? playlist.items[index] ?? playlist.items[index % playlist.items.length]
+      : {
+          id: `playlist-mosaic-${playlist.id}-${index}`,
+          title: playlist.name,
+          media_type: 'audio' as const,
+        }
+  ));
+
+  return (
+    <View
+      accessible
+      accessibilityRole="image"
+      accessibilityLabel={`${playlist.name} playlist artwork mosaic`}
+      style={[styles.playlistMosaic, { width: size, height: size }]}
+    >
+      {cells.map((media, index) => (
+        <View
+          key={`${media.id ?? index}-${index}`}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.playlistMosaicCell}
+        >
+          <Artwork media={media} size="100%" borderRadius={0} />
+        </View>
+      ))}
+      <View pointerEvents="none" style={styles.playlistMosaicFrame} />
+    </View>
+  );
 }
 
 export function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; onOpen: (id: string) => void }) {
@@ -94,16 +149,6 @@ export function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; on
         </View>
       }
       renderItem={({ item, index }) => {
-        const coverMedia = item.artwork_url ? {
-          id: `playlist-art-${item.id}`,
-          title: item.name,
-          thumbnail_url: item.artwork_url,
-          media_type: 'audio' as const,
-        } : firstPlaylistArtworkItem(item.items) ?? {
-          id: `playlist-${item.id}`,
-          title: item.name,
-          media_type: 'audio' as const,
-        };
         return (
           <View style={styles.playlistRowShell}>
             <Pressable
@@ -112,12 +157,7 @@ export function PlaylistsPane({ playlists, onOpen }: { playlists: Playlist[]; on
               accessibilityLabel={`Open ${item.name} playlist`}
               style={({ pressed }) => [styles.playlistOpen, pressed && styles.listRowPressed]}
             >
-              <Artwork
-                media={coverMedia}
-                size={48}
-                borderRadius={radii.sm}
-                accessibilityLabel={`${item.name} playlist artwork`}
-              />
+              <PlaylistCoverMosaic playlist={item} size={58} />
               <View style={styles.listText}>
                 <Text numberOfLines={1} style={styles.cardTitle}>{item.name}</Text>
                 <Text numberOfLines={1} style={styles.cardArtist}>
@@ -440,20 +480,7 @@ export function PlaylistDetailModal({
         >
           {!isDesktop && <View style={styles.sheetHandle} />}
           <View style={styles.detailHeader}>
-            <Artwork
-              media={playlist.artwork_url ? {
-                id: `playlist-art-${playlist.id}`,
-                title: playlist.name,
-                thumbnail_url: playlist.artwork_url,
-                media_type: 'audio',
-              } : firstPlaylistArtworkItem(playlist.items) ?? {
-                id: `playlist-${playlist.id}`,
-                title: playlist.name,
-                media_type: 'audio',
-              }}
-              size={52}
-              borderRadius={radii.md}
-            />
+            <PlaylistCoverMosaic playlist={playlist} size={104} />
             <View style={styles.detailHeaderText}>
               <Text numberOfLines={1} style={styles.editTitle}>{playlist.name}</Text>
               <Text style={styles.sheetSub}>
@@ -739,7 +766,7 @@ const styles = StyleSheet.create({
   playlistOpen: {
     flex: 1,
     minWidth: 0,
-    minHeight: 64,
+    minHeight: 78,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
@@ -871,11 +898,27 @@ const styles = StyleSheet.create({
   detailSheet: { maxHeight: '82%' },
   detailHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.md,
     marginBottom: spacing.sm,
   },
   detailHeaderText: { flex: 1 },
+  playlistMosaic: {
+    position: 'relative',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    overflow: 'hidden',
+    flexShrink: 0,
+    borderRadius: radii.cover,
+    backgroundColor: glass.fillDeep,
+  },
+  playlistMosaicCell: { width: '50%', height: '50%', overflow: 'hidden' },
+  playlistMosaicFrame: {
+    ...(StyleSheet.absoluteFill as object),
+    borderRadius: radii.cover,
+    borderWidth: 1,
+    borderColor: 'rgba(218,250,238,0.22)',
+  },
   detailEdit: {
     width: 44,
     height: 44,

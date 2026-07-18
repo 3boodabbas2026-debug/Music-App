@@ -69,7 +69,11 @@ export function SmartCategoriesPane({ items, bottomClearance, onSelect, onNameTr
         {MEDIA_CATEGORIES.map((category) => {
           const categoryItems = groups[category.id];
           if (categoryItems.length === 0) return null;
-          const cover = categoryItems.find((item) => item.thumbnail_url) ?? categoryItems[0];
+          const portraits = [
+            categoryItems.find((item) => item.thumbnail_url) ?? categoryItems[0],
+            categoryItems[1] ?? categoryItems[0],
+            categoryItems[2] ?? categoryItems[1] ?? categoryItems[0],
+          ];
           return (
             <PressableScale
               key={category.id}
@@ -79,20 +83,34 @@ export function SmartCategoriesPane({ items, bottomClearance, onSelect, onNameTr
               style={{ width: cardWidth }}
             >
               <GlassPanel style={styles.card}>
-                <Artwork media={cover} size={64} borderRadius={radii.md} />
-                <View style={styles.cardCopy}>
-                  <View style={styles.cardTitleRow}>
+                <View style={styles.portrait}>
+                  <View style={styles.dominantCover}>
+                    <Artwork media={portraits[0]} size="100%" borderRadius={radii.cover} />
+                  </View>
+                  <View style={styles.echoColumn}>
+                    <View style={styles.echoCover}>
+                      <Artwork media={portraits[1]} size="100%" borderRadius={radii.cover} />
+                    </View>
+                    <View style={styles.echoCover}>
+                      <Artwork media={portraits[2]} size="100%" borderRadius={radii.cover} />
+                    </View>
+                  </View>
+                  <View style={styles.glyphWell}>
                     <Ionicons
                       name={category.icon as keyof typeof Ionicons.glyphMap}
-                      size={15}
+                      size={17}
                       color={colors.cyan}
                     />
-                    <Text numberOfLines={1} style={styles.cardTitle}>{category.label}</Text>
                   </View>
-                  <Text style={styles.cardCount}>{categoryItems.length} item{categoryItems.length === 1 ? '' : 's'}</Text>
-                  <Text numberOfLines={2} style={styles.cardDescription}>{category.description}</Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                <View style={styles.cardCopy}>
+                  <View style={styles.cardTitleRow}>
+                    <Text numberOfLines={1} style={styles.cardTitle}>{category.label}</Text>
+                    <Ionicons name="arrow-forward" size={14} color={colors.textMuted} />
+                  </View>
+                  <Text numberOfLines={2} style={styles.cardDescription}>{category.description}</Text>
+                  <Text style={styles.cardCount}>{categoryItems.length} item{categoryItems.length === 1 ? '' : 's'} in this view</Text>
+                </View>
               </GlassPanel>
             </PressableScale>
           );
@@ -130,16 +148,44 @@ const styles = StyleSheet.create({
   returnButton: { minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.lg },
   returnLabel: { ...typography.subtitle, fontSize: 13, color: colors.cyan },
   card: {
-    minHeight: 100,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    padding: spacing.md,
+    minHeight: 238,
+    alignItems: 'stretch',
+    gap: spacing.sm,
+    padding: spacing.sm,
     borderRadius: radii.lg,
+    backgroundColor: 'rgba(8,28,28,0.46)',
+  },
+  portrait: {
+    position: 'relative',
+    height: 122,
+    flexDirection: 'row',
+    gap: 4,
+    padding: 4,
+    overflow: 'hidden',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: glass.tintPrimaryStroke,
+    backgroundColor: glass.fillDeep,
+  },
+  dominantCover: { flex: 1.7, minWidth: 0, overflow: 'hidden', borderRadius: radii.cover },
+  echoColumn: { flex: 1, minWidth: 0, gap: 4 },
+  echoCover: { flex: 1, minHeight: 0, overflow: 'hidden', borderRadius: radii.cover },
+  glyphWell: {
+    position: 'absolute',
+    left: spacing.sm,
+    bottom: spacing.sm,
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: glass.tintPrimaryStroke,
+    backgroundColor: 'rgba(5,18,22,0.82)',
   },
   cardCopy: { flex: 1, minWidth: 0, gap: 2 },
-  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.xs },
   cardTitle: { ...typography.subtitle, color: colors.textPrimary, flex: 1 },
-  cardCount: { ...typography.caption, color: colors.cyan },
-  cardDescription: { ...typography.caption, color: colors.textMuted },
+  cardCount: { ...typography.caption, paddingHorizontal: spacing.xs, marginTop: spacing.xs, fontSize: 10, color: colors.cyan },
+  cardDescription: { ...typography.caption, paddingHorizontal: spacing.xs, color: colors.textMuted },
 });
